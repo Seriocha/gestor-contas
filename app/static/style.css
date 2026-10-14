@@ -121,3 +121,19 @@ button.ligacao:hover { text-decoration: underline; }
   .topo nav { order: 3; flex-basis: 100%; }
   .cartao-central { margin: 1rem; padding: 1.25rem; }
 }
+
+/* Fase 1b — importação e movimentos */
+:root { --alerta-fundo: #fff6e0; --alerta-texto: #7a5300; --pos: #1b6b3d; --neg: #9b1c1c; }
+@media (prefers-color-scheme: dark) {
+  :root { --alerta-fundo: #3a2f12; --alerta-texto: #f1cf7a; --pos: #8fd8ac; --neg: #f3a5a5; }
+}
+.aviso-alerta { background: var(--alerta-fundo); color: var(--alerta-texto); }
+.tabela .pos { color: var(--pos); }
+.tabela .neg { color: var(--neg); }
+.resumo { display: grid; gap: .75rem 1.5rem; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); margin-bottom: 1rem; }
+.resumo div { display: flex; flex-direction: column; }
+.resumo strong { font-size: 1.1rem; font-variant-numeric: tabular-nums; }
+.filtros { display: flex; gap: .75rem; flex-wrap: wrap; align-items: flex-end; margin-bottom: 1rem; }
+.filtros label { display: flex; flex-direction: column; gap: .2rem; font-size: .85rem; color: var(--suave); }
+.paginacao { display: flex; gap: 1rem; justify-content: center; margin-top: 1rem; }
+button:disabled { opacity: .5; cursor: not-allowed; }

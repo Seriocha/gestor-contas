@@ -13,6 +13,7 @@
   <nav>
     <a href="/" {% if request.url.path == '/' %}class="ativo"{% endif %}>Painel</a>
     <a href="/contas" {% if request.url.path.startswith('/contas') %}class="ativo"{% endif %}>Contas</a>
+    <a href="/importar" {% if request.url.path.startswith('/importar') %}class="ativo"{% endif %}>Importar</a>
     {% if utilizador.is_admin %}
     <a href="/admin/utilizadores" {% if request.url.path.startswith('/admin') %}class="ativo"{% endif %}>Administração</a>
     {% endif %}

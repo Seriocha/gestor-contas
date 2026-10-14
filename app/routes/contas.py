@@ -4,13 +4,14 @@ import re
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from ..deps import auditar, entidades_visiveis, exigir_papel, flash, get_db, render, utilizador_atual
 from ..formatos import montante_para_input, mascarar_iban, parse_data, parse_montante
 from ..seguranca import ler_form
-from ..models import PAPEIS, TIPOS_CONTA, Conta, Entidade, Instituicao, Permissao, Utilizador
+from ..models import PAPEIS, TIPOS_CONTA, Conta, Entidade, Instituicao, Movimento, Permissao, Utilizador
+from ..servicos import saldo_conta
 
 router = APIRouter(prefix="/contas")
 
@@ -110,7 +111,7 @@ def lista(request: Request, arquivadas: int = 0, u: Utilizador = Depends(utiliza
             q = q.where(Conta.ativa)
         contas = sorted(db.scalars(q).all(), key=lambda c: (list(TIPOS_CONTA).index(c.tipo), c.nome.lower()))
         blocos.append({"entidade": entidade, "papel": papel, "pode_gerir": PAPEIS[papel] >= PAPEIS["admin"],
-                       "contas": contas})
+                       "contas": [(c, saldo_conta(db, c)) for c in contas]})
     return render(request, "contas/lista.html", blocos=blocos, arquivadas=arquivadas)
 
 
@@ -191,3 +192,38 @@ async def arquivar(request: Request, conta_id: int, u: Utilizador = Depends(util
     db.commit()
     flash(request, f"Conta «{c.nome}» {'arquivada' if not c.ativa else 'reativada'}.")
     return RedirectResponse("/contas", status_code=303)
+
+
+POR_PAGINA = 200
+
+
+@router.get("/{conta_id}/movimentos")
+def movimentos(request: Request, conta_id: int, q: str = "", de: str = "", ate: str = "", pagina: int = 1,
+               u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
+    c = _conta_ou_404(db, conta_id)
+    papel = exigir_papel(db, u, c.entidade_id, "ver")
+    filtro = select(Movimento).where(Movimento.conta_id == c.id)
+    erro = None
+    try:
+        d_de, d_ate = parse_data(de), parse_data(ate)
+    except ValueError as e:
+        d_de = d_ate = None
+        erro = str(e)
+    if d_de:
+        filtro = filtro.where(Movimento.data_mov >= d_de)
+    if d_ate:
+        filtro = filtro.where(Movimento.data_mov <= d_ate)
+    if q.strip():
+        termo = f"%{q.strip()}%"
+        filtro = filtro.where(or_(Movimento.descricao_original.ilike(termo), Movimento.notas.ilike(termo)))
+    sub = filtro.subquery()
+    total, entradas, saidas = db.execute(select(
+        func.count(), func.coalesce(func.sum(func.max(sub.c.montante, 0)), 0),
+        func.coalesce(func.sum(func.min(sub.c.montante, 0)), 0)).select_from(sub)).one()
+    pagina = max(1, pagina)
+    lista = db.scalars(filtro.order_by(Movimento.data_mov.desc(), Movimento.ordem.desc(), Movimento.id.desc())
+                       .offset((pagina - 1) * POR_PAGINA).limit(POR_PAGINA)).all()
+    return render(request, "contas/movimentos.html", conta=c, saldo=saldo_conta(db, c), movimentos=lista,
+                  total=total, entradas=entradas, saidas=saidas, pagina=pagina,
+                  paginas=max(1, -(-total // POR_PAGINA)), q=q, de=de, ate=ate, erro=erro,
+                  pode_importar=PAPEIS[papel] >= PAPEIS["editar"])

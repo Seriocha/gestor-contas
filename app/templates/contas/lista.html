@@ -16,17 +16,17 @@
   {% else %}
   <div class="rolar">
   <table class="tabela">
-    <thead><tr><th>Conta</th><th>Tipo</th><th>Instituição</th><th>Titulares</th><th class="num">Saldo inicial</th>{% if b.pode_gerir %}<th></th>{% endif %}</tr></thead>
+    <thead><tr><th>Conta</th><th>Tipo</th><th>Instituição</th><th>Titulares</th><th class="num">Saldo</th>{% if b.pode_gerir %}<th></th>{% endif %}</tr></thead>
     <tbody>
-    {% for c in b.contas %}
+    {% for c, s in b.contas %}
     <tr class="{{ '' if c.ativa else 'arquivada' }}">
-      <td><strong>{{ c.nome }}</strong>{% if c.iban_mascarado %}<br><span class="nota">{{ c.iban_mascarado }}</span>{% endif %}
+      <td><strong><a href="/contas/{{ c.id }}/movimentos">{{ c.nome }}</a></strong>{% if c.iban_mascarado %}<br><span class="nota">{{ c.iban_mascarado }}</span>{% endif %}
         {% if c.tipo == 'CARTAO_CREDITO' and c.conta_pagamento %}<br><span class="nota">paga por {{ c.conta_pagamento.nome }}{% if c.dia_pagamento %}, dia {{ c.dia_pagamento }}{% endif %}</span>{% endif %}
         {% if not c.ativa %} <span class="etiqueta">arquivada</span>{% endif %}</td>
       <td>{{ c.tipo_rotulo }}{% if c.moeda != 'EUR' %} · {{ c.moeda }}{% endif %}</td>
       <td>{{ c.instituicao.nome }}</td>
       <td>{{ c.titulares | map(attribute='nome') | join(', ') or '—' }}</td>
-      <td class="num">{{ c.saldo_inicial | eur(c.moeda) }}{% if c.data_saldo_inicial %}<br><span class="nota">em {{ c.data_saldo_inicial | data }}</span>{% endif %}</td>
+      <td class="num">{{ s.atual | eur(c.moeda) }}<br><span class="nota">{% if s.data %}em {{ s.data | data }} · {{ s.n_movimentos }} mov.{% else %}saldo inicial{% endif %}</span></td>
       {% if b.pode_gerir %}
       <td class="acoes">
         <a href="/contas/{{ c.id }}/editar">Editar</a>

@@ -38,7 +38,7 @@ class Utilizador(Base):
     ativo: Mapped[bool] = mapped_column(Boolean, default=True)
     # Incrementar invalida todas as sessões abertas (ex.: troca de password).
     versao_sessao: Mapped[int] = mapped_column(Integer, default=1)
-    criado_em: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    criado_em: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, server_default=func.now())
     ultimo_login: Mapped[datetime | None] = mapped_column(DateTime)
 
     permissoes: Mapped[list["Permissao"]] = relationship(
@@ -110,7 +110,7 @@ class Conta(Base):
     data_saldo_inicial: Mapped[date | None] = mapped_column(Date)
     ativa: Mapped[bool] = mapped_column(Boolean, default=True)
     notas: Mapped[str | None] = mapped_column(Text)
-    criado_em: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    criado_em: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, server_default=func.now())
 
     entidade: Mapped[Entidade] = relationship(back_populates="contas")
     instituicao: Mapped[Instituicao] = relationship()
@@ -122,11 +122,55 @@ class Conta(Base):
         return TIPOS_CONTA.get(self.tipo, self.tipo)
 
 
+class Importacao(Base):
+    __tablename__ = "importacao"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    conta_id: Mapped[int] = mapped_column(ForeignKey("conta.id", ondelete="CASCADE"))
+    utilizador_id: Mapped[int | None] = mapped_column(ForeignKey("utilizador.id", ondelete="SET NULL"))
+    ficheiro_nome: Mapped[str] = mapped_column(String(255))
+    sha256: Mapped[str] = mapped_column(String(64), index=True)
+    parser: Mapped[str] = mapped_column(String(30))
+    criado_em: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, server_default=func.now())
+    data_ini: Mapped[date | None] = mapped_column(Date)
+    data_fim: Mapped[date | None] = mapped_column(Date)
+    n_lidos: Mapped[int] = mapped_column(Integer, default=0)
+    n_novos: Mapped[int] = mapped_column(Integer, default=0)
+    n_duplicados: Mapped[int] = mapped_column(Integer, default=0)
+    estado: Mapped[str] = mapped_column(String(12), default="confirmada")  # confirmada | anulada
+
+    conta: Mapped[Conta] = relationship()
+    utilizador: Mapped[Utilizador | None] = relationship()
+
+
+class Movimento(Base):
+    __tablename__ = "movimento"
+    __table_args__ = (UniqueConstraint("conta_id", "hash_dedup"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    conta_id: Mapped[int] = mapped_column(ForeignKey("conta.id", ondelete="CASCADE"), index=True)
+    importacao_id: Mapped[int | None] = mapped_column(ForeignKey("importacao.id", ondelete="CASCADE"))
+    data_mov: Mapped[date] = mapped_column(Date, index=True)
+    data_valor: Mapped[date | None] = mapped_column(Date)
+    # Posição cronológica dentro do mesmo dia (o extrato traz a ordem real).
+    ordem: Mapped[int] = mapped_column(Integer, default=0)
+    descricao_original: Mapped[str] = mapped_column(String(500))
+    descricao_norm: Mapped[str] = mapped_column(String(500))
+    montante: Mapped[int] = mapped_column(BigInteger)  # cêntimos, negativo = saída
+    moeda: Mapped[str] = mapped_column(String(3), default="EUR")
+    saldo_apos: Mapped[int | None] = mapped_column(BigInteger)  # saldo dado pelo banco
+    notas: Mapped[str | None] = mapped_column(Text)
+    hash_dedup: Mapped[str] = mapped_column(String(64))
+    criado_em: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, server_default=func.now())
+
+    conta: Mapped[Conta] = relationship()
+
+
 class Auditoria(Base):
     __tablename__ = "auditoria"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    quando: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    quando: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, server_default=func.now())
     utilizador_id: Mapped[int | None] = mapped_column(ForeignKey("utilizador.id", ondelete="SET NULL"))
     acao: Mapped[str] = mapped_column(String(50))
     detalhe: Mapped[str | None] = mapped_column(Text)

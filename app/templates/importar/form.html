@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block titulo %}Importar{% endblock %}
+{% block conteudo %}
+<h1>Importar extrato</h1>
+{% if erro %}<div class="aviso aviso-erro">{{ erro }}</div>{% endif %}
+<section class="cartao">
+  {% if not contas %}
+    <p class="vazio">Não tens contas onde possas importar. Cria uma conta primeiro (ou pede o papel «Editar»).</p>
+  {% else %}
+  <form method="post" action="/importar" enctype="multipart/form-data" class="formulario">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <label>Conta
+      <select name="conta_id" required>
+        <option value="">—</option>
+        {% for c in contas %}
+        <option value="{{ c.id }}" {% if conta_id == c.id %}selected{% endif %}>{{ c.entidade.nome }} · {{ c.nome }} ({{ c.instituicao.nome }})</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Ficheiro <input type="file" name="ficheiro" accept=".xls,.xlsx,.csv" required></label>
+    <p class="nota">Suportados: Santander (.xls de «Saldos e movimentos») e ActivoBank (.xlsx de movimentos).
+      Podes voltar a importar períodos que se sobrepõem — os movimentos repetidos são ignorados.</p>
+    <div class="acoes-form"><button class="primario">Pré-visualizar</button></div>
+  </form>
+  {% endif %}
+</section>
+
+<section class="cartao">
+  <h2>Histórico de importações</h2>
+  {% if not historico %}<p class="vazio">Ainda não há importações.</p>{% else %}
+  <div class="rolar">
+  <table class="tabela compacta">
+    <thead><tr><th>Quando</th><th>Conta</th><th>Ficheiro</th><th>Período</th><th class="num">Novos</th><th class="num">Repetidos</th><th>Por</th><th></th></tr></thead>
+    <tbody>
+    {% for i in historico %}
+    <tr class="{{ '' if i.estado == 'confirmada' else 'arquivada' }}">
+      <td>{{ i.criado_em.strftime('%d-%m-%Y %H:%M') }}</td>
+      <td><a href="/contas/{{ i.conta_id }}/movimentos">{{ i.conta.nome }}</a></td>
+      <td class="nota">{{ i.ficheiro_nome }}</td>
+      <td>{{ i.data_ini | data }} a {{ i.data_fim | data }}</td>
+      <td class="num">{{ i.n_novos }}</td>
+      <td class="num">{{ i.n_duplicados }}</td>
+      <td>{{ i.utilizador.nome if i.utilizador else '—' }}</td>
+      <td class="acoes">
+        {% if i.estado == 'confirmada' %}
+        <form method="post" action="/importar/{{ i.id }}/anular" onsubmit="return confirm('Remover os {{ i.n_novos }} movimentos desta importação?')">
+          <input type="hidden" name="csrf" value="{{ csrf_token }}">
+          <button class="ligacao">Anular</button>
+        </form>
+        {% else %}<span class="etiqueta">anulada</span>{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

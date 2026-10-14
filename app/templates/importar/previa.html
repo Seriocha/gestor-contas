@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block titulo %}Pré-visualização{% endblock %}
+{% block conteudo %}
+<h1>Pré-visualização <span class="nota">· {{ conta.nome }} ({{ conta.entidade.nome }})</span></h1>
+{% for e in erros %}<div class="aviso aviso-erro">{{ e }}</div>{% endfor %}
+{% for a in avisos %}<div class="aviso aviso-alerta">{{ a }}</div>{% endfor %}
+
+<section class="cartao">
+  <div class="resumo">
+    <div><span class="nota">Formato</span><strong>{{ extrato.banco }}</strong></div>
+    <div><span class="nota">Período</span><strong>{{ linhas[0].data_mov | data if linhas }} a {{ linhas[-1].data_mov | data if linhas }}</strong></div>
+    <div><span class="nota">Movimentos lidos</span><strong>{{ linhas | length }}</strong></div>
+    <div><span class="nota">Novos</span><strong>{{ n_novos }}</strong></div>
+    <div><span class="nota">Já existentes</span><strong>{{ linhas | length - n_novos }}</strong></div>
+    <div><span class="nota">Soma dos novos</span><strong>{{ soma_novos | eur(conta.moeda) }}</strong></div>
+  </div>
+  {% if not erros %}
+  <form method="post" action="/importar/confirmar" class="acoes-form">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <input type="hidden" name="conta_id" value="{{ conta.id }}">
+    <input type="hidden" name="sha" value="{{ sha }}">
+    <input type="hidden" name="nome" value="{{ nome }}">
+    <button class="primario" {% if not n_novos %}disabled{% endif %}>Importar {{ n_novos }} movimentos</button>
+    <a href="/importar">Cancelar</a>
+  </form>
+  {% else %}
+  <p><a href="/importar">Voltar</a></p>
+  {% endif %}
+</section>
+
+<section class="cartao">
+  <div class="rolar">
+  <table class="tabela compacta">
+    <thead><tr><th>Data</th><th>Descrição</th><th class="num">Montante</th><th class="num">Saldo</th><th></th></tr></thead>
+    <tbody>
+    {% for l in linhas | reverse %}
+    <tr class="{{ 'arquivada' if l.duplicado else '' }}">
+      <td>{{ l.data_mov | data }}</td>
+      <td>{{ l.descricao }}</td>
+      <td class="num {{ 'neg' if l.montante < 0 else 'pos' }}">{{ l.montante | eur(conta.moeda) }}</td>
+      <td class="num">{{ l.saldo | eur(conta.moeda) }}</td>
+      <td>{% if l.duplicado %}<span class="etiqueta">já existe</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+{% endblock %}

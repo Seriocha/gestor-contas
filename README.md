@@ -4,7 +4,7 @@ Gestor financeiro doméstico, multiutilizador e self-hosted, para a NAS QNAP. Es
 importa movimentos de bancos portugueses e gere contas à ordem, cartões, investimentos e
 Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIGN.md).
 
-## Estado: Fase 1 (v0.1.0)
+## Estado: v0.2.0
 
 - Login com várias pessoas: passwords em argon2, bloqueio ao fim de 5 tentativas falhadas,
   proteção CSRF e invalidação das sessões quando a password muda.
@@ -15,9 +15,16 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
 - Backup automático diário da base SQLite (ficam guardados 30 dias), backup manual e registo de auditoria.
 - Migrações Alembic aplicadas automaticamente no arranque.
 - Deploy: GitHub Actions → GHCR → Container Station (ver [qnap/README.md](qnap/README.md)).
+- **Importação de extratos** (v0.2.0): Santander (.xls de «Saldos e movimentos») e ActivoBank
+  (.xlsx). Há pré-visualização antes de gravar e deteção de movimentos repetidos, por isso podes
+  reimportar períodos sobrepostos. Os saldos do banco são verificados linha a linha. Na 1.ª
+  importação o saldo inicial é calculado a partir do extrato. Cada importação pode ser anulada.
+  Os ficheiros originais ficam guardados em `data/uploads/`.
+- Lista de movimentos por conta, com pesquisa e filtro por datas. O saldo atual é o indicado pelo
+  banco, com um alerta quando difere do saldo calculado.
 
-Próximo passo (Fase 1b): importação de extratos de Santander, ActivoBank e Revolut. Para isso
-são precisos ficheiros de exemplo reais.
+Próximo passo: categorias e regras de categorização. Depois, a Revolut (precisa de um CSV de exemplo).
+Para juntar um banco novo: [app/parsers/](app/parsers/).
 
 ## Desenvolvimento local
 

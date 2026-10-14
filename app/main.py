@@ -16,11 +16,11 @@ from . import backup, formatos
 from .config import BASE_DIR, carregar_definicoes
 from .db import criar_engine, url_sqlite
 from .deps import NaoAutenticado, render
-from .routes import admin, auth, contas, painel
+from .routes import admin, auth, contas, importar, painel
 from .seed import semear
 
 APP_DIR = Path(__file__).resolve().parent
-VERSAO = "0.1.0"
+VERSAO = "0.2.0"
 
 
 def aplicar_migracoes(db_path: Path) -> None:
@@ -66,7 +66,7 @@ def create_app(data_dir: Path | None = None, backups_automaticos: bool = True) -
     )
     app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="static")
 
-    for r in (auth.router, painel.router, contas.router, admin.router):
+    for r in (auth.router, painel.router, contas.router, importar.router, admin.router):
         app.include_router(r)
 
     @app.get("/healthz", include_in_schema=False)

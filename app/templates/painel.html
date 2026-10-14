@@ -19,14 +19,13 @@
   <table class="tabela">
     {% for rotulo, contas in b.grupos %}
       <tr class="grupo"><th colspan="2">{{ rotulo }}</th></tr>
-      {% for c in contas %}
-      <tr><td>{{ c.nome }} <span class="nota">{{ c.instituicao.nome }}</span></td>
-          <td class="num">{{ c.saldo_inicial | eur(c.moeda) }}</td></tr>
+      {% for c, s in contas %}
+      <tr><td><a href="/contas/{{ c.id }}/movimentos">{{ c.nome }}</a> <span class="nota">{{ c.instituicao.nome }}</span></td>
+          <td class="num">{{ s.atual | eur(c.moeda) }}{% if s.data %}<br><span class="nota">em {{ s.data | data }}</span>{% endif %}</td></tr>
       {% endfor %}
     {% endfor %}
     <tr class="total"><td>Total (EUR)</td><td class="num">{{ b.total_eur | eur }}</td></tr>
   </table>
-  <p class="nota">Valores = saldos iniciais. Os saldos reais aparecem quando a importação de movimentos estiver disponível.</p>
   {% endif %}
 </section>
 {% endfor %}
