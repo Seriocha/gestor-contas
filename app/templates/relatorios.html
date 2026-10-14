@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+{% block titulo %}Relatórios{% endblock %}
+{% macro delta(atual, anterior, inverter=false) -%}
+  {%- if anterior -%}
+    {%- set v = (atual - anterior) / (anterior | abs) * 100 -%}
+    {%- set bom = (v < 0) if inverter else (v > 0) -%}
+    <span class="delta {{ 'pos' if bom else 'neg' if v != 0 else '' }}">{{ '▲' if v > 0 else '▼' if v < 0 else '' }} {{ v | pct }}</span>
+  {%- else -%}<span class="delta nota">—</span>{%- endif -%}
+{%- endmacro %}
+{% block conteudo %}
+<div class="titulo-acoes">
+  <h1>Relatórios</h1>
+  {% if entidade %}<a class="botao" href="/relatorios/csv?{{ request.url.query }}">Exportar CSV</a>{% endif %}
+</div>
+{% set destino = "/relatorios" %}{% include "_entidades.html" %}
+{% if not entidade %}<p class="vazio">Sem acesso a nenhuma entidade.</p>{% else %}
+
+<form method="get" class="filtros cartao">
+  <input type="hidden" name="entidade" value="{{ entidade.id }}">
+  <label>Período
+    <select name="periodo" id="sel-periodo">
+      {% for k, rotulo in presets.items() %}<option value="{{ k }}" {% if f.periodo == k %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}
+    </select>
+  </label>
+  <label class="so-personalizado">De <input type="date" name="de" value="{{ f.de or p.ini }}"></label>
+  <label class="so-personalizado">Até <input type="date" name="ate" value="{{ f.ate or p.fim }}"></label>
+  <label>Conta
+    <select name="conta">
+      <option value="">Todas</option>
+      {% for c in contas %}<option value="{{ c.id }}" {% if f.conta == c.id %}selected{% endif %}>{{ c.nome }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Etiqueta
+    <select name="etiqueta">
+      <option value="">Todas</option>
+      {% for e in etiquetas %}<option value="{{ e.id }}" {% if f.etiqueta == e.id %}selected{% endif %}>{{ e.nome }}</option>{% endfor %}
+    </select>
+  </label>
+  <button>Atualizar</button>
+  <span class="nota">{{ p.rotulo }} · comparado com {{ ant.ini | data }} a {{ ant.fim | data }}</span>
+</form>
+
+<section class="kpi-grelha">
+  <div class="cartao kpi"><span class="nota">Receitas</span><strong>{{ r.receitas | eur }}</strong>{{ delta(r.receitas, r_ant.receitas) }}</div>
+  <div class="cartao kpi"><span class="nota">Despesas</span><strong>{{ r.despesas | eur }}</strong>{{ delta(r.despesas, r_ant.despesas, true) }}</div>
+  <div class="cartao kpi"><span class="nota">Poupança</span><strong class="{{ 'neg' if r.poupanca < 0 else '' }}">{{ r.poupanca | eur }}</strong>{{ delta(r.poupanca, r_ant.poupanca) }}</div>
+  <div class="cartao kpi"><span class="nota">Taxa de poupança</span>
+    <strong>{{ '—' if r.taxa_poupanca is none else ('%.1f' % r.taxa_poupanca).replace('.', ',') ~ '%' }}</strong>
+    <span class="nota">antes: {{ '—' if r_ant.taxa_poupanca is none else ('%.1f' % r_ant.taxa_poupanca).replace('.', ',') ~ '%' }}</span></div>
+  <div class="cartao kpi"><span class="nota">Património líquido</span><strong>{{ pat.serie[-1].liquido | eur }}</strong>{{ delta(pat.serie[-1].liquido, pat_ant.liquido) }}</div>
+</section>
+
+<section class="cartao">
+  <h2>Receitas e despesas <span class="nota">· últimos 12 meses até {{ p.fim | data }}</span></h2>
+  <div class="grafico grafico-medio"><canvas data-grafico="tendencia" aria-label="Receitas, despesas e saldo por mês" role="img"></canvas></div>
+  <details>
+    <summary>Ver tabela</summary>
+    <table class="tabela compacta">
+      <thead><tr><th>Mês</th><th class="num">Receitas</th><th class="num">Despesas</th><th class="num">Saldo</th></tr></thead>
+      {% for x in mensal %}<tr><td>{{ x.rotulo }}</td><td class="num">{{ x.receitas | eur }}</td><td class="num">{{ x.despesas | eur }}</td>
+        <td class="num {{ 'neg' if x.saldo < 0 else '' }}">{{ x.saldo | eur }}</td></tr>{% endfor %}
+    </table>
+  </details>
+</section>
+
+<div class="grelha-2">
+{% for titulo, linhas, total, total_ant in [("Despesas", despesas, r.despesas, r_ant.despesas), ("Receitas", receitas, r.receitas, r_ant.receitas)] %}
+<section class="cartao">
+  <h2>{{ titulo }} por categoria <span class="nota">· {{ p.rotulo }}</span></h2>
+  {% if not linhas %}<p class="vazio">Sem {{ titulo | lower }} neste período.</p>{% else %}
+  <table class="tabela compacta">
+    <thead><tr><th>Categoria</th><th class="num">Valor</th><th class="num">%</th><th class="num">Mov.</th><th class="num">vs. anterior</th></tr></thead>
+    <tbody>
+    {% for l in linhas %}
+      <tr class="grupo">
+        <td>
+          {% if l.filhas %}<button type="button" class="ligacao expandir" aria-expanded="false" aria-label="Ver subcategorias">▸</button>{% endif %}
+          <span class="pastilha" style="background: {{ l.cor }}"></span>
+          <a href="/movimentos?entidade={{ entidade.id }}&{{ 'categoria=' ~ l.categoria_id if l.categoria_id else 'tipo=sem' }}&de={{ p.ini }}&ate={{ p.fim }}">{{ l.nome }}</a>
+        </td>
+        <td class="num">{{ l.total | eur }}</td>
+        <td class="num">{{ ('%.1f' % (l.total / total * 100)).replace('.', ',') if total else '—' }}</td>
+        <td class="num">{{ l.n }}</td>
+        <td class="num">{{ delta(l.total, l.anterior, titulo == 'Despesas') }}</td>
+      </tr>
+      {% for s in l.filhas %}
+      <tr class="sub" hidden>
+        <td class="recuo"><a href="/movimentos?entidade={{ entidade.id }}&categoria={{ s.categoria_id }}&de={{ p.ini }}&ate={{ p.fim }}">{{ s.nome }}</a></td>
+        <td class="num">{{ s.total | eur }}</td>
+        <td class="num">{{ ('%.1f' % (s.total / total * 100)).replace('.', ',') if total else '—' }}</td>
+        <td class="num">{{ s.n }}</td><td></td>
+      </tr>
+      {% endfor %}
+    {% endfor %}
+    </tbody>
+    <tfoot><tr class="total"><td>Total</td><td class="num">{{ total | eur }}</td><td class="num">100</td><td></td><td class="num">{{ delta(total, total_ant, titulo == 'Despesas') }}</td></tr></tfoot>
+  </table>
+  {% endif %}
+</section>
+{% endfor %}
+</div>
+
+{% if graficos.despesas %}
+<section class="cartao">
+  <h2>Distribuição das despesas <span class="nota">· {{ p.rotulo }}</span></h2>
+  <div class="grafico grafico-medio"><canvas data-grafico="donut" aria-label="Distribuição das despesas por categoria" role="img"></canvas></div>
+</section>
+{% endif %}
+
+<section class="cartao">
+  <h2>Tendência por categoria de despesa <span class="nota">· últimos 12 meses</span></h2>
+  {% if not estat %}<p class="vazio">Sem despesas.</p>{% else %}
+  <div class="rolar">
+  <table class="tabela compacta">
+    <thead><tr><th>Categoria</th><th>Evolução</th><th class="num">Média/mês</th><th class="num">Mediana</th><th class="num">Mínimo</th><th class="num">Máximo</th><th class="num">Total</th></tr></thead>
+    {% for e in estat %}
+    {% set maximo = e.maximo or 1 %}
+    <tr>
+      <td><span class="pastilha" style="background: {{ e.cor }}"></span>{{ e.nome }}</td>
+      <td><span class="mini-barras" aria-hidden="true">{% for v in e.serie %}<span style="height: {{ (v / maximo * 100) | round(0) if v > 0 else 0 }}%; background: {{ e.cor }}"></span>{% endfor %}</span></td>
+      <td class="num">{{ e.media | eur }}</td><td class="num">{{ e.mediana | eur }}</td>
+      <td class="num">{{ e.minimo | eur }}</td><td class="num">{{ e.maximo | eur }}</td><td class="num">{{ e.total | eur }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+  {% endif %}
+</section>
+
+<section class="cartao">
+  <h2>Património líquido <span class="nota">· últimos 12 meses</span></h2>
+  <div class="grafico grafico-medio"><canvas data-grafico="patrimonio" aria-label="Evolução do património líquido" role="img"></canvas></div>
+  <div class="kpi-linha">
+    <div class="kpi"><span class="nota">Ativos</span><strong>{{ pat.serie[-1].ativos | eur }}</strong></div>
+    <div class="kpi"><span class="nota">Passivos</span><strong>{{ pat.serie[-1].passivos | eur }}</strong></div>
+    <div class="kpi"><span class="nota">Variação no período</span><strong>{{ (pat.serie[-1].liquido - pat_ant.liquido) | eur }}</strong></div>
+  </div>
+</section>
+<p class="nota">Transferências entre contas próprias e movimentos excluídos não contam como receita nem despesa.
+  Numa categoria de despesa, uma devolução reduz a despesa.</p>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if entidade %}
+<script type="application/json" id="dados-graficos">{{ graficos | tojson }}</script>
+<script src="/static/vendor/chart.umd.min.js"></script>
+<script src="/static/graficos.js"></script>
+<script>
+  const sel = document.getElementById('sel-periodo');
+  const mostrar = () => document.querySelectorAll('.so-personalizado').forEach(l => l.hidden = sel.value !== 'personalizado');
+  sel.addEventListener('change', mostrar); mostrar();
+  document.querySelectorAll('.expandir').forEach(b => b.addEventListener('click', () => {
+    const aberto = b.getAttribute('aria-expanded') === 'true';
+    b.setAttribute('aria-expanded', String(!aberto)); b.textContent = aberto ? '▸' : '▾';
+    let tr = b.closest('tr').nextElementSibling;
+    while (tr && tr.classList.contains('sub')) { tr.hidden = aberto; tr = tr.nextElementSibling; }
+  }));
+</script>
+{% endif %}
+{% endblock %}

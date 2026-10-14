@@ -1,36 +1,119 @@
 {% extends "base.html" %}
 {% block titulo %}Painel{% endblock %}
 {% block conteudo %}
-<h1>Painel</h1>
-{% if not blocos %}
+<div class="titulo-acoes">
+  <h1>Painel</h1>
+  {% if entidade %}<span class="nota">Dados até {{ ref | data }}</span>{% endif %}
+</div>
+{% set destino = "/" %}{% include "_entidades.html" %}
+
+{% if not entidade %}
 <p class="vazio">Ainda não tens acesso a nenhuma entidade. Pede a um administrador.</p>
+{% else %}
+
+{% if n_sem %}
+<div class="aviso aviso-alerta">
+  Há {{ n_sem }} movimentos sem categoria — os relatórios ficam mais úteis depois de os qualificares.
+  <a href="/movimentos?entidade={{ entidade.id }}&tipo=sem">Qualificar agora</a>
+</div>
 {% endif %}
-<div class="grelha-entidades">
-{% for b in blocos %}
+
+<section class="cartao">
+  <div class="kpi-linha">
+    <div class="kpi kpi-grande">
+      <span class="nota">Património líquido</span>
+      <strong>{{ atual.liquido | eur }}</strong>
+      {% set dif = atual.liquido - ha_30.liquido %}
+      <span class="nota {{ 'pos' if dif > 0 else 'neg' if dif < 0 else '' }}">{{ '+' if dif > 0 else '' }}{{ dif | eur }} em 30 dias</span>
+    </div>
+    <div class="kpi"><span class="nota">Ativos</span><strong>{{ atual.ativos | eur }}</strong></div>
+    <div class="kpi"><span class="nota">Passivos</span><strong>{{ atual.passivos | eur }}</strong></div>
+  </div>
+  <div class="grafico grafico-medio"><canvas data-grafico="patrimonio" aria-label="Evolução do património líquido nos últimos 12 meses" role="img"></canvas></div>
+</section>
+
+<div class="grelha-2">
+  <section class="cartao">
+    <h2>Ativos</h2>
+    {% if not grupos_ativos %}<p class="vazio">Sem contas. <a href="/contas">Criar contas</a></p>{% endif %}
+    <table class="tabela compacta">
+      {% for grupo, contas in grupos_ativos.items() %}
+        <tr class="grupo"><th>{{ grupo }}</th><th class="num">{{ contas | sum(attribute=1) | eur }}</th></tr>
+        {% for c, s in contas %}
+        <tr><td><a href="/contas/{{ c.id }}/movimentos">{{ c.nome }}</a> <span class="nota">{{ c.instituicao.nome }}</span></td>
+            <td class="num">{{ s | eur }}</td></tr>
+        {% endfor %}
+      {% endfor %}
+    </table>
+  </section>
+  <section class="cartao">
+    <h2>Passivos</h2>
+    {% if not grupos_passivos %}<p class="vazio">Sem dívidas registadas.</p>{% endif %}
+    <table class="tabela compacta">
+      {% for grupo, contas in grupos_passivos.items() %}
+        <tr class="grupo"><th>{{ grupo }}</th><th class="num">{{ (contas | sum(attribute=1)) | abs | eur }}</th></tr>
+        {% for c, s in contas %}
+        <tr><td><a href="/contas/{{ c.id }}/movimentos">{{ c.nome }}</a></td><td class="num">{{ s | abs | eur }}</td></tr>
+        {% endfor %}
+      {% endfor %}
+    </table>
+  </section>
+</div>
+
 <section class="cartao">
   <div class="cartao-cabecalho">
-    <h2>{{ b.entidade.nome }}</h2>
-    <span class="etiqueta">{{ b.papel }}</span>
-  </div>
-  {% if b.entidade.descricao %}<p class="nota">{{ b.entidade.descricao }}</p>{% endif %}
-  {% if not b.grupos %}
-    <p class="vazio">Sem contas. <a href="/contas">Criar contas</a></p>
-  {% else %}
-  <table class="tabela">
-    {% for rotulo, contas in b.grupos %}
-      <tr class="grupo"><th colspan="2">{{ rotulo }}</th></tr>
-      {% for c, s in contas %}
-      <tr><td><a href="/contas/{{ c.id }}/movimentos">{{ c.nome }}</a> <span class="nota">{{ c.instituicao.nome }}</span></td>
-          <td class="num">{{ s.atual | eur(c.moeda) }}{% if s.data %}<br><span class="nota">em {{ s.data | data }}</span>{% endif %}</td></tr>
+    <h2>Fluxo de caixa <span class="nota">· {{ p.rotulo }}</span></h2>
+    <nav class="segmentos">
+      {% for k, rotulo in periodos.items() %}
+      <a href="/?entidade={{ entidade.id }}&periodo={{ k }}" {% if p.chave == k %}class="ativo"{% endif %}>{{ rotulo }}</a>
       {% endfor %}
-    {% endfor %}
-    <tr class="total"><td>Total (EUR)</td><td class="num">{{ b.total_eur | eur }}</td></tr>
-  </table>
-  {% endif %}
+    </nav>
+  </div>
+  <div class="kpi-linha">
+    <div class="kpi"><span class="nota">Receitas</span><strong>{{ r.receitas | eur }}</strong></div>
+    <div class="kpi"><span class="nota">Despesas</span><strong>{{ r.despesas | eur }}</strong></div>
+    <div class="kpi"><span class="nota">Poupança</span><strong class="{{ 'neg' if r.poupanca < 0 else '' }}">{{ r.poupanca | eur }}</strong></div>
+    <div class="kpi"><span class="nota">Taxa de poupança</span><strong>{{ '—' if r.taxa_poupanca is none else ('%.0f' % r.taxa_poupanca) ~ '%' }}</strong></div>
+  </div>
+  {% if graficos.sankey %}
+  <div class="grafico grafico-alto"><canvas data-grafico="sankey" aria-label="Fluxo das receitas para as despesas e poupança" role="img"></canvas></div>
+  {% else %}<p class="vazio">Sem movimentos neste período.</p>{% endif %}
 </section>
-{% endfor %}
-</div>
+
+<section class="cartao">
+  <div class="cartao-cabecalho">
+    <h2>Despesas por categoria <span class="nota">· {{ p.rotulo }}</span></h2>
+    <a href="/relatorios?entidade={{ entidade.id }}&periodo={{ p.chave }}">Ver relatório</a>
+  </div>
+  {% if despesas %}
+  <div class="grelha-2 alinhar-centro">
+    <div class="grafico grafico-medio"><canvas data-grafico="donut" aria-label="Distribuição das despesas por categoria" role="img"></canvas></div>
+    <table class="tabela compacta">
+      {% for l in despesas %}
+      <tr>
+        <td><span class="pastilha" style="background: {{ l.cor }}"></span>
+          {% if l.categoria_id %}<a href="/movimentos?entidade={{ entidade.id }}&categoria={{ l.categoria_id }}&de={{ p.ini }}&ate={{ p.fim }}">{{ l.nome }}</a>
+          {% else %}<a href="/movimentos?entidade={{ entidade.id }}&tipo=sem&de={{ p.ini }}&ate={{ p.fim }}">{{ l.nome }}</a>{% endif %}</td>
+        <td class="num">{{ l.total | eur }}</td>
+        <td class="num nota">{{ '%.0f' % (l.total / r.despesas * 100) if r.despesas else 0 }}%</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+  {% else %}<p class="vazio">Sem despesas neste período.</p>{% endif %}
+</section>
+{% endif %}
+
 {% if utilizador.is_admin %}
 <p class="nota">Último backup: {{ ultimo_backup.strftime('%d-%m-%Y %H:%M') if ultimo_backup else 'nenhum ainda' }}</p>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if entidade %}
+<script type="application/json" id="dados-graficos">{{ graficos | tojson }}</script>
+<script src="/static/vendor/chart.umd.min.js"></script>
+<script src="/static/vendor/chartjs-chart-sankey.min.js"></script>
+<script src="/static/graficos.js"></script>
 {% endif %}
 {% endblock %}

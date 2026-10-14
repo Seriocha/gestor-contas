@@ -111,7 +111,8 @@ async def confirmar(request: Request, u: Utilizador = Depends(utilizador_atual),
         flash(request, "A importação foi cancelada: o ficheiro tem movimentos que não foi possível distinguir "
                        "entre si. Nada foi gravado.", "erro")
         return RedirectResponse("/importar", status_code=303)
-    flash(request, f"Importados {imp.n_novos} movimentos novos ({imp.n_duplicados} já existiam)." + (f" {msg}" if msg else ""))
+    flash(request, f"Importados {imp.n_novos} movimentos novos ({imp.n_duplicados} já existiam); "
+                   f"{imp.n_qualificados} categorizados pelas regras." + (f" {msg}" if msg else ""))
     return RedirectResponse(f"/contas/{conta.id}/movimentos", status_code=303)
 
 

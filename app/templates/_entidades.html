@@ -1,0 +1,8 @@
+{# Separadores de entidade (Família / Mãe). Espera: visiveis, entidade, destino (caminho base). #}
+{% if visiveis | length > 1 %}
+<nav class="separadores">
+  {% for e, papel in visiveis %}
+  <a href="{{ destino }}?entidade={{ e.id }}" {% if entidade and e.id == entidade.id %}class="ativo"{% endif %}>{{ e.nome }}</a>
+  {% endfor %}
+</nav>
+{% endif %}

@@ -5,17 +5,22 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block titulo %}Gestor de Contas{% endblock %} · Gestor de Contas</title>
   <link rel="stylesheet" href="/static/style.css">
+  {% block cabecalho %}{% endblock %}
 </head>
 <body>
 {% if utilizador %}
 <header class="topo">
   <a class="marca" href="/">Gestor de Contas</a>
   <nav>
-    <a href="/" {% if request.url.path == '/' %}class="ativo"{% endif %}>Painel</a>
-    <a href="/contas" {% if request.url.path.startswith('/contas') %}class="ativo"{% endif %}>Contas</a>
-    <a href="/importar" {% if request.url.path.startswith('/importar') %}class="ativo"{% endif %}>Importar</a>
+    {% set caminho = request.url.path %}
+    <a href="/" {% if caminho == '/' %}class="ativo"{% endif %}>Painel</a>
+    <a href="/movimentos" {% if caminho.startswith('/movimentos') or caminho.endswith('/movimentos') %}class="ativo"{% endif %}>Movimentos</a>
+    <a href="/relatorios" {% if caminho.startswith('/relatorios') %}class="ativo"{% endif %}>Relatórios</a>
+    <a href="/contas" {% if caminho.startswith('/contas') and not caminho.endswith('/movimentos') %}class="ativo"{% endif %}>Contas</a>
+    <a href="/importar" {% if caminho.startswith('/importar') %}class="ativo"{% endif %}>Importar</a>
+    <a href="/categorias" {% if caminho.startswith('/categorias') or caminho.startswith('/regras') %}class="ativo"{% endif %}>Categorias e regras</a>
     {% if utilizador.is_admin %}
-    <a href="/admin/utilizadores" {% if request.url.path.startswith('/admin') %}class="ativo"{% endif %}>Administração</a>
+    <a href="/admin/utilizadores" {% if caminho.startswith('/admin') %}class="ativo"{% endif %}>Administração</a>
     {% endif %}
   </nav>
   <div class="sessao">
@@ -32,5 +37,6 @@
   {% block conteudo %}{% endblock %}
 </main>
 <footer class="rodape">v{{ versao }}</footer>
+{% block scripts %}{% endblock %}
 </body>
 </html>

@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from .models import Conta, Importacao, Movimento, Utilizador
 from .parsers import Extrato
+from .qualificacao import aplicar_regras
 
 TAMANHO_MAX = 10 * 1024 * 1024
 
@@ -110,12 +111,13 @@ def confirmar(db: Session, conta: Conta, extrato: Extrato, nome: str, sha: str,
     )
     db.add(imp)
     db.flush()
-    for l in novas:
-        db.add(Movimento(
-            conta_id=conta.id, importacao_id=imp.id, data_mov=l.data_mov, data_valor=l.data_valor,
-            ordem=l.ordem, descricao_original=l.descricao[:500], descricao_norm=l.descricao_norm[:500],
-            montante=l.montante, moeda=conta.moeda, saldo_apos=l.saldo, hash_dedup=l.hash_dedup,
-        ))
+    movs = [Movimento(
+        conta_id=conta.id, importacao_id=imp.id, data_mov=l.data_mov, data_valor=l.data_valor,
+        ordem=l.ordem, descricao_original=l.descricao[:500], descricao_norm=l.descricao_norm[:500],
+        montante=l.montante, moeda=conta.moeda, saldo_apos=l.saldo, hash_dedup=l.hash_dedup,
+    ) for l in novas]
+    db.add_all(movs)
+    imp.n_qualificados = aplicar_regras(db, movs)
 
     msg = None
     primeiro = linhas[0] if linhas else None

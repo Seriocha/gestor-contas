@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block titulo %}{{ 'Editar regra' if regra else 'Nova regra' }}{% endblock %}
+{% block conteudo %}
+<h1>{{ 'Editar regra' if regra else 'Nova regra' }}</h1>
+{% if erros %}<div class="aviso aviso-erro"><ul>{% for e in erros %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
+<form method="post" action="{{ '/regras/' ~ regra.id if regra else '/regras/nova' }}" class="formulario">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  <fieldset>
+    <legend>Se…</legend>
+    <div class="linha">
+      <label>A descrição
+        <select name="modo">{% for k, rotulo in modos.items() %}<option value="{{ k }}" {% if v.modo == k %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}</select>
+      </label>
+      <label class="largo">Padrão <input name="padrao" value="{{ v.padrao or '' }}" required maxlength="200" placeholder="ex.: CONTINENTE|PINGO DOCE"></label>
+    </div>
+    <p class="nota">Em «contém», separa alternativas com <code>|</code>. Maiúsculas e minúsculas são indiferentes; palavras curtas (até 4 letras) só contam inteiras.</p>
+    <div class="linha">
+      <label>Sentido
+        <select name="sentido">{% for k, rotulo in sentidos.items() %}<option value="{{ k }}" {% if (v.sentido or '') == k %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}</select>
+      </label>
+      <label>Só na conta
+        <select name="conta_id">
+          <option value="">Qualquer conta</option>
+          {% for c in contas %}<option value="{{ c.id }}" {% if v.conta_id|string == c.id|string %}selected{% endif %}>{{ c.entidade.nome }} · {{ c.nome }}</option>{% endfor %}
+        </select>
+      </label>
+    </div>
+    <div class="linha">
+      <label>Montante mínimo <input name="montante_min" value="{{ v.montante_min or '' }}" inputmode="decimal" placeholder="opcional"></label>
+      <label>Montante máximo <input name="montante_max" value="{{ v.montante_max or '' }}" inputmode="decimal" placeholder="opcional"></label>
+    </div>
+  </fieldset>
+  <fieldset>
+    <legend>Então…</legend>
+    <label>Categoria
+      <select name="categoria_id">
+        <option value="">— não mudar —</option>
+        {% for raiz in categorias %}
+          <option value="{{ raiz.id }}" {% if v.categoria_id|string == raiz.id|string %}selected{% endif %}>{{ raiz.nome }}</option>
+          {% for c in raiz.filhas %}<option value="{{ c.id }}" {% if v.categoria_id|string == c.id|string %}selected{% endif %}>&nbsp;&nbsp;{{ raiz.nome }} › {{ c.nome }}</option>{% endfor %}
+        {% endfor %}
+      </select>
+    </label>
+    <label>Acrescentar etiqueta
+      <select name="etiqueta_id">
+        <option value="">— nenhuma —</option>
+        {% for e in etiquetas %}<option value="{{ e.id }}" {% if v.etiqueta_id|string == e.id|string %}selected{% endif %}>{{ e.nome }}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="opcao"><input type="checkbox" name="marcar_transferencia" value="1" {% if v.marcar_transferencia %}checked{% endif %}> Marcar como transferência entre contas próprias</label>
+    <label class="opcao"><input type="checkbox" name="excluir" value="1" {% if v.excluir %}checked{% endif %}> Excluir dos relatórios</label>
+  </fieldset>
+  <div class="linha">
+    <label>Prioridade (menor corre primeiro) <input name="prioridade" type="number" min="0" value="{{ v.prioridade or 100 }}"></label>
+    <label class="opcao"><input type="checkbox" name="ativa" value="1" {% if v.ativa %}checked{% endif %}> Ativa</label>
+  </div>
+  <label class="opcao"><input type="checkbox" name="aplicar" value="1" checked> Aplicar já aos movimentos existentes que correspondam (exceto os qualificados à mão)</label>
+  <div class="acoes-form">
+    <button class="primario">Guardar</button>
+    <button name="testar" value="1">Testar</button>
+    <a href="/regras">Cancelar</a>
+  </div>
+</form>
+
+{% if regra %}
+<form method="post" action="/regras/{{ regra.id }}/apagar" onsubmit="return confirm('Apagar esta regra?')" class="separado">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="perigo">Apagar regra</button>
+</form>
+{% endif %}
+
+<section class="cartao">
+  <h2>Corresponde a {{ n }} movimento{{ '' if n == 1 else 's' }}</h2>
+  {% if exemplos %}
+  <table class="tabela compacta">
+    {% for m in exemplos %}
+    <tr><td class="sem-quebra">{{ m.data_mov | data }}</td><td>{{ m.descricao_original }}</td>
+        <td class="num {{ 'neg' if m.montante < 0 else 'pos' }}">{{ m.montante | eur }}</td>
+        <td class="nota">{{ 'à mão' if m.qualificado_por == 'manual' else '' }}</td></tr>
+    {% endfor %}
+  </table>
+  {% if n > exemplos | length %}<p class="nota">… e mais {{ n - exemplos | length }}.</p>{% endif %}
+  {% else %}<p class="vazio">Nenhum movimento corresponde. Usa «Testar» depois de mudar o padrão.</p>{% endif %}
+</section>
+{% endblock %}

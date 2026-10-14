@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block titulo %}Movimento{% endblock %}
+{% block conteudo %}
+<h1>Movimento <span class="nota">· {{ m.conta.nome }}</span></h1>
+<section class="cartao">
+  <div class="resumo">
+    <div><span class="nota">Data</span><strong>{{ m.data_mov | data }}</strong></div>
+    <div><span class="nota">Montante</span><strong class="{{ 'neg' if m.montante < 0 else 'pos' }}">{{ m.montante | eur(m.moeda) }}</strong></div>
+    {% if m.saldo_apos is not none %}<div><span class="nota">Saldo após</span><strong>{{ m.saldo_apos | eur(m.moeda) }}</strong></div>{% endif %}
+    <div><span class="nota">Qualificado</span><strong>{{ {'manual': 'à mão', 'regra': 'por regra'}.get(m.qualificado_por, '—') }}</strong></div>
+  </div>
+  <p>{{ m.descricao_original }}</p>
+
+  {% if pode_editar %}
+  <form method="post" class="formulario">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <input type="hidden" name="voltar" value="{{ voltar }}">
+    <label>Categoria
+      <select name="categoria_id">
+        <option value="">— sem categoria —</option>
+        {% for raiz in categorias %}
+          <optgroup label="{{ raiz.nome }} ({{ 'receita' if raiz.natureza == 'RECEITA' else 'despesa' }})">
+            <option value="{{ raiz.id }}" {% if m.categoria_id == raiz.id %}selected{% endif %}>{{ raiz.nome }}</option>
+            {% for c in raiz.filhas %}<option value="{{ c.id }}" {% if m.categoria_id == c.id %}selected{% endif %}>{{ raiz.nome }} › {{ c.nome }}</option>{% endfor %}
+          </optgroup>
+        {% endfor %}
+      </select>
+    </label>
+    <fieldset>
+      <legend>Etiquetas</legend>
+      <div class="opcoes-linha">
+      {% for e in etiquetas %}
+        <label class="opcao"><input type="checkbox" name="etiquetas" value="{{ e.id }}" {% if e in m.etiquetas %}checked{% endif %}> {{ e.nome }}</label>
+      {% endfor %}
+      </div>
+      <label>Nova etiqueta <input name="nova_etiqueta" placeholder="ex.: Férias Algarve 2026" maxlength="50"></label>
+    </fieldset>
+    <fieldset>
+      <legend>Relatórios</legend>
+      <label class="opcao"><input type="checkbox" name="transferencia" value="1" {% if m.transferencia %}checked{% endif %}>
+        Transferência entre contas próprias (não conta como receita nem despesa)</label>
+      <label class="opcao"><input type="checkbox" name="excluido" value="1" {% if m.excluido %}checked{% endif %}>
+        Excluir dos relatórios (ex.: reembolso, movimento pontual)</label>
+    </fieldset>
+    <label>Notas <textarea name="notas" rows="2">{{ m.notas or '' }}</textarea></label>
+    <div class="acoes-form">
+      <button class="primario">Guardar</button>
+      <a href="{{ voltar }}">Voltar</a>
+      <a href="/regras/nova?mov={{ m.id }}">Criar regra a partir deste movimento</a>
+    </div>
+  </form>
+  {% else %}
+  <p>Categoria: {{ m.categoria.nome_completo if m.categoria else '—' }}</p>
+  <p><a href="{{ voltar }}">Voltar</a></p>
+  {% endif %}
+</section>
+{% endblock %}

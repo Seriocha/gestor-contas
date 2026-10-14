@@ -63,6 +63,34 @@ def exigir_papel(db: Session, u: Utilizador, entidade_id: int, minimo: str) -> s
     return papel
 
 
+def entidade_escolhida(request: Request, db: Session, u: Utilizador,
+                       entidade_id: int | None) -> tuple[list[tuple[Entidade, str]], Entidade | None, str | None]:
+    """Entidade pedida (ou a última usada, guardada na sessão, ou a 1.ª
+    visível). Devolve (visíveis, entidade, papel)."""
+    visiveis = entidades_visiveis(db, u)
+    por_id = {e.id: (e, p) for e, p in visiveis}
+    escolha = entidade_id or request.session.get("entidade")
+    if escolha not in por_id:
+        if entidade_id:
+            raise HTTPException(status_code=404, detail="Não encontrado.")
+        escolha = visiveis[0][0].id if visiveis else None
+    if escolha is None:
+        return visiveis, None, None
+    request.session["entidade"] = escolha
+    return visiveis, *por_id[escolha]
+
+
+def pode_editar_algo(db: Session, u: Utilizador) -> bool:
+    return any(PAPEIS[p] >= PAPEIS["editar"] for _, p in entidades_visiveis(db, u))
+
+
+def exigir_editor(u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)) -> Utilizador:
+    """Categorias, etiquetas e regras são partilhadas: basta 'editar' numa entidade."""
+    if not pode_editar_algo(db, u):
+        raise HTTPException(status_code=403, detail="Sem permissão para esta operação.")
+    return u
+
+
 def auditar(db: Session, u: Utilizador | None, acao: str, detalhe: str = "") -> None:
     db.add(Auditoria(utilizador_id=u.id if u else None, acao=acao, detalhe=detalhe))
 

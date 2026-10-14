@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+{% block titulo %}{{ conta.nome if conta else 'Movimentos' }}{% endblock %}
+{% block conteudo %}
+{% if not entidade %}
+<h1>Movimentos</h1><p class="vazio">Sem acesso a nenhuma entidade.</p>
+{% else %}
+{% set aqui = request.url.path ~ ('?' ~ query if query else '') %}
+
+{% if conta %}
+<div class="titulo-acoes">
+  <h1>{{ conta.nome }} <span class="nota">· {{ conta.instituicao.nome }} · {{ conta.entidade.nome }}</span></h1>
+  {% if pode_editar %}<a class="botao primario" href="/importar?conta={{ conta.id }}">Importar extrato</a>{% endif %}
+</div>
+{% if saldo.diferenca %}
+<div class="aviso aviso-alerta">
+  O saldo indicado pelo banco ({{ saldo.do_banco | eur(conta.moeda) }}) não coincide com o calculado
+  ({{ saldo.calculado | eur(conta.moeda) }}): diferença de {{ saldo.diferenca | eur(conta.moeda) }}.
+  Normalmente falta importar um período ou o saldo inicial da conta está errado.
+</div>
+{% endif %}
+{% else %}
+<div class="titulo-acoes"><h1>Movimentos</h1></div>
+{% set destino = "/movimentos" %}{% include "_entidades.html" %}
+{% endif %}
+{% if erro %}<div class="aviso aviso-erro">{{ erro }}</div>{% endif %}
+
+<section class="cartao">
+  <div class="resumo">
+    {% if conta %}
+    <div><span class="nota">Saldo{% if saldo.data %} em {{ saldo.data | data }}{% endif %}</span><strong>{{ saldo.atual | eur(conta.moeda) }}</strong></div>
+    <div><span class="nota">Saldo inicial{% if conta.data_saldo_inicial %} ({{ conta.data_saldo_inicial | data }}){% endif %}</span><strong>{{ conta.saldo_inicial | eur(conta.moeda) }}</strong></div>
+    {% endif %}
+    <div><span class="nota">Movimentos (filtro)</span><strong>{{ total }}</strong></div>
+    <div><span class="nota">Entradas (filtro)</span><strong class="pos">{{ entradas | eur }}</strong></div>
+    <div><span class="nota">Saídas (filtro)</span><strong class="neg">{{ saidas | eur }}</strong></div>
+    <div><span class="nota">Sem categoria</span><strong>
+      {% if n_sem %}<a href="{{ request.url.path }}?{% if not conta %}entidade={{ entidade.id }}&{% endif %}tipo=sem">{{ n_sem }}</a>{% else %}0{% endif %}</strong></div>
+  </div>
+
+  <form method="get" class="filtros">
+    {% if not conta %}
+    <input type="hidden" name="entidade" value="{{ entidade.id }}">
+    <label>Conta
+      <select name="conta">
+        <option value="">Todas</option>
+        {% for c in contas %}<option value="{{ c.id }}">{{ c.nome }}</option>{% endfor %}
+      </select>
+    </label>
+    {% endif %}
+    <label>Categoria
+      <select name="categoria">
+        <option value="">Todas</option>
+        {% for raiz in categorias %}
+          <option value="{{ raiz.id }}" {% if f.categoria == raiz.id %}selected{% endif %}>{{ raiz.nome }}</option>
+          {% for c in raiz.filhas %}<option value="{{ c.id }}" {% if f.categoria == c.id %}selected{% endif %}>&nbsp;&nbsp;› {{ c.nome }}</option>{% endfor %}
+        {% endfor %}
+      </select>
+    </label>
+    <label>Etiqueta
+      <select name="etiqueta">
+        <option value="">Todas</option>
+        {% for e in etiquetas %}<option value="{{ e.id }}" {% if f.etiqueta == e.id %}selected{% endif %}>{{ e.nome }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Tipo
+      <select name="tipo">
+        {% for k, rotulo in tipos.items() %}<option value="{{ k }}" {% if f.tipo == k %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Procurar <input name="q" value="{{ f.q }}" placeholder="descrição ou nota"></label>
+    <label>De <input type="date" name="de" value="{{ f.de }}"></label>
+    <label>Até <input type="date" name="ate" value="{{ f.ate }}"></label>
+    <button>Filtrar</button>
+    {% if query and query != 'entidade=' ~ entidade.id %}<a href="{{ request.url.path }}{% if not conta %}?entidade={{ entidade.id }}{% endif %}">Limpar</a>{% endif %}
+  </form>
+
+  {% if not movimentos %}
+    <p class="vazio">Sem movimentos{% if query %} para este filtro{% endif %}.</p>
+  {% else %}
+  <form method="post" action="/movimentos-lote" id="form-lote">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <input type="hidden" name="voltar" value="{{ aqui }}">
+    {% if pode_editar %}
+    <div class="barra-lote" id="barra-lote" hidden>
+      <span id="n-selecionados">0 selecionados</span>
+      <select name="acao" required>
+        <option value="">Escolher ação…</option>
+        <optgroup label="Categoria">
+          <option value="categoria:">Retirar categoria</option>
+          {% for raiz in categorias %}
+            <option value="categoria:{{ raiz.id }}">{{ raiz.nome }}</option>
+            {% for c in raiz.filhas %}<option value="categoria:{{ c.id }}">&nbsp;&nbsp;{{ raiz.nome }} › {{ c.nome }}</option>{% endfor %}
+          {% endfor %}
+        </optgroup>
+        {% if etiquetas %}
+        <optgroup label="Etiquetas">
+          {% for e in etiquetas %}<option value="etiqueta_mais:{{ e.id }}">+ {{ e.nome }}</option>{% endfor %}
+          {% for e in etiquetas %}<option value="etiqueta_menos:{{ e.id }}">− {{ e.nome }}</option>{% endfor %}
+        </optgroup>
+        {% endif %}
+        <optgroup label="Relatórios">
+          <option value="transferencia">Marcar como transferência entre contas</option>
+          <option value="nao_transferencia">Não é transferência</option>
+          <option value="excluir">Excluir dos relatórios</option>
+          <option value="incluir">Voltar a incluir nos relatórios</option>
+          <option value="regras">Devolver às regras automáticas</option>
+        </optgroup>
+      </select>
+      <button class="primario">Aplicar</button>
+    </div>
+    {% endif %}
+    <div class="rolar">
+    <table class="tabela compacta tabela-movimentos">
+      <thead><tr>
+        {% if pode_editar %}<th><input type="checkbox" id="selecionar-todos" aria-label="Selecionar todos"></th>{% endif %}
+        <th>Data</th>{% if not conta %}<th>Conta</th>{% endif %}<th>Descrição</th><th>Categoria</th><th class="num">Montante</th>{% if conta %}<th class="num">Saldo</th>{% endif %}
+      </tr></thead>
+      <tbody>
+      {% for m in movimentos %}
+      <tr class="{{ 'arquivada' if m.excluido else '' }}">
+        {% if pode_editar %}<td><input type="checkbox" name="ids" value="{{ m.id }}" aria-label="Selecionar"></td>{% endif %}
+        <td class="sem-quebra">{{ m.data_mov | data }}</td>
+        {% if not conta %}<td class="nota">{{ m.conta.nome }}</td>{% endif %}
+        <td>
+          <a href="/movimentos/{{ m.id }}?voltar={{ aqui | urlencode }}" class="descricao">{{ m.descricao_original }}</a>
+          {% if m.transferencia %}<span class="etiqueta">transferência</span>{% endif %}
+          {% if m.excluido %}<span class="etiqueta">excluído</span>{% endif %}
+          {% for e in m.etiquetas %}<span class="etiqueta etiqueta-cor">#{{ e.nome }}</span>{% endfor %}
+          {% if m.notas %}<br><span class="nota">{{ m.notas }}</span>{% endif %}
+        </td>
+        <td>
+          {% if pode_editar and not m.transferencia %}
+          <select class="sel-categoria" data-mov="{{ m.id }}" aria-label="Categoria">
+            <option value="">— sem categoria —</option>
+            {% for raiz in categorias %}
+              <option value="{{ raiz.id }}" {% if m.categoria_id == raiz.id %}selected{% endif %}>{{ raiz.nome }}</option>
+              {% for c in raiz.filhas %}<option value="{{ c.id }}" {% if m.categoria_id == c.id %}selected{% endif %}>&nbsp;&nbsp;{{ raiz.nome }} › {{ c.nome }}</option>{% endfor %}
+            {% endfor %}
+          </select>
+          {% if m.qualificado_por == 'regra' %}<span class="nota" title="Categorizado por uma regra">auto</span>{% endif %}
+          {% else %}
+          {% if m.categoria %}<span class="pastilha" style="background: {{ m.categoria.cor_efetiva }}"></span>{{ m.categoria.nome_completo }}{% else %}<span class="nota">—</span>{% endif %}
+          {% endif %}
+        </td>
+        <td class="num {{ 'neg' if m.montante < 0 else 'pos' }}">{{ m.montante | eur(m.moeda) }}</td>
+        {% if conta %}<td class="num">{{ m.saldo_apos | eur(conta.moeda) }}</td>{% endif %}
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </form>
+  {% if paginas > 1 %}
+  <nav class="paginacao">
+    {% if pagina > 1 %}<a href="?{{ query }}&pagina={{ pagina - 1 }}">‹ Anteriores</a>{% endif %}
+    <span class="nota">Página {{ pagina }} de {{ paginas }}</span>
+    {% if pagina < paginas %}<a href="?{{ query }}&pagina={{ pagina + 1 }}">Seguintes ›</a>{% endif %}
+  </nav>
+  {% endif %}
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const csrf = document.querySelector('#form-lote input[name=csrf]')?.value;
+  // Categoria em linha: grava logo ao mudar.
+  document.querySelectorAll('.sel-categoria').forEach(sel => {
+    sel.addEventListener('change', async () => {
+      sel.disabled = true;
+      const corpo = new URLSearchParams({ csrf, categoria_id: sel.value });
+      try {
+        const r = await fetch(`/movimentos/${sel.dataset.mov}/categoria`, { method: 'POST', body: corpo });
+        if (!r.ok) throw new Error(r.status);
+        sel.classList.add('gravado');
+        sel.nextElementSibling?.classList.contains('nota') && sel.nextElementSibling.remove();
+        setTimeout(() => sel.classList.remove('gravado'), 1200);
+      } catch (e) {
+        alert('Não foi possível gravar a categoria. Recarrega a página.');
+      } finally { sel.disabled = false; }
+    });
+  });
+  // Seleção em massa.
+  const caixas = [...document.querySelectorAll('input[name=ids]')];
+  const barra = document.getElementById('barra-lote');
+  const contador = document.getElementById('n-selecionados');
+  const atualizar = () => {
+    const n = caixas.filter(c => c.checked).length;
+    if (barra) { barra.hidden = n === 0; contador.textContent = `${n} selecionado${n === 1 ? '' : 's'}`; }
+  };
+  caixas.forEach(c => c.addEventListener('change', atualizar));
+  document.getElementById('selecionar-todos')?.addEventListener('change', e => {
+    caixas.forEach(c => { c.checked = e.target.checked; }); atualizar();
+  });
+})();
+</script>
+{% endblock %}

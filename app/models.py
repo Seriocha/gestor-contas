@@ -163,7 +163,95 @@ class Movimento(Base):
     hash_dedup: Mapped[str] = mapped_column(String(64))
     criado_em: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, server_default=func.now())
 
+    # Qualificação (relatórios). Transferências entre contas próprias e
+    # movimentos excluídos não contam como receita nem despesa.
+    categoria_id: Mapped[int | None] = mapped_column(ForeignKey("categoria.id", ondelete="SET NULL"), index=True)
+    transferencia: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    excluido: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    # 'manual' protege a qualificação de ser reescrita pelas regras.
+    qualificado_por: Mapped[str | None] = mapped_column(String(10))  # manual | regra
+    regra_id: Mapped[int | None] = mapped_column(ForeignKey("regra.id", ondelete="SET NULL"))
+
     conta: Mapped[Conta] = relationship()
+    categoria: Mapped["Categoria | None"] = relationship()
+    etiquetas: Mapped[list["Etiqueta"]] = relationship(secondary="movimento_etiqueta")
+
+
+NATUREZAS = {"DESPESA": "Despesa", "RECEITA": "Receita"}
+
+# Paleta categórica validada (8 cores, ordem fixa) — ver static/graficos.js.
+CORES = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"]
+
+
+class Categoria(Base):
+    __tablename__ = "categoria"
+    __table_args__ = (UniqueConstraint("pai_id", "nome"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    nome: Mapped[str] = mapped_column(String(80))
+    pai_id: Mapped[int | None] = mapped_column(ForeignKey("categoria.id", ondelete="CASCADE"))
+    natureza: Mapped[str] = mapped_column(String(10))  # DESPESA | RECEITA
+    cor: Mapped[str | None] = mapped_column(String(7))
+    ordem: Mapped[int] = mapped_column(Integer, default=0)
+
+    pai: Mapped["Categoria | None"] = relationship(remote_side="Categoria.id", back_populates="filhas")
+    filhas: Mapped[list["Categoria"]] = relationship(back_populates="pai", order_by="Categoria.nome")
+
+    @property
+    def nome_completo(self) -> str:
+        return f"{self.pai.nome} › {self.nome}" if self.pai else self.nome
+
+    @property
+    def raiz(self) -> "Categoria":
+        return self.pai or self
+
+    @property
+    def cor_efetiva(self) -> str:
+        return self.cor or (self.pai.cor if self.pai else None) or "#8a8a85"
+
+
+class Etiqueta(Base):
+    __tablename__ = "etiqueta"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    nome: Mapped[str] = mapped_column(String(50), unique=True)
+
+
+movimento_etiqueta = Table(
+    "movimento_etiqueta",
+    Base.metadata,
+    Column("movimento_id", ForeignKey("movimento.id", ondelete="CASCADE"), primary_key=True),
+    Column("etiqueta_id", ForeignKey("etiqueta.id", ondelete="CASCADE"), primary_key=True),
+)
+
+MODOS_REGRA = {"contem": "contém", "comeca": "começa por", "regex": "expressão regular"}
+SENTIDOS = {"": "entradas e saídas", "SAIDA": "só saídas", "ENTRADA": "só entradas"}
+
+
+class Regra(Base):
+    """Se a descrição corresponder ao padrão (e às condições opcionais),
+    aplica as ações. Avaliadas por prioridade crescente; a 1.ª que
+    corresponder ganha."""
+    __tablename__ = "regra"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    padrao: Mapped[str] = mapped_column(String(200))
+    modo: Mapped[str] = mapped_column(String(10), default="contem")
+    conta_id: Mapped[int | None] = mapped_column(ForeignKey("conta.id", ondelete="CASCADE"))
+    sentido: Mapped[str | None] = mapped_column(String(7))  # ENTRADA | SAIDA | None
+    montante_min: Mapped[int | None] = mapped_column(BigInteger)  # cêntimos, valor absoluto
+    montante_max: Mapped[int | None] = mapped_column(BigInteger)
+    categoria_id: Mapped[int | None] = mapped_column(ForeignKey("categoria.id", ondelete="CASCADE"))
+    etiqueta_id: Mapped[int | None] = mapped_column(ForeignKey("etiqueta.id", ondelete="SET NULL"))
+    marcar_transferencia: Mapped[bool] = mapped_column(Boolean, default=False)
+    excluir: Mapped[bool] = mapped_column(Boolean, default=False)
+    prioridade: Mapped[int] = mapped_column(Integer, default=100)
+    ativa: Mapped[bool] = mapped_column(Boolean, default=True)
+    criado_em: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, server_default=func.now())
+
+    conta: Mapped[Conta | None] = relationship()
+    categoria: Mapped[Categoria | None] = relationship()
+    etiqueta: Mapped[Etiqueta | None] = relationship()
 
 
 class Auditoria(Base):

@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block titulo %}Regras{% endblock %}
+{% block conteudo %}
+<h1>Categorias e regras</h1>
+<nav class="separadores">
+  <a href="/categorias">Categorias e etiquetas</a>
+  <a href="/regras" class="ativo">Regras automáticas</a>
+</nav>
+
+<section class="cartao">
+  <div class="cartao-cabecalho">
+    <p class="nota sem-margem">As regras correm em cada importação, pela ordem de prioridade; a primeira que corresponder ganha.
+      Os movimentos qualificados à mão nunca são alterados.</p>
+    <div class="acoes-form">
+      <form method="post" action="/regras/aplicar">
+        <input type="hidden" name="csrf" value="{{ csrf_token }}">
+        <button>Aplicar a todos os movimentos</button>
+      </form>
+      <a class="botao primario" href="/regras/nova">+ Nova regra</a>
+    </div>
+  </div>
+  {% if sem_categoria %}<p>Há <a href="/movimentos?tipo=sem">{{ sem_categoria }} movimentos sem categoria</a>.</p>{% endif %}
+  <div class="rolar">
+  <table class="tabela compacta">
+    <thead><tr><th class="num">Prior.</th><th>Se a descrição…</th><th>Condições</th><th>Então</th><th class="num">Movimentos</th><th></th></tr></thead>
+    <tbody>
+    {% for r in regras %}
+    <tr class="{{ '' if r.ativa else 'arquivada' }}">
+      <td class="num">{{ r.prioridade }}</td>
+      <td>{{ modos[r.modo] }} <code>{{ r.padrao }}</code></td>
+      <td class="nota">
+        {{ sentidos[r.sentido or ''] }}
+        {% if r.conta %}· {{ r.conta.nome }}{% endif %}
+        {% if r.montante_min is not none %}· ≥ {{ r.montante_min | eur }}{% endif %}
+        {% if r.montante_max is not none %}· ≤ {{ r.montante_max | eur }}{% endif %}
+      </td>
+      <td>
+        {% if r.categoria %}<span class="pastilha" style="background: {{ r.categoria.cor_efetiva }}"></span>{{ r.categoria.nome_completo }}{% endif %}
+        {% if r.etiqueta %}<span class="etiqueta etiqueta-cor">#{{ r.etiqueta.nome }}</span>{% endif %}
+        {% if r.marcar_transferencia %}<span class="etiqueta">transferência</span>{% endif %}
+        {% if r.excluir %}<span class="etiqueta">excluir</span>{% endif %}
+        {% if not r.ativa %}<span class="etiqueta">inativa</span>{% endif %}
+      </td>
+      <td class="num">{{ usos.get(r.id, 0) }}</td>
+      <td class="acoes"><a href="/regras/{{ r.id }}">Editar</a></td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" class="vazio">Sem regras.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+{% endblock %}

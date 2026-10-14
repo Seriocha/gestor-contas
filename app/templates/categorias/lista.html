@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block titulo %}Categorias{% endblock %}
+{% block conteudo %}
+<h1>Categorias e regras</h1>
+<nav class="separadores">
+  <a href="/categorias" class="ativo">Categorias e etiquetas</a>
+  <a href="/regras">Regras automáticas</a>
+</nav>
+
+{% for natureza, rotulo in naturezas.items() %}
+<section class="cartao">
+  <h2>{{ 'Despesas' if natureza == 'DESPESA' else 'Receitas' }}</h2>
+  <table class="tabela compacta">
+    <thead><tr><th>Categoria</th><th class="num">Movimentos</th><th></th></tr></thead>
+    <tbody>
+    {% for raiz in arvore if raiz.natureza == natureza %}
+      {% set total = totais.get(raiz.id, 0) %}
+      <tr class="grupo">
+        <th><span class="pastilha" style="background: {{ raiz.cor_efetiva }}"></span>{{ raiz.nome }}</th>
+        <th class="num"><a href="/movimentos?categoria={{ raiz.id }}">{{ total }}</a></th>
+        <th class="acoes"><button type="button" class="ligacao" data-editar="{{ raiz.id }}">Editar</button></th>
+      </tr>
+      {% for c in raiz.filhas %}
+      <tr>
+        <td class="recuo">{{ c.nome }}</td>
+        <td class="num"><a href="/movimentos?categoria={{ c.id }}">{{ contagens.get(c.id, 0) }}</a></td>
+        <td class="acoes"><button type="button" class="ligacao" data-editar="{{ c.id }}">Editar</button></td>
+      </tr>
+      {% endfor %}
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endfor %}
+
+{# Formulários de edição (um por categoria), mostrados ao clicar em "Editar". #}
+{% for raiz in arvore %}{% for c in [raiz] + raiz.filhas %}
+<dialog id="dlg-{{ c.id }}" class="dialogo">
+  <h2>Editar «{{ c.nome }}»</h2>
+  <form method="post" action="/categorias/{{ c.id }}" class="formulario">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <label>Nome <input name="nome" value="{{ c.nome }}" required maxlength="80"></label>
+    <label>Categoria-mãe
+      <select name="pai_id">
+        <option value="">— é categoria de topo —</option>
+        {% for r in arvore if r.id != c.id %}<option value="{{ r.id }}" {% if c.pai_id == r.id %}selected{% endif %}>{{ r.nome }}</option>{% endfor %}
+      </select>
+    </label>
+    {% if not c.pai_id %}
+    <div class="linha">
+      <label>Natureza
+        <select name="natureza">{% for k, v in naturezas.items() %}<option value="{{ k }}" {% if c.natureza == k %}selected{% endif %}>{{ v }}</option>{% endfor %}</select>
+      </label>
+      <label>Cor
+        <select name="cor">
+          <option value="">Cinzento</option>
+          {% for cor in cores %}<option value="{{ cor }}" {% if c.cor == cor %}selected{% endif %} style="background: {{ cor }}; color: #fff">{{ cor }}</option>{% endfor %}
+        </select>
+      </label>
+    </div>
+    {% endif %}
+    <div class="acoes-form"><button class="primario">Guardar</button><button type="button" data-fechar>Cancelar</button></div>
+  </form>
+  <form method="post" action="/categorias/{{ c.id }}/apagar" class="formulario separado"
+        onsubmit="return confirm('Apagar «{{ c.nome }}»{{ ' e as subcategorias' if c.filhas else '' }}?')">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <label>Ao apagar, mover os movimentos para
+      <select name="destino">
+        <option value="">— ficam sem categoria —</option>
+        {% for r in arvore %}
+          {% if r.id != c.id %}<option value="{{ r.id }}">{{ r.nome }}</option>{% endif %}
+          {% for s in r.filhas if s.id != c.id and r.id != c.id %}<option value="{{ s.id }}">&nbsp;&nbsp;{{ r.nome }} › {{ s.nome }}</option>{% endfor %}
+        {% endfor %}
+      </select>
+    </label>
+    <button class="perigo">Apagar categoria</button>
+  </form>
+</dialog>
+{% endfor %}{% endfor %}
+
+<section class="cartao">
+  <h2>Nova categoria</h2>
+  <form method="post" action="/categorias" class="formulario">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <div class="linha">
+      <label>Nome <input name="nome" required maxlength="80"></label>
+      <label>Dentro de
+        <select name="pai_id">
+          <option value="">— nova categoria de topo —</option>
+          {% for r in arvore %}<option value="{{ r.id }}">{{ r.nome }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Natureza (só topo)
+        <select name="natureza">{% for k, v in naturezas.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
+      </label>
+    </div>
+    <div class="acoes-form"><button class="primario">Criar categoria</button></div>
+  </form>
+</section>
+
+<section class="cartao" id="etiquetas">
+  <h2>Etiquetas</h2>
+  <p class="nota">Etiquetas agrupam movimentos de categorias diferentes — por exemplo uma viagem, uma obra em casa ou despesas a dividir.</p>
+  {% if etiquetas %}
+  <table class="tabela compacta">
+    {% for e in etiquetas %}
+    <tr>
+      <td><span class="etiqueta etiqueta-cor">#{{ e.nome }}</span></td>
+      <td class="num"><a href="/movimentos?etiqueta={{ e.id }}">{{ n_etiquetas.get(e.id, 0) }} movimentos</a></td>
+      <td class="num"><a href="/relatorios?etiqueta={{ e.id }}&periodo=ano">Relatório</a></td>
+      <td class="acoes">
+        <form method="post" action="/etiquetas/{{ e.id }}/apagar" onsubmit="return confirm('Apagar a etiqueta «{{ e.nome }}»?')">
+          <input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="ligacao">Apagar</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+  <form method="post" action="/etiquetas" class="filtros">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <label>Nova etiqueta <input name="nome" required maxlength="50"></label>
+    <button>Criar</button>
+  </form>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.querySelectorAll('[data-editar]').forEach(b => b.addEventListener('click', () =>
+    document.getElementById('dlg-' + b.dataset.editar).showModal()));
+  document.querySelectorAll('[data-fechar]').forEach(b => b.addEventListener('click', () => b.closest('dialog').close()));
+</script>
+{% endblock %}

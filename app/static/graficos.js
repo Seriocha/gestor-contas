@@ -1,0 +1,123 @@
+// Gráficos do painel e dos relatórios (Chart.js, sem dependências externas).
+// Os dados chegam num <script type="application/json" id="dados-graficos">;
+// cada <canvas data-grafico="..."> escolhe o gráfico a desenhar.
+(() => {
+  const fonte = document.getElementById('dados-graficos');
+  if (!fonte || !window.Chart) return;
+  const dados = JSON.parse(fonte.textContent);
+  const css = getComputedStyle(document.documentElement);
+  const tok = (nome, omissao) => (css.getPropertyValue(nome) || '').trim() || omissao;
+  const COR = {
+    texto: tok('--texto', '#1d2330'),
+    suave: tok('--suave', '#667085'),
+    linha: tok('--linha', '#e3e6ec'),
+    superficie: tok('--superficie', '#ffffff'),
+    receitas: tok('--serie-receitas', '#2a78d6'),
+    despesas: tok('--serie-despesas', '#e34948'),
+    patrimonio: tok('--serie-patrimonio', '#2a78d6'),
+  };
+  const eur = new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' });
+  const eurCurto = v => Math.abs(v) >= 1000
+    ? new Intl.NumberFormat('pt-PT', { maximumFractionDigits: 1 }).format(v / 1000) + ' mil €'
+    : eur.format(v);
+
+  Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+  Chart.defaults.color = COR.suave;
+  Chart.defaults.borderColor = COR.linha;
+  Chart.defaults.plugins.tooltip.callbacks.label = ctx =>
+    `${ctx.dataset.label ? ctx.dataset.label + ': ' : ''}${eur.format(ctx.parsed.y ?? ctx.parsed)}`;
+
+  const eixos = {
+    x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkipPadding: 12 } },
+    y: { grid: { color: COR.linha }, border: { display: false }, ticks: { callback: eurCurto, maxTicksLimit: 5 } },
+  };
+
+  const desenhar = {
+    patrimonio(canvas) {
+      const d = dados.patrimonio;
+      new Chart(canvas, {
+        type: 'line',
+        data: { labels: d.rotulos, datasets: [{
+          label: 'Património líquido', data: d.liquido, borderColor: COR.patrimonio, borderWidth: 2,
+          backgroundColor: COR.patrimonio + '1f', fill: true, tension: 0.25,
+          pointRadius: 0, pointHoverRadius: 5, pointHitRadius: 12,
+        }] },
+        options: { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+                   plugins: { legend: { display: false } }, scales: eixos },
+      });
+    },
+
+    tendencia(canvas) {
+      const d = dados.tendencia;
+      const barra = { borderRadius: 4, borderSkipped: 'start', maxBarThickness: 22, categoryPercentage: 0.7, barPercentage: 0.9 };
+      new Chart(canvas, {
+        data: { labels: d.rotulos, datasets: [
+          { type: 'bar', label: 'Receitas', data: d.receitas, backgroundColor: COR.receitas, ...barra, order: 2 },
+          { type: 'bar', label: 'Despesas', data: d.despesas, backgroundColor: COR.despesas, ...barra, order: 2 },
+          { type: 'line', label: 'Saldo do mês', data: d.saldo, borderColor: COR.texto, backgroundColor: COR.texto,
+            borderWidth: 2, pointRadius: 3, pointHoverRadius: 5, tension: 0.2, order: 1 },
+        ] },
+        options: { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+                   plugins: { legend: { position: 'top', align: 'end', labels: { boxWidth: 12, boxHeight: 12, useBorderRadius: true, borderRadius: 3 } } },
+                   scales: eixos },
+      });
+    },
+
+    donut(canvas) {
+      // A paleta tem 8 cores e nunca se reciclam: as categorias sem cor própria
+      // e as que passam das 7 maiores juntam-se em "Outras".
+      const NEUTRA = '#8a8a85';
+      const comCor = dados.despesas.filter(l => l.cor !== NEUTRA);
+      let linhas = comCor.slice(0, 7);
+      const resto = dados.despesas.filter(l => !linhas.includes(l)).reduce((s, l) => s + l.valor, 0);
+      if (resto > 0) linhas = linhas.concat([{ nome: 'Outras', valor: resto, cor: NEUTRA }]);
+      const total = linhas.reduce((s, l) => s + l.valor, 0);
+      new Chart(canvas, {
+        type: 'doughnut',
+        data: { labels: linhas.map(l => l.nome), datasets: [{
+          data: linhas.map(l => l.valor), backgroundColor: linhas.map(l => l.cor),
+          borderColor: COR.superficie, borderWidth: 2, hoverOffset: 6,
+        }] },
+        options: { maintainAspectRatio: false, cutout: '62%',
+          plugins: {
+            legend: { position: 'right', labels: { boxWidth: 12, boxHeight: 12, useBorderRadius: true, borderRadius: 3 } },
+            tooltip: { callbacks: { label: ctx => `${ctx.label}: ${eur.format(ctx.parsed)} (${(ctx.parsed / total * 100).toFixed(0)}%)` } },
+          } },
+      });
+    },
+
+    sankey(canvas) {
+      const fluxos = dados.sankey;
+      const cores = {};
+      fluxos.forEach(f => { cores[f.to] = cores[f.to] || f.cor; cores[f.from] = cores[f.from] || f.cor; });
+      cores['Rendimento'] = COR.receitas;
+      new Chart(canvas, {
+        type: 'sankey',
+        data: { datasets: [{
+          data: fluxos.map(f => ({ from: f.from, to: f.to, flow: f.flow })),
+          colorFrom: c => cores[c.dataset.data[c.dataIndex].from],
+          colorTo: c => cores[c.dataset.data[c.dataIndex].to],
+          colorMode: 'gradient', alpha: 0.45, borderWidth: 0, nodeWidth: 10, nodePadding: 18,
+          size: 'max', color: COR.texto,
+          labels: Object.fromEntries(Object.keys(cores).map(n => {
+            const tot = fluxos.filter(f => f.to === n || f.from === n)
+              .reduce((s, f) => s + (n === 'Rendimento' ? (f.to === n ? f.flow : 0) : f.flow), 0);
+            return [n, `${n} · ${eurCurto(tot)}`];
+          })),
+        }] },
+        options: { maintainAspectRatio: false, plugins: { legend: { display: false },
+          tooltip: { callbacks: { label: ctx => {
+            const f = ctx.dataset.data[ctx.dataIndex];
+            return `${f.from} → ${f.to}: ${eur.format(f.flow)}`;
+          } } } } },
+      });
+    },
+  };
+
+  document.querySelectorAll('canvas[data-grafico]').forEach(c => {
+    const tipo = c.dataset.grafico;
+    if (desenhar[tipo] && dados[tipo === 'donut' ? 'despesas' : tipo]) {
+      try { desenhar[tipo](c); } catch (e) { console.error('Gráfico', tipo, e); }
+    }
+  });
+})();

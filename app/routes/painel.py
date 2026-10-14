@@ -1,36 +1,52 @@
-"""Página inicial: resumo por entidade."""
+"""Painel: património líquido e evolução, ativos/passivos, fluxo de caixa
+(sankey) e despesas por categoria — inspirado no painel do Sure."""
 from collections import defaultdict
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, Request
-from sqlalchemy import select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 
+from .. import relatorios as rel
 from ..backup import ultimo_backup
-from ..deps import entidades_visiveis, get_db, render, utilizador_atual
-from ..models import TIPOS_CONTA, Conta, Utilizador
-from ..servicos import saldo_conta
+from ..deps import entidade_escolhida, get_db, render, utilizador_atual
+from ..models import TIPOS_CONTA, Conta, Movimento, Utilizador
+from .relatorios import data_referencia
 
 router = APIRouter()
+PERIODOS_PAINEL = {"mes": "Este mês", "trimestre": "Trimestre", "6meses": "6 meses", "ano": "12 meses"}
 
 
 @router.get("/")
-def painel(request: Request, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
-    blocos = []
-    for entidade, papel in entidades_visiveis(db, u):
-        contas = db.scalars(
-            select(Conta).where(Conta.entidade_id == entidade.id, Conta.ativa)
-            .options(selectinload(Conta.instituicao)).order_by(Conta.nome)
-        ).all()
-        por_tipo = defaultdict(list)
-        total_eur = 0
-        for c in contas:
-            s = saldo_conta(db, c)
-            por_tipo[c.tipo].append((c, s))
-            if c.moeda == "EUR":
-                total_eur += s.atual
-        blocos.append({
-            "entidade": entidade, "papel": papel, "n_contas": len(contas), "total_eur": total_eur,
-            "grupos": [(TIPOS_CONTA[t], por_tipo[t]) for t in TIPOS_CONTA if por_tipo[t]],
-        })
+def painel(request: Request, entidade: int | None = None, periodo: str = "mes",
+           u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
+    visiveis, ent, papel = entidade_escolhida(request, db, u, entidade)
     backup = ultimo_backup(request.app.state.defs) if u.is_admin else None
-    return render(request, "painel.html", blocos=blocos, ultimo_backup=backup)
+    if not ent:
+        return render(request, "painel.html", entidade=None, visiveis=visiveis, ultimo_backup=backup)
+    ref = data_referencia(db, ent.id)
+    p = rel.periodo(periodo if periodo in PERIODOS_PAINEL else "mes", ref)
+
+    # Património: 12 fins de mês + a data de referência.
+    meses = [rel.fim_do_mes(rel.somar_meses(ref.replace(day=1), -i)) for i in range(12, 0, -1)] + [ref]
+    pat = rel.patrimonio(db, ent.id, meses)
+    atual, ha_30 = pat["serie"][-1], rel.patrimonio(db, ent.id, [ref - timedelta(days=30)])["serie"][0]
+    grupos_ativos, grupos_passivos = defaultdict(list), defaultdict(list)
+    for c, s in pat["contas"]:
+        (grupos_passivos if c.tipo in rel.PASSIVOS else grupos_ativos)[TIPOS_CONTA[c.tipo]].append((c, s))
+
+    movs = rel.movimentos_reportaveis(db, ent.id, p.ini, p.fim)
+    r = rel.resumir(movs)
+    despesas = [l for l in rel.linhas_ordenadas(r.por_categoria["DESPESA"]) if l.total > 0]
+    n_sem = db.scalar(select(func.count()).select_from(Movimento).join(Conta).where(
+        Conta.entidade_id == ent.id, Movimento.categoria_id.is_(None), ~Movimento.transferencia,
+        ~Movimento.excluido))
+    graficos = {
+        "patrimonio": {"rotulos": [d.strftime("%d-%m-%Y") if d == ref else rel.rotulo_mes(d) for d in meses],
+                       "liquido": [x["liquido"] / 100 for x in pat["serie"]]},
+        "sankey": rel.sankey(r),
+        "despesas": [{"nome": l.nome, "valor": l.total / 100, "cor": l.cor} for l in despesas],
+    }
+    return render(request, "painel.html", visiveis=visiveis, entidade=ent, p=p, periodos=PERIODOS_PAINEL, ref=ref,
+                  atual=atual, ha_30=ha_30, grupos_ativos=dict(grupos_ativos), grupos_passivos=dict(grupos_passivos),
+                  r=r, despesas=despesas, n_sem=n_sem, graficos=graficos, ultimo_backup=backup)
