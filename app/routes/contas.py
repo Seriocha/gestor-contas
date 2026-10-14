@@ -7,7 +7,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from ..deps import auditar, entidades_visiveis, exigir_papel, flash, get_db, render, utilizador_atual
+from ..deps import IntOpcional, auditar, entidades_visiveis, exigir_papel, flash, get_db, render, utilizador_atual
 from ..formatos import montante_para_input, mascarar_iban, parse_data, parse_montante
 from ..seguranca import ler_form
 from ..models import PAPEIS, TIPOS_CONTA, Conta, Entidade, Instituicao, Permissao, Utilizador
@@ -101,7 +101,7 @@ def _valores_form(c: Conta) -> dict:
 
 
 @router.get("")
-def lista(request: Request, arquivadas: int = 0, u: Utilizador = Depends(utilizador_atual),
+def lista(request: Request, arquivadas: IntOpcional = 0, u: Utilizador = Depends(utilizador_atual),
           db: Session = Depends(get_db)):
     blocos = []
     for entidade, papel in entidades_visiveis(db, u):

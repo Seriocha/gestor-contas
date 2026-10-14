@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from .. import servicos
-from ..deps import auditar, entidades_visiveis, exigir_papel, flash, get_db, render, utilizador_atual
+from ..deps import IntOpcional, auditar, entidades_visiveis, exigir_papel, flash, get_db, render, utilizador_atual
 from ..models import PAPEIS, Conta, Importacao, Utilizador
 from ..parsers import FormatoDesconhecido, ler_extrato
 from ..seguranca import ler_form
@@ -38,7 +38,7 @@ def _pagina(request, db, u, status_code=200, **ctx):
 
 
 @router.get("")
-def form(request: Request, conta: int | None = None, u: Utilizador = Depends(utilizador_atual),
+def form(request: Request, conta: IntOpcional = None, u: Utilizador = Depends(utilizador_atual),
          db: Session = Depends(get_db)):
     return _pagina(request, db, u, conta_id=conta)
 

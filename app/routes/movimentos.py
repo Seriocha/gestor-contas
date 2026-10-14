@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
-from ..deps import (auditar, entidade_escolhida, exigir_papel, flash, get_db, papel_em, render,
+from ..deps import (IntOpcional, auditar, entidade_escolhida, exigir_papel, flash, get_db, papel_em, render,
                     utilizador_atual)
 from ..formatos import parse_data
 from ..models import PAPEIS, Categoria, Conta, Etiqueta, Movimento, Utilizador
@@ -71,7 +71,7 @@ def _listar(request: Request, db: Session, u: Utilizador, *, entidade: int | Non
     total, entradas, saidas = db.execute(select(
         func.count(), func.coalesce(func.sum(func.max(sub.c.montante, 0)), 0),
         func.coalesce(func.sum(func.min(sub.c.montante, 0)), 0)).select_from(sub)).one()
-    pagina = max(1, pagina)
+    pagina = max(1, pagina or 1)
     lista = db.scalars(filtro.options(selectinload(Movimento.conta), selectinload(Movimento.etiquetas),
                                       selectinload(Movimento.categoria).selectinload(Categoria.pai))
                        .order_by(Movimento.data_mov.desc(), Movimento.ordem.desc(), Movimento.id.desc())
@@ -93,20 +93,20 @@ def _listar(request: Request, db: Session, u: Utilizador, *, entidade: int | Non
 
 
 @router.get("/movimentos")
-def movimentos(request: Request, entidade: int | None = None, conta: int | None = None, categoria: int = 0,
-               etiqueta: int = 0, tipo: str = "", q: str = "", de: str = "", ate: str = "", pagina: int = 1,
+def movimentos(request: Request, entidade: IntOpcional = None, conta: IntOpcional = None, categoria: IntOpcional = None,
+               etiqueta: IntOpcional = None, tipo: str = "", q: str = "", de: str = "", ate: str = "", pagina: IntOpcional = 1,
                u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
     if conta:
         return RedirectResponse(f"/contas/{conta}/movimentos?" + urlencode(
-            {k: v for k, v in {"categoria": categoria, "etiqueta": etiqueta, "tipo": tipo, "q": q, "de": de,
+            {k: v for k, v in {"categoria": categoria or "", "etiqueta": etiqueta or "", "tipo": tipo, "q": q, "de": de,
                                "ate": ate}.items() if v}), status_code=303)
     return _listar(request, db, u, entidade=entidade, conta=None, categoria=categoria, etiqueta=etiqueta,
                    tipo=tipo if tipo in TIPOS_FILTRO else "", q=q, de=de, ate=ate, pagina=pagina)
 
 
 @router.get("/contas/{conta_id}/movimentos")
-def movimentos_conta(request: Request, conta_id: int, categoria: int = 0, etiqueta: int = 0, tipo: str = "",
-                     q: str = "", de: str = "", ate: str = "", pagina: int = 1,
+def movimentos_conta(request: Request, conta_id: int, categoria: IntOpcional = None, etiqueta: IntOpcional = None, tipo: str = "",
+                     q: str = "", de: str = "", ate: str = "", pagina: IntOpcional = 1,
                      u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
     c = db.get(Conta, conta_id)
     if not c:

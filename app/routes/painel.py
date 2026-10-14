@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from .. import relatorios as rel
 from ..backup import ultimo_backup
-from ..deps import entidade_escolhida, get_db, render, utilizador_atual
+from ..deps import IntOpcional, entidade_escolhida, get_db, render, utilizador_atual
 from ..models import TIPOS_CONTA, Conta, Movimento, Utilizador
 from .relatorios import data_referencia
 
@@ -18,7 +18,7 @@ PERIODOS_PAINEL = {"mes": "Este mês", "trimestre": "Trimestre", "6meses": "6 me
 
 
 @router.get("/")
-def painel(request: Request, entidade: int | None = None, periodo: str = "mes",
+def painel(request: Request, entidade: IntOpcional = None, periodo: str = "mes",
            u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
     visiveis, ent, papel = entidade_escolhida(request, db, u, entidade)
     backup = ultimo_backup(request.app.state.defs) if u.is_admin else None

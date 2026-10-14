@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .. import relatorios as rel
-from ..deps import entidade_escolhida, get_db, render, utilizador_atual
+from ..deps import IntOpcional, entidade_escolhida, get_db, render, utilizador_atual
 from ..formatos import parse_data
 from ..models import Conta, Etiqueta, Movimento, Utilizador
 
@@ -52,8 +52,8 @@ def _contexto(request: Request, db: Session, u: Utilizador, entidade, periodo, d
 
 
 @router.get("")
-def relatorios(request: Request, entidade: int | None = None, periodo: str = "mes", de: str = "", ate: str = "",
-               conta: int = 0, etiqueta: int = 0, u: Utilizador = Depends(utilizador_atual),
+def relatorios(request: Request, entidade: IntOpcional = None, periodo: str = "mes", de: str = "", ate: str = "",
+               conta: IntOpcional = None, etiqueta: IntOpcional = None, u: Utilizador = Depends(utilizador_atual),
                db: Session = Depends(get_db)):
     ctx = _contexto(request, db, u, entidade, periodo, de, ate, conta, etiqueta)
     if not ctx:
@@ -76,8 +76,8 @@ def relatorios(request: Request, entidade: int | None = None, periodo: str = "me
 
 
 @router.get("/csv")
-def exportar_csv(request: Request, entidade: int | None = None, periodo: str = "mes", de: str = "", ate: str = "",
-                 conta: int = 0, etiqueta: int = 0, u: Utilizador = Depends(utilizador_atual),
+def exportar_csv(request: Request, entidade: IntOpcional = None, periodo: str = "mes", de: str = "", ate: str = "",
+                 conta: IntOpcional = None, etiqueta: IntOpcional = None, u: Utilizador = Depends(utilizador_atual),
                  db: Session = Depends(get_db)):
     """Categorias nas linhas, meses nas colunas (12 meses até ao fim do período)."""
     ctx = _contexto(request, db, u, entidade, periodo, de, ate, conta, etiqueta)

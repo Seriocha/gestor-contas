@@ -143,3 +143,22 @@ def test_periodos():
     assert (p.anterior.ini, p.anterior.fim) == (date(2026, 7, 1), date(2026, 9, 30))
     ytd = rel.periodo("ytd", date(2026, 10, 14))
     assert (ytd.anterior.ini, ytd.anterior.fim) == (date(2025, 1, 1), date(2025, 10, 14))
+
+
+def test_filtros_com_campos_vazios_como_o_browser(admin):
+    """Um <select> em "Todas" envia o campo vazio (ex.: conta=&categoria=); não pode dar 422."""
+    r = admin.get("/movimentos?entidade=1&conta=&categoria=&etiqueta=&tipo=&q=aldi&de=&ate=")
+    assert r.status_code == 200 and "Aldi Quinta Piedade" in r.text and "Loja Romeo" not in r.text
+    assert admin.get("/contas/1/movimentos?categoria=&etiqueta=&tipo=&q=&de=&ate=&pagina=").status_code == 200
+    r = admin.get("/relatorios?entidade=1&periodo=ano&de=&ate=&conta=&etiqueta=")
+    assert r.status_code == 200 and "Relatórios" in r.text
+    assert admin.get("/relatorios/csv?entidade=1&periodo=ano&de=&ate=&conta=&etiqueta=").status_code == 200
+    assert admin.get("/?entidade=&periodo=mes").status_code == 200
+    assert admin.get("/importar?conta=").status_code == 200
+    assert admin.get("/regras/nova?mov=").status_code == 200
+    assert admin.get("/contas?arquivadas=").status_code == 200
+
+
+def test_filtro_por_conta_na_lista_global_vai_para_a_conta(admin):
+    r = admin.get("/movimentos?entidade=1&conta=1&categoria=&etiqueta=&tipo=&q=&de=&ate=", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"].startswith("/contas/1/movimentos")

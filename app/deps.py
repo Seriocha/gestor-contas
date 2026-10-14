@@ -1,6 +1,9 @@
 """Dependências partilhadas pelas rotas: sessão de BD, utilizador atual,
 permissões por entidade e renderização de páginas."""
+from typing import Annotated
+
 from fastapi import Depends, HTTPException, Request
+from pydantic import BeforeValidator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -10,6 +13,15 @@ from .seguranca import csrf_token
 
 class NaoAutenticado(Exception):
     pass
+
+
+def _vazio_para_none(v):
+    return None if isinstance(v, str) and not v.strip() else v
+
+
+# Parâmetro inteiro opcional vindo de um formulário GET: um <select> em
+# "Todas" envia "conta=" (texto vazio), que deve valer como "sem filtro".
+IntOpcional = Annotated[int | None, BeforeValidator(_vazio_para_none)]
 
 
 def get_db(request: Request):

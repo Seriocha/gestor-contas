@@ -6,7 +6,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from ..deps import auditar, entidades_visiveis, exigir_editor, flash, get_db, render
+from ..deps import IntOpcional, auditar, entidades_visiveis, exigir_editor, flash, get_db, render
 from ..formatos import montante_para_input, parse_montante
 from ..models import MODOS_REGRA, PAPEIS, SENTIDOS, Categoria, Conta, Etiqueta, Movimento, Regra, Utilizador
 from ..qualificacao import aplicar_regras, arvore_categorias, compilar, corresponde, validar_padrao
@@ -125,7 +125,7 @@ def _valores(r: Regra) -> dict:
 
 
 @router.get("/nova")
-def nova_form(request: Request, mov: int | None = None, u: Utilizador = Depends(exigir_editor),
+def nova_form(request: Request, mov: IntOpcional = None, u: Utilizador = Depends(exigir_editor),
               db: Session = Depends(get_db)):
     v = {"modo": "contem", "prioridade": 50, "ativa": True}
     m = db.get(Movimento, mov) if mov else None
