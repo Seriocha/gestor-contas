@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block titulo %}Contas{% endblock %}
+{% block conteudo %}
+<div class="titulo-acoes">
+  <h1>Contas</h1>
+  <a href="/contas?arquivadas={{ 0 if arquivadas else 1 }}">{{ 'Esconder arquivadas' if arquivadas else 'Mostrar arquivadas' }}</a>
+</div>
+{% for b in blocos %}
+<section class="cartao">
+  <div class="cartao-cabecalho">
+    <h2>{{ b.entidade.nome }}</h2>
+    {% if b.pode_gerir %}<a class="botao primario" href="/contas/nova?entidade={{ b.entidade.id }}">+ Nova conta</a>{% endif %}
+  </div>
+  {% if not b.contas %}
+    <p class="vazio">Sem contas.</p>
+  {% else %}
+  <div class="rolar">
+  <table class="tabela">
+    <thead><tr><th>Conta</th><th>Tipo</th><th>Instituição</th><th>Titulares</th><th class="num">Saldo inicial</th>{% if b.pode_gerir %}<th></th>{% endif %}</tr></thead>
+    <tbody>
+    {% for c in b.contas %}
+    <tr class="{{ '' if c.ativa else 'arquivada' }}">
+      <td><strong>{{ c.nome }}</strong>{% if c.iban_mascarado %}<br><span class="nota">{{ c.iban_mascarado }}</span>{% endif %}
+        {% if c.tipo == 'CARTAO_CREDITO' and c.conta_pagamento %}<br><span class="nota">paga por {{ c.conta_pagamento.nome }}{% if c.dia_pagamento %}, dia {{ c.dia_pagamento }}{% endif %}</span>{% endif %}
+        {% if not c.ativa %} <span class="etiqueta">arquivada</span>{% endif %}</td>
+      <td>{{ c.tipo_rotulo }}{% if c.moeda != 'EUR' %} · {{ c.moeda }}{% endif %}</td>
+      <td>{{ c.instituicao.nome }}</td>
+      <td>{{ c.titulares | map(attribute='nome') | join(', ') or '—' }}</td>
+      <td class="num">{{ c.saldo_inicial | eur(c.moeda) }}{% if c.data_saldo_inicial %}<br><span class="nota">em {{ c.data_saldo_inicial | data }}</span>{% endif %}</td>
+      {% if b.pode_gerir %}
+      <td class="acoes">
+        <a href="/contas/{{ c.id }}/editar">Editar</a>
+        <form method="post" action="/contas/{{ c.id }}/arquivar">
+          <input type="hidden" name="csrf" value="{{ csrf_token }}">
+          <button class="ligacao">{{ 'Arquivar' if c.ativa else 'Reativar' }}</button>
+        </form>
+      </td>
+      {% endif %}
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+</section>
+{% endfor %}
+{% endblock %}

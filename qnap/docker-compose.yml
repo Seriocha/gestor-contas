@@ -1,0 +1,27 @@
+# Compose de PRODUÇÃO para a QNAP (Container Station).
+#
+# Primeira instalação:
+#   1. Criar na NAS as pastas /share/Container/gestor-contas/data e .../backup
+#   2. Container Station > "Create" > "Create Application" > colar este YAML
+#   3. Abrir http://<IP_NAS>:8200 e criar o 1.º administrador
+# Atualizações: qnap/update.sh por SSH (ver qnap/README.md).
+
+services:
+  gestor-contas:
+    image: ghcr.io/seriocha/gestor-contas:latest
+    container_name: gestor-contas
+    restart: unless-stopped
+    ports:
+      - "8200:8000"
+    environment:
+      - TZ=Europe/Lisbon
+      # Pôr a 1 só quando a app estiver atrás de HTTPS (reverse proxy do QTS
+      # ou Tailscale) — com 1 o cookie de sessão deixa de funcionar em http://.
+      - GESTOR_COOKIE_SECURE=0
+      - GESTOR_BACKUP_INTERVALO_HORAS=24
+      - GESTOR_BACKUP_RETENCAO_DIAS=30
+    volumes:
+      # Base de dados (gestor.db) e chave das sessões (secret.key).
+      - /share/Container/gestor-contas/data:/data:rw
+      # Backups diários da base de dados. Incluir esta pasta num job HBS3.
+      - /share/Container/gestor-contas/backup:/backup:rw

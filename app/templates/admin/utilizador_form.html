@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block titulo %}{{ 'Editar utilizador' if alvo else 'Novo utilizador' }}{% endblock %}
+{% block conteudo %}
+<h1>{{ 'Editar «' ~ alvo.login ~ '»' if alvo else 'Novo utilizador' }}</h1>
+{% if erros %}<div class="aviso aviso-erro"><ul>{% for e in erros %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
+<form method="post" class="formulario">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  <div class="linha">
+    <label>Nome <input name="nome" value="{{ v.nome or '' }}" required></label>
+    <label>Utilizador (login) <input name="login" value="{{ v.login or '' }}" {% if alvo %}disabled{% else %}required{% endif %} autocomplete="off"></label>
+  </div>
+  <label>Email (opcional) <input name="email" type="email" value="{{ v.email or '' }}"></label>
+  <label class="opcao"><input type="checkbox" name="is_admin" value="1" {% if v.is_admin %}checked{% endif %}> Administrador (gere utilizadores e entidades)</label>
+  {% if alvo %}<label class="opcao"><input type="checkbox" name="ativo" value="1" {% if v.ativo %}checked{% endif %}> Ativo</label>{% endif %}
+
+  <fieldset>
+    <legend>Acesso por entidade</legend>
+    {% for e in entidades %}
+    <label class="linha-papel">{{ e.nome }}
+      <select name="papel_{{ e.id }}">
+        <option value="">Sem acesso</option>
+        {% for k, rotulo in rotulos.items() %}<option value="{{ k }}" {% if papeis.get(e.id) == k %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}
+      </select>
+    </label>
+    {% endfor %}
+    <p class="nota">Ver: só consulta · Editar: importar e categorizar movimentos · Administrar: também criar e editar contas.</p>
+  </fieldset>
+
+  <fieldset>
+    <legend>{{ 'Redefinir password (vazio = manter)' if alvo else 'Password' }}</legend>
+    <div class="linha">
+      <label>Password <input name="password" type="password" autocomplete="new-password" minlength="10" {% if not alvo %}required{% endif %}></label>
+      <label>Repetir <input name="password2" type="password" autocomplete="new-password" minlength="10" {% if not alvo %}required{% endif %}></label>
+    </div>
+  </fieldset>
+  <div class="acoes-form">
+    <button class="primario">{{ 'Guardar' if alvo else 'Criar utilizador' }}</button>
+    <a href="/admin/utilizadores">Cancelar</a>
+  </div>
+</form>
+{% endblock %}

@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "gestor-contas",
+      "runtimeExecutable": "C:\\Users\\sergi\\AppData\\Local\\Python\\bin\\python.exe",
+      "runtimeArgs": ["-m", "uvicorn", "--factory", "app.main:create_app", "--port", "8201", "--app-dir", "C:\\Projetos\\GestorContas"],
+      "env": { "GESTOR_DATA_DIR": "C:\\Users\\sergi\\AppData\\Local\\Temp\\gestor-contas-preview" },
+      "port": 8201
+    }
+  ]
+}

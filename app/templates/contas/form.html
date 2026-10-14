@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block titulo %}{{ 'Editar conta' if conta else 'Nova conta' }}{% endblock %}
+{% block conteudo %}
+<h1>{{ 'Editar «' ~ conta.nome ~ '»' if conta else 'Nova conta' }} <span class="nota">· {{ entidade.nome }}</span></h1>
+{% if erros %}<div class="aviso aviso-erro"><ul>{% for e in erros %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
+<form method="post" class="formulario">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  <div class="linha">
+    <label>Nome <input name="nome" value="{{ v.nome or '' }}" required placeholder="ex.: Santander ordem"></label>
+    <label>Tipo
+      <select name="tipo" id="tipo">
+        {% for k, rotulo in tipos.items() %}<option value="{{ k }}" {% if v.tipo == k %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}
+      </select>
+    </label>
+  </div>
+  <div class="linha">
+    <label>Instituição
+      <select name="instituicao_id" required>
+        <option value="">—</option>
+        {% for i in instituicoes %}<option value="{{ i.id }}" {% if v.instituicao_id|string == i.id|string %}selected{% endif %}>{{ i.nome }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Moeda <input name="moeda" value="{{ v.moeda or 'EUR' }}" maxlength="3"></label>
+  </div>
+  <label>IBAN / n.º de conta <input name="iban" value="{{ v.iban or '' }}" placeholder="Só se guarda o país e os últimos 4 dígitos"></label>
+  <div class="linha">
+    <label>Saldo inicial <input name="saldo_inicial" value="{{ v.saldo_inicial or '' }}" inputmode="decimal" placeholder="0,00"></label>
+    <label>Data do saldo inicial <input name="data_saldo_inicial" type="date" value="{{ v.data_saldo_inicial or '' }}"></label>
+  </div>
+  <p class="nota">Saldo no dia anterior ao primeiro movimento que vais importar. Num cartão de crédito, o montante em dívida vai negativo.</p>
+
+  <fieldset id="campos-cartao">
+    <legend>Cartão de crédito</legend>
+    <label>Conta que paga o cartão
+      <select name="conta_pagamento_id">
+        <option value="">—</option>
+        {% for p in pagadoras %}<option value="{{ p.id }}" {% if v.conta_pagamento_id|string == p.id|string %}selected{% endif %}>{{ p.nome }}</option>{% endfor %}
+      </select>
+    </label>
+    <div class="linha">
+      <label>Dia de fecho do extrato <input name="dia_fecho" type="number" min="1" max="31" value="{{ v.dia_fecho or '' }}"></label>
+      <label>Dia de pagamento <input name="dia_pagamento" type="number" min="1" max="31" value="{{ v.dia_pagamento or '' }}"></label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Titulares</legend>
+    {% for t in possiveis_titulares %}
+      <label class="opcao"><input type="checkbox" name="titulares" value="{{ t.id }}" {% if t.id in v.titulares %}checked{% endif %}> {{ t.nome }}</label>
+    {% else %}<p class="nota">Nenhum utilizador com acesso a esta entidade.</p>{% endfor %}
+  </fieldset>
+
+  <label>Notas <textarea name="notas" rows="3">{{ v.notas or '' }}</textarea></label>
+  <div class="acoes-form">
+    <button class="primario">{{ 'Guardar' if conta else 'Criar conta' }}</button>
+    <a href="/contas">Cancelar</a>
+  </div>
+</form>
+<script>
+  const tipo = document.getElementById('tipo'), cartao = document.getElementById('campos-cartao');
+  const atualizar = () => { cartao.hidden = tipo.value !== 'CARTAO_CREDITO'; };
+  tipo.addEventListener('change', atualizar); atualizar();
+</script>
+{% endblock %}

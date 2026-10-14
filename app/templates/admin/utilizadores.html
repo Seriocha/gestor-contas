@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block titulo %}Utilizadores{% endblock %}
+{% block conteudo %}
+<h1>Administração</h1>
+{% include "admin/_menu.html" %}
+<section class="cartao">
+  <div class="cartao-cabecalho">
+    <h2>Utilizadores</h2>
+    <a class="botao primario" href="/admin/utilizadores/novo">+ Novo utilizador</a>
+  </div>
+  <div class="rolar">
+  <table class="tabela">
+    <thead><tr><th>Nome</th><th>Login</th>{% for e in entidades %}<th>{{ e.nome }}</th>{% endfor %}<th>Último login</th><th></th></tr></thead>
+    <tbody>
+    {% for u in lista %}
+    <tr class="{{ '' if u.ativo else 'arquivada' }}">
+      <td>{{ u.nome }}{% if u.is_admin %} <span class="etiqueta">admin</span>{% endif %}{% if not u.ativo %} <span class="etiqueta">inativo</span>{% endif %}</td>
+      <td>{{ u.login }}</td>
+      {% for e in entidades %}
+        {% set p = u.permissoes | selectattr('entidade_id', 'equalto', e.id) | first %}
+        <td>{{ rotulos[p.papel] if p else '—' }}</td>
+      {% endfor %}
+      <td>{{ u.ultimo_login.strftime('%d-%m-%Y %H:%M') if u.ultimo_login else '—' }}</td>
+      <td><a href="/admin/utilizadores/{{ u.id }}">Editar</a></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section class="cartao">
+  <div class="cartao-cabecalho">
+    <h2>Backups</h2>
+    <form method="post" action="/admin/backup">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
+      <button>Fazer backup agora</button>
+    </form>
+  </div>
+  <p>Último backup: {{ ultimo_backup.strftime('%d-%m-%Y %H:%M') if ultimo_backup else 'nenhum ainda' }}. Automático a cada 24 h, guardados 30 dias.</p>
+</section>
+
+<section class="cartao">
+  <h2>Atividade recente</h2>
+  <div class="rolar">
+  <table class="tabela compacta">
+    {% for ev, nome in eventos %}
+    <tr><td class="nota">{{ ev.quando.strftime('%d-%m-%Y %H:%M') }}</td><td>{{ nome or '—' }}</td><td>{{ ev.acao }}</td><td class="nota">{{ ev.detalhe or '' }}</td></tr>
+    {% endfor %}
+  </table>
+  </div>
+</section>
+{% endblock %}

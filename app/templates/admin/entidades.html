@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block titulo %}Entidades{% endblock %}
+{% block conteudo %}
+<h1>Administração</h1>
+{% include "admin/_menu.html" %}
+<section class="cartao">
+  <h2>Entidades</h2>
+  <p class="nota">Cada entidade é um património separado: as contas de uma entidade nunca entram nos totais de outra.</p>
+  <table class="tabela">
+    {% for e in entidades %}<tr><td><strong>{{ e.nome }}</strong></td><td class="nota">{{ e.descricao or '' }}</td></tr>{% endfor %}
+  </table>
+</section>
+<section class="cartao">
+  <h2>Nova entidade</h2>
+  <form method="post" action="/admin/entidades" class="formulario estreito">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <label>Nome <input name="nome" required></label>
+    <label>Descrição <input name="descricao"></label>
+    <button class="primario">Criar entidade</button>
+  </form>
+</section>
+{% endblock %}
