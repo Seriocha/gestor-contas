@@ -162,3 +162,68 @@ def test_filtros_com_campos_vazios_como_o_browser(admin):
 def test_filtro_por_conta_na_lista_global_vai_para_a_conta(admin):
     r = admin.get("/movimentos?entidade=1&conta=1&categoria=&etiqueta=&tipo=&q=&de=&ate=", follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"].startswith("/contas/1/movimentos")
+
+
+def _ids(app, *descricoes):
+    with app.state.SessionLocal() as db:
+        return [str(m.id) for m in db.query(Movimento).filter(Movimento.descricao_original.in_(descricoes))]
+
+
+def _lote(c, **dados):
+    r = c.get("/movimentos")
+    return c.post("/movimentos-lote", data={"csrf": _csrf(r), "voltar": "/movimentos", **dados}, follow_redirects=False)
+
+
+def test_filtro_qualificados_a_mao(admin, app):
+    lazer = None
+    with app.state.SessionLocal() as db:
+        lazer = str(db.query(Categoria).filter_by(nome="Lazer").one().id)
+    _lote(admin, ids=_ids(app, "Loja Romeo"), acao=f"categoria:{lazer}", ambito="selecao")
+    pagina = admin.get("/movimentos?entidade=1&tipo=manual").text
+    assert "Loja Romeo" in pagina and "Aldi Quinta Piedade" not in pagina and "à mão" in pagina
+    assert "Aldi Quinta Piedade" in admin.get("/movimentos?entidade=1&tipo=regra").text
+
+
+def test_repor_selecao_reaplica_regras(admin, app):
+    with app.state.SessionLocal() as db:
+        lazer = str(db.query(Categoria).filter_by(nome="Lazer").one().id)
+    ids = _ids(app, "DD-160100-EDP COMERC", "Loja Romeo")
+    _lote(admin, ids=ids, acao=f"categoria:{lazer}", ambito="selecao")
+    assert _movs(app)["DD-160100-EDP COMERC"][::2] == ("Lazer", "manual")
+    r = _lote(admin, ids=ids, acao="repor_regras", ambito="selecao")
+    assert r.status_code == 303
+    movs = _movs(app)
+    assert movs["DD-160100-EDP COMERC"] == ("Casa › Eletricidade", False, "regra")  # regra voltou a aplicar-se
+    assert movs["Loja Romeo"] == (None, False, None)                                # sem regra: fica sem categoria
+
+
+def test_repor_todo_o_filtro_sem_categoria(admin, app):
+    # marca 2 como transferência à mão e repõe "todos os qualificados à mão" sem reaplicar regras
+    _lote(admin, ids=_ids(app, "TRF P/ CONTA POUPANCA", "Aldi Quinta Piedade"), acao="transferencia", ambito="selecao")
+    r = _lote(admin, acao="repor_limpar", ambito="filtro", f_entidade="1", f_conta="", f_categoria="", f_etiqueta="",
+              f_tipo="manual", f_q="", f_de="", f_ate="")
+    assert r.status_code == 303
+    movs = _movs(app)
+    assert movs["TRF P/ CONTA POUPANCA"] == (None, False, None)
+    assert movs["Aldi Quinta Piedade"] == (None, False, None)
+    assert movs["DD-160100-EDP COMERC"][0] == "Casa › Eletricidade"  # fora do filtro: intacto
+    assert "manual" not in [m[2] for m in movs.values()]
+
+
+def test_lote_filtro_respeita_permissoes(admin, app):
+    # entidade 2 (Mãe) sem permissão para um utilizador só com "editar" na Família
+    _post(admin, "/admin/utilizadores/novo", nome="Ana", login="ana", password=PW, password2=PW, papel_1="editar")
+    ana = TestClient(app)
+    _post(ana, "/login", login="ana", password=PW)
+    r = _lote(ana, acao="repor_limpar", ambito="filtro", f_entidade="2", f_tipo="")
+    assert r.status_code == 404
+
+
+def test_etiqueta_em_massa_nao_bloqueia_regras(admin, app):
+    r = admin.get("/categorias")
+    admin.post("/etiquetas", data={"csrf": _csrf(r), "nome": "Casa nova"})
+    with app.state.SessionLocal() as db:
+        from app.models import Etiqueta
+        et = str(db.query(Etiqueta).one().id)
+    _lote(admin, ids=_ids(app, "Aldi Quinta Piedade"), acao=f"etiqueta_mais:{et}", ambito="selecao")
+    assert _movs(app)["Aldi Quinta Piedade"][2] == "regra"

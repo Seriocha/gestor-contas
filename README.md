@@ -4,7 +4,7 @@ Gestor financeiro doméstico, multiutilizador e self-hosted, para a NAS QNAP. Es
 importa movimentos de bancos portugueses e gere contas à ordem, cartões, investimentos e
 Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIGN.md).
 
-## Estado: v0.4.0
+## Estado: v0.5.0
 
 - Login com várias pessoas: passwords em argon2, bloqueio ao fim de 5 tentativas falhadas,
   proteção CSRF e invalidação das sessões quando a password muda.
@@ -30,6 +30,12 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   excluir. Há teste antes de gravar e «criar regra a partir deste movimento». As qualificações
   feitas à mão nunca são reescritas pelas regras. Vêm cerca de 50 categorias e 23 regras
   iniciais para descrições de bancos portugueses.
+- **Repor qualificações** (v0.5.0): os filtros «Qualificados à mão» e «Qualificados por regra»
+  e a indicação «à mão»/«auto» em cada linha. As ações «Repor e reaplicar as regras» e «Repor e
+  deixar sem categoria» desfazem categoria, transferência e excluído, mantendo etiquetas e notas.
+  Todas as ações em massa podem aplicar-se aos movimentos selecionados ou a todos os do filtro
+  (todas as páginas), com confirmação. Acrescentar ou retirar etiquetas já não marca o movimento
+  como «à mão».
 - **Painel** (inspirado no [Sure](https://sure.am)): património líquido com variação a 30 dias e
   evolução em 12 meses, ativos/passivos por tipo de conta, fluxo de caixa (sankey receitas →
   despesas/poupança) e despesas por categoria.

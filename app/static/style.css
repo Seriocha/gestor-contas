@@ -188,3 +188,7 @@ code { font-size: .85em; background: var(--fundo); padding: .05rem .3rem; border
 tr.sub td { font-size: .9rem; }
 
 [hidden] { display: none !important; }
+.barra-lote { border-color: var(--linha); }
+.barra-lote .ambito { border: 0; padding: 0; margin: 0; display: flex; gap: .25rem 1rem; flex-wrap: wrap; }
+.barra-lote .opcao { display: inline-flex; align-items: center; gap: .35rem; }
+.origem { margin-left: .35rem; font-size: .75rem; }

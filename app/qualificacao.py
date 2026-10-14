@@ -109,6 +109,21 @@ def qualificar_manual(db: Session, m: Movimento, *, categoria_id=..., transferen
     m.regra_id = None
 
 
+def repor(db: Session, movimentos, reaplicar_regras: bool = True) -> int:
+    """Desfaz a qualificação (categoria, transferência, excluído) e a marca
+    de "à mão"; etiquetas e notas mantêm-se. Com reaplicar_regras, as regras
+    voltam a correr sobre estes movimentos. Devolve quantos ficaram
+    qualificados pelas regras."""
+    for m in movimentos:
+        m.categoria_id = None
+        m.transferencia = False
+        m.excluido = False
+        m.qualificado_por = None
+        m.regra_id = None
+    db.flush()
+    return aplicar_regras(db, movimentos) if reaplicar_regras else 0
+
+
 def arvore_categorias(db: Session) -> list[Categoria]:
     """Categorias de topo (com .filhas carregadas), despesas primeiro."""
     raizes = db.scalars(select(Categoria).where(Categoria.pai_id.is_(None))

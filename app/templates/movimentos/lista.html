@@ -81,8 +81,15 @@
     <input type="hidden" name="csrf" value="{{ csrf_token }}">
     <input type="hidden" name="voltar" value="{{ aqui }}">
     {% if pode_editar %}
-    <div class="barra-lote" id="barra-lote" hidden>
-      <span id="n-selecionados">0 selecionados</span>
+    {# Filtro atual, para as ações aplicadas a todos os movimentos do filtro (todas as páginas). #}
+    <input type="hidden" name="f_entidade" value="{{ entidade.id }}">
+    <input type="hidden" name="f_conta" value="{{ conta.id if conta else '' }}">
+    {% for k in ['categoria', 'etiqueta', 'tipo', 'q', 'de', 'ate'] %}<input type="hidden" name="f_{{ k }}" value="{{ f[k] }}">{% endfor %}
+    <div class="barra-lote" id="barra-lote">
+      <fieldset class="ambito">
+        <label class="opcao"><input type="radio" name="ambito" value="selecao" checked> <span id="n-selecionados">0 selecionados</span></label>
+        <label class="opcao"><input type="radio" name="ambito" value="filtro"> todos os {{ total }} do filtro (todas as páginas)</label>
+      </fieldset>
       <select name="acao" required>
         <option value="">Escolher ação…</option>
         <optgroup label="Categoria">
@@ -103,7 +110,10 @@
           <option value="nao_transferencia">Não é transferência</option>
           <option value="excluir">Excluir dos relatórios</option>
           <option value="incluir">Voltar a incluir nos relatórios</option>
-          <option value="regras">Devolver às regras automáticas</option>
+        </optgroup>
+        <optgroup label="Repor qualificação (desfaz categoria, transferência e excluído)">
+          <option value="repor_regras">Repor e reaplicar as regras automáticas</option>
+          <option value="repor_limpar">Repor e deixar sem categoria</option>
         </optgroup>
       </select>
       <button class="primario">Aplicar</button>
@@ -129,7 +139,7 @@
           {% if m.notas %}<br><span class="nota">{{ m.notas }}</span>{% endif %}
         </td>
         <td>
-          {% if pode_editar and not m.transferencia %}
+          {% if pode_editar %}
           <select class="sel-categoria" data-mov="{{ m.id }}" aria-label="Categoria">
             <option value="">— sem categoria —</option>
             {% for raiz in categorias %}
@@ -137,7 +147,8 @@
               {% for c in raiz.filhas %}<option value="{{ c.id }}" {% if m.categoria_id == c.id %}selected{% endif %}>&nbsp;&nbsp;{{ raiz.nome }} › {{ c.nome }}</option>{% endfor %}
             {% endfor %}
           </select>
-          {% if m.qualificado_por == 'regra' %}<span class="nota" title="Categorizado por uma regra">auto</span>{% endif %}
+          {% if m.qualificado_por == 'regra' %}<span class="nota origem" title="Qualificado por uma regra">auto</span>
+          {% elif m.qualificado_por == 'manual' %}<span class="nota origem" title="Qualificado à mão: as regras não lhe mexem">à mão</span>{% endif %}
           {% else %}
           {% if m.categoria %}<span class="pastilha" style="background: {{ m.categoria.cor_efetiva }}"></span>{{ m.categoria.nome_completo }}{% else %}<span class="nota">—</span>{% endif %}
           {% endif %}
@@ -175,7 +186,8 @@
         const r = await fetch(`/movimentos/${sel.dataset.mov}/categoria`, { method: 'POST', body: corpo });
         if (!r.ok) throw new Error(r.status);
         sel.classList.add('gravado');
-        sel.nextElementSibling?.classList.contains('nota') && sel.nextElementSibling.remove();
+        const origem = sel.parentElement.querySelector('.origem') || sel.insertAdjacentElement('afterend', document.createElement('span'));
+        origem.className = 'nota origem'; origem.textContent = 'à mão';
         setTimeout(() => sel.classList.remove('gravado'), 1200);
       } catch (e) {
         alert('Não foi possível gravar a categoria. Recarrega a página.');
@@ -184,13 +196,20 @@
   });
   // Seleção em massa.
   const caixas = [...document.querySelectorAll('input[name=ids]')];
-  const barra = document.getElementById('barra-lote');
   const contador = document.getElementById('n-selecionados');
   const atualizar = () => {
     const n = caixas.filter(c => c.checked).length;
-    if (barra) { barra.hidden = n === 0; contador.textContent = `${n} selecionado${n === 1 ? '' : 's'}`; }
+    if (contador) contador.textContent = `${n} selecionado${n === 1 ? '' : 's'}`;
   };
   caixas.forEach(c => c.addEventListener('change', atualizar));
+  // Confirmação antes de aplicar a todo o filtro ou de repor qualificações.
+  document.getElementById('form-lote')?.addEventListener('submit', e => {
+    const f = e.target, acao = f.acao.selectedOptions[0];
+    const todos = f.ambito.value === 'filtro';
+    const n = todos ? {{ total }} : caixas.filter(c => c.checked).length;
+    if (!n) { e.preventDefault(); alert('Seleciona movimentos ou escolhe «todos do filtro».'); return; }
+    if ((todos || acao.value.startsWith('repor')) && !confirm(`${acao.textContent.trim()} em ${n} movimento${n === 1 ? '' : 's'}?`)) e.preventDefault();
+  });
   document.getElementById('selecionar-todos')?.addEventListener('change', e => {
     caixas.forEach(c => { c.checked = e.target.checked; }); atualizar();
   });

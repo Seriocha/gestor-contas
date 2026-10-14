@@ -20,7 +20,7 @@ from .routes import admin, auth, categorias, contas, importar, movimentos, paine
 from .seed import semear
 
 APP_DIR = Path(__file__).resolve().parent
-VERSAO = "0.4.1"
+VERSAO = "0.5.0"
 
 
 def aplicar_migracoes(db_path: Path) -> None:

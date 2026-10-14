@@ -11,14 +11,15 @@ from ..deps import (IntOpcional, auditar, entidade_escolhida, exigir_papel, flas
                     utilizador_atual)
 from ..formatos import parse_data
 from ..models import PAPEIS, Categoria, Conta, Etiqueta, Movimento, Utilizador
-from ..qualificacao import arvore_categorias, qualificar_manual
+from ..qualificacao import aplicar_regras, arvore_categorias, qualificar_manual, repor
 from ..seguranca import ler_form
 from ..servicos import saldo_conta
 
 router = APIRouter()
 POR_PAGINA = 200
 TIPOS_FILTRO = {"": "Todos", "saidas": "Saídas", "entradas": "Entradas", "sem": "Sem categoria",
-                "transferencias": "Transferências", "excluidos": "Excluídos"}
+                "transferencias": "Transferências", "excluidos": "Excluídos",
+                "manual": "Qualificados à mão", "regra": "Qualificados por regra"}
 
 
 def _filtrar(q, *, conta_id, categoria, etiqueta, tipo, texto, d_de, d_ate):
@@ -39,6 +40,10 @@ def _filtrar(q, *, conta_id, categoria, etiqueta, tipo, texto, d_de, d_ate):
         q = q.where(Movimento.transferencia)
     elif tipo == "excluidos":
         q = q.where(Movimento.excluido)
+    elif tipo == "manual":
+        q = q.where(Movimento.qualificado_por == "manual")
+    elif tipo == "regra":
+        q = q.where(Movimento.qualificado_por == "regra")
     if d_de:
         q = q.where(Movimento.data_mov >= d_de)
     if d_ate:
@@ -176,15 +181,34 @@ async def editar(request: Request, mov_id: int, u: Utilizador = Depends(utilizad
     return RedirectResponse(_voltar_seguro(str(form.get("voltar", ""))), status_code=303)
 
 
+def _ids_do_filtro(db: Session, u: Utilizador, form) -> list[int]:
+    """Todos os movimentos (todas as páginas) que correspondem ao filtro enviado."""
+    conta = db.get(Conta, _int(form.get("f_conta"))) if _int(form.get("f_conta")) else None
+    entidade_id = conta.entidade_id if conta else _int(form.get("f_entidade"))
+    if not entidade_id:
+        raise HTTPException(status_code=400, detail="Filtro sem entidade.")
+    exigir_papel(db, u, entidade_id, "editar")
+    try:
+        d_de, d_ate = parse_data(str(form.get("f_de", ""))), parse_data(str(form.get("f_ate", "")))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Datas do filtro inválidas.")
+    tipo = str(form.get("f_tipo", ""))
+    base = select(Movimento.id).join(Conta).where(Conta.entidade_id == entidade_id)
+    return list(db.scalars(_filtrar(base, conta_id=conta.id if conta else None, categoria=_int(form.get("f_categoria")),
+                                    etiqueta=_int(form.get("f_etiqueta")), tipo=tipo if tipo in TIPOS_FILTRO else "",
+                                    texto=str(form.get("f_q", "")), d_de=d_de, d_ate=d_ate)))
+
+
 @router.post("/movimentos-lote")
 async def lote(request: Request, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
-    """Ação em massa sobre os movimentos selecionados."""
+    """Ação em massa sobre os movimentos selecionados ou sobre todo o filtro."""
     form = await ler_form(request)
     voltar = _voltar_seguro(str(form.get("voltar", "")))
-    ids = [int(x) for x in form.getlist("ids") if str(x).isdigit()]
     acao = str(form.get("acao", ""))
+    todo_filtro = form.get("ambito") == "filtro"
+    ids = _ids_do_filtro(db, u, form) if todo_filtro else [int(x) for x in form.getlist("ids") if str(x).isdigit()]
     if not ids or not acao:
-        flash(request, "Escolhe os movimentos e a ação.", "erro")
+        flash(request, "Escolhe os movimentos e a ação." if not todo_filtro else "O filtro não tem movimentos.", "erro")
         return RedirectResponse(voltar, status_code=303)
     movs = db.scalars(select(Movimento).where(Movimento.id.in_(ids))
                       .options(selectinload(Movimento.conta), selectinload(Movimento.etiquetas))).all()
@@ -196,25 +220,28 @@ async def lote(request: Request, u: Utilizador = Depends(utilizador_atual), db: 
         if not cache[e] or PAPEIS[cache[e]] < PAPEIS["editar"]:
             raise HTTPException(status_code=403, detail="Sem permissão para esta operação.")
     tipo, _, valor = acao.partition(":")
-    for m in movs:
-        if tipo == "categoria":
-            qualificar_manual(db, m, categoria_id=_int(valor))
-        elif tipo == "etiqueta_mais":
-            qualificar_manual(db, m, etiquetas_ids=list({*(e.id for e in m.etiquetas), _int(valor) or 0}))
-        elif tipo == "etiqueta_menos":
-            qualificar_manual(db, m, etiquetas_ids=[e.id for e in m.etiquetas if e.id != _int(valor)])
-        elif tipo in ("transferencia", "nao_transferencia"):
-            qualificar_manual(db, m, transferencia=tipo == "transferencia")
-        elif tipo in ("excluir", "incluir"):
-            qualificar_manual(db, m, excluido=tipo == "excluir")
-        elif tipo == "regras":  # devolver às regras
-            m.qualificado_por = None
-        else:
-            raise HTTPException(status_code=400, detail="Ação desconhecida.")
-    if tipo == "regras":
-        from ..qualificacao import aplicar_regras
-        aplicar_regras(db, movs)
-    auditar(db, u, "qualificacao_lote", f"{acao} em {len(movs)} movimentos")
+    extra = ""
+    if tipo in ("repor_regras", "repor_limpar"):
+        n = repor(db, movs, reaplicar_regras=tipo == "repor_regras")
+        extra = f" Qualificação reposta; {n} voltaram a ser categorizados pelas regras." if tipo == "repor_regras"             else " Qualificação reposta: ficaram sem categoria."
+    else:
+        for m in movs:
+            if tipo == "categoria":
+                qualificar_manual(db, m, categoria_id=_int(valor))
+            elif tipo == "etiqueta_mais":
+                # Etiquetas não contam como qualificação manual: não bloqueiam as regras.
+                et = db.get(Etiqueta, _int(valor) or 0)
+                if et and et not in m.etiquetas:
+                    m.etiquetas.append(et)
+            elif tipo == "etiqueta_menos":
+                m.etiquetas = [e for e in m.etiquetas if e.id != _int(valor)]
+            elif tipo in ("transferencia", "nao_transferencia"):
+                qualificar_manual(db, m, transferencia=tipo == "transferencia")
+            elif tipo in ("excluir", "incluir"):
+                qualificar_manual(db, m, excluido=tipo == "excluir")
+            else:
+                raise HTTPException(status_code=400, detail="Ação desconhecida.")
+    auditar(db, u, "qualificacao_lote", f"{acao} em {len(movs)} movimentos" + (" (todo o filtro)" if todo_filtro else ""))
     db.commit()
-    flash(request, f"{len(movs)} movimentos atualizados.")
+    flash(request, f"{len(movs)} movimentos atualizados." + extra)
     return RedirectResponse(voltar, status_code=303)
