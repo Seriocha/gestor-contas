@@ -1,5 +1,6 @@
 """Lista de movimentos (global por entidade ou de uma conta) e qualificação:
 categoria, etiquetas, transferência, excluir — um a um ou em massa."""
+from datetime import date
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -13,7 +14,7 @@ from ..formatos import parse_data
 from ..models import PAPEIS, Categoria, Conta, Etiqueta, Movimento, Utilizador
 from ..qualificacao import aplicar_regras, arvore_categorias, qualificar_manual, repor
 from ..seguranca import ler_form
-from ..servicos import saldo_conta
+from ..servicos import resumo_cartao, saldo_conta
 
 router = APIRouter()
 POR_PAGINA = 200
@@ -89,6 +90,7 @@ def _listar(request: Request, db: Session, u: Utilizador, *, entidade: int | Non
     return render(
         request, "movimentos/lista.html", visiveis=visiveis, entidade=ent, conta=conta,
         saldo=saldo_conta(db, conta) if conta else None,
+        cartao=resumo_cartao(db, conta, date.today()) if conta and conta.tipo == "CARTAO_CREDITO" else None,
         contas=db.scalars(select(Conta).where(Conta.entidade_id == ent.id).order_by(Conta.nome)).all(),
         categorias=arvore_categorias(db), etiquetas=db.scalars(select(Etiqueta).order_by(Etiqueta.nome)).all(),
         tipos=TIPOS_FILTRO, movimentos=lista, total=total, entradas=entradas, saidas=saidas, n_sem=n_sem,

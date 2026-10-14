@@ -26,7 +26,16 @@
 
 <section class="cartao">
   <div class="resumo">
-    {% if conta %}
+    {% if cartao %}
+    <div><span class="nota">Em dívida</span><strong class="{{ 'neg' if cartao.divida > 0 else '' }}">{{ cartao.divida | eur(conta.moeda) }}</strong></div>
+    {% if cartao.ultimo_fecho %}
+    <div><span class="nota">Compras desde o fecho de {{ cartao.ultimo_fecho | data }}</span><strong>{{ cartao.gastos_ciclo | eur(conta.moeda) }}</strong></div>
+    <div><span class="nota">Próximo fecho</span><strong>{{ cartao.proximo_fecho | data }}</strong></div>
+    {% endif %}
+    {% if cartao.proximo_pagamento %}<div><span class="nota">Pagamento do último extrato</span><strong>{{ cartao.proximo_pagamento | data }}</strong></div>{% endif %}
+    {% if conta.conta_pagamento %}<div><span class="nota">Pago por</span><strong><a href="/contas/{{ conta.conta_pagamento.id }}/movimentos">{{ conta.conta_pagamento.nome }}</a></strong></div>{% endif %}
+    {% if not conta.dia_fecho %}<div><span class="nota">Ciclo do extrato</span><strong><a href="/contas/{{ conta.id }}/editar">definir dia de fecho</a></strong></div>{% endif %}
+    {% elif conta %}
     <div><span class="nota">Saldo{% if saldo.data %} em {{ saldo.data | data }}{% endif %}</span><strong>{{ saldo.atual | eur(conta.moeda) }}</strong></div>
     <div><span class="nota">Saldo inicial{% if conta.data_saldo_inicial %} ({{ conta.data_saldo_inicial | data }}){% endif %}</span><strong>{{ conta.saldo_inicial | eur(conta.moeda) }}</strong></div>
     {% endif %}

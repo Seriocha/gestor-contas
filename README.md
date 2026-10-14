@@ -4,7 +4,7 @@ Gestor financeiro doméstico, multiutilizador e self-hosted, para a NAS QNAP. Es
 importa movimentos de bancos portugueses e gere contas à ordem, cartões, investimentos e
 Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIGN.md).
 
-## Estado: v0.5.0
+## Estado: v0.6.0
 
 - Login com várias pessoas: passwords em argon2, bloqueio ao fim de 5 tentativas falhadas,
   proteção CSRF e invalidação das sessões quando a password muda.
@@ -30,6 +30,13 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   excluir. Há teste antes de gravar e «criar regra a partir deste movimento». As qualificações
   feitas à mão nunca são reescritas pelas regras. Vêm cerca de 50 categorias e 23 regras
   iniciais para descrições de bancos portugueses.
+- **Cartão de crédito** (v0.6.0): importação do extrato do cartão Santander («Consulta Movimentos
+  Extracto», .xls). Compras ficam negativas e pagamentos/devoluções positivos; os movimentos ainda
+  em curso ficam de fora até serem extratados. O pagamento do cartão é marcado automaticamente como
+  transferência nos dois lados: o crédito «PAG…» no cartão e o débito do mesmo valor (±7 dias) na
+  conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
+  dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
+  cartão importado numa conta à ordem é recusado.
 - **Repor qualificações** (v0.5.0): os filtros «Qualificados à mão» e «Qualificados por regra»
   e a indicação «à mão»/«auto» em cada linha. As ações «Repor e reaplicar as regras» e «Repor e
   deixar sem categoria» desfazem categoria, transferência e excluído, mantendo etiquetas e notas.

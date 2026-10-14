@@ -3,7 +3,7 @@ import hashlib
 import re
 from collections import Counter
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import date, timedelta
 from pathlib import Path
 
 from sqlalchemy import func, select
@@ -118,6 +118,8 @@ def confirmar(db: Session, conta: Conta, extrato: Extrato, nome: str, sha: str,
     ) for l in novas]
     db.add_all(movs)
     imp.n_qualificados = aplicar_regras(db, movs)
+    db.flush()
+    imp.n_pagamentos_cartao = ligar_pagamentos_cartao(db, conta)
 
     msg = None
     primeiro = linhas[0] if linhas else None
@@ -127,6 +129,102 @@ def confirmar(db: Session, conta: Conta, extrato: Extrato, nome: str, sha: str,
         conta.data_saldo_inicial = primeiro.data_mov - timedelta(days=1)
         msg = "Saldo inicial calculado a partir do extrato."
     return imp, msg
+
+
+# ---------------------------------------------------------------- cartões de crédito
+
+PAGAMENTO_CARTAO = re.compile(r"^(PAG[.\s]|PAGAMENTO\b|PGTO\b)", re.IGNORECASE)
+JANELA_PAGAMENTO = timedelta(days=7)
+
+
+def _marcar_transferencia(m: Movimento) -> bool:
+    if m.transferencia or m.qualificado_por == "manual":
+        return False
+    m.transferencia = True
+    m.qualificado_por = "regra"
+    m.regra_id = None
+    return True
+
+
+def ligar_pagamentos_cartao(db: Session, conta: Conta) -> int:
+    """O pagamento de um cartão não é despesa (a despesa são as compras do
+    cartão): marca como transferência o crédito "PAG…" no cartão e o débito
+    do mesmo valor na conta que o paga (±7 dias). Corre ao importar tanto o
+    cartão como a conta pagadora, por isso a ordem das importações não
+    importa. Nunca mexe em movimentos qualificados à mão."""
+    if conta.tipo == "CARTAO_CREDITO":
+        cartoes = [conta]
+    else:
+        cartoes = db.scalars(select(Conta).where(Conta.tipo == "CARTAO_CREDITO",
+                                                 Conta.conta_pagamento_id == conta.id)).all()
+    n = 0
+    for cartao in cartoes:
+        pagamentos = [m for m in db.scalars(select(Movimento).where(
+            Movimento.conta_id == cartao.id, Movimento.montante > 0).order_by(Movimento.data_mov))
+            if PAGAMENTO_CARTAO.search(m.descricao_norm or m.descricao_original)]
+        if not pagamentos:
+            continue
+        candidatos = []
+        if cartao.conta_pagamento_id:
+            menor = min(m.data_mov for m in pagamentos) - JANELA_PAGAMENTO
+            candidatos = db.scalars(select(Movimento).where(
+                Movimento.conta_id == cartao.conta_pagamento_id, Movimento.montante < 0,
+                Movimento.data_mov >= menor)).all()
+        usados: set[int] = set()
+        for pag in pagamentos:
+            n += _marcar_transferencia(pag)
+            pares = [d for d in candidatos if d.id not in usados and d.montante == -pag.montante
+                     and abs(d.data_mov - pag.data_mov) <= JANELA_PAGAMENTO]
+            if pares:
+                par = min(pares, key=lambda d: (abs(d.data_mov - pag.data_mov), d.id))
+                usados.add(par.id)
+                n += _marcar_transferencia(par)
+    return n
+
+
+def _dia_no_mes(ano: int, mes: int, dia: int):
+    import calendar
+    return date(ano, mes, min(dia, calendar.monthrange(ano, mes)[1]))
+
+
+@dataclass
+class ResumoCartao:
+    divida: int                     # valor em dívida (positivo)
+    ultimo_fecho: date | None
+    proximo_fecho: date | None
+    proximo_pagamento: date | None
+    gastos_ciclo: int               # compras desde o último fecho
+    pagamentos_ciclo: int
+
+
+def resumo_cartao(db: Session, conta: Conta, hoje: date) -> ResumoCartao:
+    divida = -saldo_conta(db, conta).atual
+    ultimo = proximo = pagamento = None
+    if conta.dia_fecho:
+        este = _dia_no_mes(hoje.year, hoje.month, conta.dia_fecho)
+        if este <= hoje:
+            ultimo = este
+            seg = (hoje.year + hoje.month // 12, hoje.month % 12 + 1)
+            proximo = _dia_no_mes(seg[0], seg[1], conta.dia_fecho)
+        else:
+            ant = (hoje.year - (hoje.month == 1), (hoje.month - 2) % 12 + 1)
+            ultimo = _dia_no_mes(ant[0], ant[1], conta.dia_fecho)
+            proximo = este
+        if conta.dia_pagamento:
+            # O pagamento do último extrato: o 1.º dia de pagamento a seguir ao fecho.
+            pagamento = _dia_no_mes(ultimo.year, ultimo.month, conta.dia_pagamento)
+            if pagamento <= ultimo:
+                seg = (ultimo.year + ultimo.month // 12, ultimo.month % 12 + 1)
+                pagamento = _dia_no_mes(seg[0], seg[1], conta.dia_pagamento)
+    q = select(Movimento).where(Movimento.conta_id == conta.id)
+    if ultimo:
+        q = q.where(Movimento.data_mov > ultimo)
+    movs = db.scalars(q).all() if ultimo else []
+    return ResumoCartao(
+        divida=divida, ultimo_fecho=ultimo, proximo_fecho=proximo, proximo_pagamento=pagamento,
+        gastos_ciclo=-sum(m.montante for m in movs if m.montante < 0),
+        pagamentos_ciclo=sum(m.montante for m in movs if m.montante > 0 and m.transferencia),
+    )
 
 
 def anular(db: Session, imp: Importacao) -> int:

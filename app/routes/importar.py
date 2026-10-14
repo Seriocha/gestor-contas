@@ -69,9 +69,22 @@ async def previa(request: Request, u: Utilizador = Depends(utilizador_atual), db
     erros = []
     if extrato.moeda != conta.moeda:
         erros.append(f"O extrato está em {extrato.moeda} e a conta em {conta.moeda}.")
-    if conta.instituicao.parser and conta.instituicao.parser != extrato.parser:
+    if conta.instituicao.parser and conta.instituicao.parser != extrato.parser.split("_")[0]:
         avisos.append(f"O ficheiro parece ser do {extrato.banco}, mas a conta é do {conta.instituicao.nome}. "
                       "Confirma que escolheste a conta certa.")
+    e_cartao = conta.tipo == "CARTAO_CREDITO"
+    if extrato.cartao and not e_cartao:
+        erros.append("Este ficheiro é um extrato de cartão de crédito: escolhe a conta do cartão "
+                     "(cria-a em Contas, com o tipo «Cartão de crédito», se ainda não existir).")
+    elif e_cartao and not extrato.cartao:
+        avisos.append("A conta escolhida é um cartão de crédito, mas o ficheiro parece um extrato de conta à ordem.")
+    sem_saldo = extrato.movimentos and all(m.saldo is None for m in extrato.movimentos)
+    if sem_saldo and conta.saldo_inicial == 0 and not servicos.saldo_conta(db, conta).n_movimentos:
+        avisos.append("Este extrato não traz saldo. Confirma o saldo inicial da conta (para um cartão: o valor em "
+                      "dívida, negativo, no dia anterior ao 1.º movimento) em Contas › Editar.")
+    if e_cartao and not conta.conta_pagamento_id:
+        avisos.append("Este cartão não tem «conta que paga o cartão»: sem ela, o débito do pagamento na conta "
+                      "à ordem não é reconhecido como transferência.")
     ja = db.scalar(select(Importacao).where(Importacao.conta_id == conta.id, Importacao.sha256 == sha,
                                             Importacao.estado == "confirmada"))
     if ja:
@@ -111,8 +124,10 @@ async def confirmar(request: Request, u: Utilizador = Depends(utilizador_atual),
         flash(request, "A importação foi cancelada: o ficheiro tem movimentos que não foi possível distinguir "
                        "entre si. Nada foi gravado.", "erro")
         return RedirectResponse("/importar", status_code=303)
+    pagamentos = (f" {imp.n_pagamentos_cartao} movimentos de pagamento de cartão marcados como transferência."
+                  if imp.n_pagamentos_cartao else "")
     flash(request, f"Importados {imp.n_novos} movimentos novos ({imp.n_duplicados} já existiam); "
-                   f"{imp.n_qualificados} categorizados pelas regras." + (f" {msg}" if msg else ""))
+                   f"{imp.n_qualificados} categorizados pelas regras." + pagamentos + (f" {msg}" if msg else ""))
     return RedirectResponse(f"/contas/{conta.id}/movimentos", status_code=303)
 
 
