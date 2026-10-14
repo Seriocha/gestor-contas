@@ -145,3 +145,39 @@ def test_mesmo_saldo_repetido_no_mesmo_dia(admin):
     # reimportar o mesmo período não duplica nada
     previa, _ = _importar(admin, "d2.xls", xls_santander(linhas))
     assert "Importar 0 movimentos" in previa.text
+
+
+def xlsx_creditoagricola(linhas) -> bytes:
+    """linhas: (data 'dd/mm/aaaa', descrição, valor texto, saldo texto, descritivo1), mais recente primeiro."""
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Conta_12345678901"
+    ws.append(["Operação :", "Consulta actividade"])
+    ws.append(["Número de Conta :", "12345678901"])
+    ws.append([])
+    ws.append([])
+    ws.append(["Data Movimento", "Data Valor", "Descrição", "Valor", "Saldo após movimento", "Tipo",
+               "Nome do Ordenante", "NIB/IBAN/Conta do Ordenante", "Nome do Beneficiário", "Descritivo1",
+               "Descritivo2", "Referencia"])
+    for d, desc, v, s, extra in linhas:
+        ws.append([d, d, desc, v, s, "Débito" if v.startswith("-") else "Crédito", None, None, None, extra, extra, None])
+    ws.append([])
+    ws.append(["Data de impressão: 22/09/2026 | 11:23"])
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def test_parser_creditoagricola():
+    e = ler_extrato("Depósitos à Ordem.xlsx", xlsx_creditoagricola([
+        ("31/03/2026", "Trf crédito CONDOMINIO", "-1.150,00 €", "4.352,50 €", "Condominio 1 Semestre"),
+        ("30/03/2026", "DD-123-NOS Comuni", "-7,43 €", "5.502,50 €", "DD-123-NOS Comuni"),
+        ("20/03/2026", "COMPRA ANDREIA &amp; ZA 7859271/25", "-22,50 €", "5.509,93 €", None),
+        ("16/03/2026", "Pensão", "1.532,43 €", "5.532,43 €", None),
+    ]))
+    assert e.parser == "ca" and e.conta_ref == "12345678901" and not e.avisos
+    assert [m.montante for m in e.movimentos] == [153243, -2250, -743, -115000]
+    assert e.movimentos[1].descricao == "COMPRA ANDREIA & ZA 7859271/25"
+    assert e.movimentos[2].descricao == "DD-123-NOS Comuni"                      # descritivo repetido: ignorado
+    assert e.movimentos[3].descricao == "Trf crédito CONDOMINIO — Condominio 1 Semestre"
+    assert e.movimentos[3].saldo == 435250

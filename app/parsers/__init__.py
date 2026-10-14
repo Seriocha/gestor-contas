@@ -123,12 +123,12 @@ def ler_linhas(nome: str, conteudo: bytes) -> list[list]:
 
 
 def ler_extrato(nome: str, conteudo: bytes) -> Extrato:
-    from . import activobank, santander
+    from . import activobank, creditoagricola, santander
     linhas = ler_linhas(nome, conteudo)
-    for parser in (santander.Parser, activobank.Parser):
+    for parser in (santander.Parser, activobank.Parser, creditoagricola.Parser):
         if parser.detetar(linhas):
             extrato = parser.ler(linhas)
             extrato.movimentos = para_cronologico(extrato.movimentos)
             extrato.avisos += verificar_saldos(extrato.movimentos)
             return extrato
-    raise FormatoDesconhecido("Formato de extrato não reconhecido. Bancos suportados: Santander, ActivoBank.")
+    raise FormatoDesconhecido("Formato de extrato não reconhecido. Bancos suportados: Santander, ActivoBank, Crédito Agrícola.")

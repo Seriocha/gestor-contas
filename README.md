@@ -15,7 +15,7 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
 - Backup automático diário da base SQLite (ficam guardados 30 dias), backup manual e registo de auditoria.
 - Migrações Alembic aplicadas automaticamente no arranque.
 - Deploy: GitHub Actions → GHCR → Container Station (ver [qnap/README.md](qnap/README.md)).
-- **Importação de extratos** (v0.2.0): Santander (.xls de «Saldos e movimentos») e ActivoBank
+- **Importação de extratos**: Santander (.xls de «Saldos e movimentos»), ActivoBank e Crédito Agrícola
   (.xlsx). Há pré-visualização antes de gravar e deteção de movimentos repetidos, por isso podes
   reimportar períodos sobrepostos. Os saldos do banco são verificados linha a linha. Na 1.ª
   importação o saldo inicial é calculado a partir do extrato. Cada importação pode ser anulada.
