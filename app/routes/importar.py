@@ -2,6 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from .. import servicos
@@ -103,7 +104,13 @@ async def confirmar(request: Request, u: Utilizador = Depends(utilizador_atual),
         raise HTTPException(status_code=400, detail="Moeda do extrato diferente da da conta.")
     imp, msg = servicos.confirmar(db, conta, extrato, nome, sha, u)
     auditar(db, u, "importacao", f"{imp.id}: {conta.nome} — {imp.n_novos} novos, {imp.n_duplicados} duplicados")
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        flash(request, "A importação foi cancelada: o ficheiro tem movimentos que não foi possível distinguir "
+                       "entre si. Nada foi gravado.", "erro")
+        return RedirectResponse("/importar", status_code=303)
     flash(request, f"Importados {imp.n_novos} movimentos novos ({imp.n_duplicados} já existiam)." + (f" {msg}" if msg else ""))
     return RedirectResponse(f"/contas/{conta.id}/movimentos", status_code=303)
 

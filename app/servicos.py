@@ -67,8 +67,11 @@ def preparar(db: Session, conta: Conta, extrato: Extrato) -> list[LinhaPrevia]:
     """Calcula o hash de deduplicação de cada linha e marca as que já existem.
 
     Com saldo (Santander, ActivoBank) o par data+montante+saldo identifica o
-    movimento mesmo quando há duas compras iguais no mesmo dia. Sem saldo,
-    usa-se o n.º de ocorrência da linha igual dentro do ficheiro."""
+    movimento mesmo quando há duas compras iguais no mesmo dia. Mas o saldo
+    pode repetir-se (transferência, devolução e nova transferência igual no
+    mesmo dia), por isso as repetições levam também o n.º de ocorrência no
+    ficheiro. A 1.ª ocorrência fica sem sufixo, para manter os hashes já
+    gravados pela v0.2.0. Sem saldo, o sufixo vai sempre."""
     ocorrencias: Counter = Counter()
     por_dia: Counter = Counter()
     linhas = []
@@ -78,7 +81,7 @@ def preparar(db: Session, conta: Conta, extrato: Extrato) -> list[LinhaPrevia]:
         ocorrencias[chave] += 1
         por_dia[m.data_mov] += 1
         bruto = f"{conta.id}|{m.data_mov.isoformat()}|{m.montante}|{'' if m.saldo is None else m.saldo}|{norm}"
-        if m.saldo is None:
+        if m.saldo is None or ocorrencias[chave] > 1:
             bruto += f"|{ocorrencias[chave]}"
         linhas.append(LinhaPrevia(
             data_mov=m.data_mov, data_valor=m.data_valor, descricao=m.descricao, descricao_norm=norm,

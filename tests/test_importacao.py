@@ -129,3 +129,19 @@ def test_ficheiro_invalido(admin):
     r = admin.post("/importar", data={"csrf": _csrf(r), "conta_id": "1"},
                    files={"ficheiro": ("x.csv", b"a;b\n1;2\n")})
     assert r.status_code == 400 and "não reconhecido" in r.text
+
+
+def test_mesmo_saldo_repetido_no_mesmo_dia(admin):
+    """Transferência, devolução e nova transferência igual: a 1.ª e a 3.ª linhas
+    têm data, montante, descrição e saldo iguais, mas são movimentos distintos."""
+    linhas = [
+        ("17-02-2026", "TRF P/ FULANO", -1042.69, 500.00),
+        ("17-02-2026", "TRF P/ FULANO", 1042.69, 1542.69),
+        ("17-02-2026", "TRF P/ FULANO", -1042.69, 500.00),
+        ("16-02-2026", "Vencimento", 1542.69, 1542.69),
+    ]
+    previa, r = _importar(admin, "d.xls", xls_santander(linhas))
+    assert "Importar 4 movimentos" in previa.text and r.status_code == 303
+    # reimportar o mesmo período não duplica nada
+    previa, _ = _importar(admin, "d2.xls", xls_santander(linhas))
+    assert "Importar 0 movimentos" in previa.text
