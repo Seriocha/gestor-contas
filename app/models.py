@@ -23,6 +23,7 @@ TIPOS_CONTA = {
     "INVESTIMENTO": "Investimento",
     "AFORRO": "Certificados de Aforro",
     "CARTEIRA_DIGITAL": "Carteira digital (Revolut)",
+    "CARTAO_REFEICAO": "Cartão refeição",
     "EMPRESTIMO": "Empréstimo (habitação)",
 }
 # Contas cujo saldo é uma dívida (entram como passivo no património).
@@ -291,7 +292,7 @@ class Regra(Base):
 
 
 # Contas cujo saldo se pode retificar à data (valor real da carteira / dos certificados).
-TIPOS_RETIFICAVEIS = {"AFORRO", "INVESTIMENTO"}
+TIPOS_RETIFICAVEIS = {"AFORRO", "INVESTIMENTO", "CARTAO_REFEICAO"}
 
 
 class RetificacaoSaldo(Base):
@@ -310,6 +311,26 @@ class RetificacaoSaldo(Base):
     criado_em: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, server_default=func.now())
 
     conta: Mapped["Conta"] = relationship()
+
+
+class ReceitaPrevista(Base):
+    """Entrada recorrente esperada todos os meses numa conta (ordenado, carregamento
+    do cartão refeição). Enquanto o crédito real desse mês não for importado,
+    o fluxo de caixa do mês mostra-a como «prevista»."""
+    __tablename__ = "receita_prevista"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    conta_id: Mapped[int] = mapped_column(ForeignKey("conta.id", ondelete="CASCADE"), index=True)
+    descricao: Mapped[str] = mapped_column(String(100))
+    dia: Mapped[int] = mapped_column(Integer)                      # dia do mês em que costuma entrar
+    valor: Mapped[int | None] = mapped_column(BigInteger)          # cêntimos; None = média dos últimos recebidos
+    categoria_id: Mapped[int | None] = mapped_column(ForeignKey("categoria.id", ondelete="SET NULL"))
+    padrao: Mapped[str | None] = mapped_column(String(200))        # texto do crédito real (ex.: VENCIMENTO)
+    ativa: Mapped[bool] = mapped_column(Boolean, default=True)
+    criado_em: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, server_default=func.now())
+
+    conta: Mapped["Conta"] = relationship()
+    categoria: Mapped["Categoria | None"] = relationship()
 
 
 class Definicao(Base):

@@ -407,3 +407,19 @@ select.gravado { box-shadow: 0 0 0 3px var(--ok-fundo); border-color: var(--pos)
   .tabela th, .tabela td { padding: .6rem .45rem; }
   .cartao-central { margin: 6vh auto; padding: 1.5rem; }
 }
+
+/* Receitas previstas no fluxo de caixa do mês */
+.previsoes { border: 1px dashed var(--linha-forte); border-radius: 12px; padding: .6rem .8rem; margin: .4rem 0 .8rem; }
+.previsoes-cabecalho { display: flex; justify-content: space-between; align-items: baseline; gap: .5rem; flex-wrap: wrap; }
+.lista-previsoes { list-style: none; margin: .4rem 0 0; padding: 0; }
+.lista-previsoes li { display: grid; grid-template-columns: 1.4rem 1fr auto auto; gap: .2rem .8rem; align-items: baseline; padding: .25rem 0; }
+.lista-previsoes li + li { border-top: 1px solid var(--linha); }
+.lista-previsoes .estado { text-align: center; }
+.lista-previsoes .recebida .estado { color: var(--ok-texto, #1b7a4a); }
+.lista-previsoes .prevista .estado, .lista-previsoes .prevista .num { color: #3d6fb0; }
+.lista-previsoes .prevista .num { font-style: italic; }
+@media (max-width: 640px) {
+  .lista-previsoes li { grid-template-columns: 1.4rem 1fr auto; }
+  .lista-previsoes li > .nota { grid-column: 2 / 4; grid-row: 2; }
+}
+.etiqueta-ok { background: var(--ok-fundo); color: var(--ok-texto); border-color: transparent; }

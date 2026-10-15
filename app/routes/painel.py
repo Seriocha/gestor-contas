@@ -1,6 +1,7 @@
 """Painel: património líquido e evolução, ativos/passivos, fluxo de caixa
 (sankey) e despesas por categoria — inspirado no painel do Sure."""
 from collections import defaultdict
+from dataclasses import replace
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -8,7 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .. import relatorios as rel
-from .. import retificacoes
+from .. import previsoes, retificacoes
 from ..backup import ultimo_backup
 from ..deps import IntOpcional, entidade_escolhida, get_db, render, utilizador_atual
 from ..formatos import parse_data
@@ -57,6 +58,7 @@ PERIODOS_PAINEL = {"mes": "Este mês", "trimestre": "Trimestre", "6meses": "6 me
 
 @router.get("/")
 def painel(request: Request, entidade: IntOpcional = None, periodo: str = "mes", agrupar: str = "", ordenar: str = "",
+           previstas: str = "",
            u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
     visiveis, ent, papel = entidade_escolhida(request, db, u, entidade)
     backup = ultimo_backup(request.app.state.defs) if u.is_admin else None
@@ -77,6 +79,14 @@ def painel(request: Request, entidade: IntOpcional = None, periodo: str = "mes",
 
     movs = rel.movimentos_reportaveis(db, ent.id, p.ini, p.fim)
     r = rel.resumir(movs)
+    # Fluxo do mês: soma as receitas previstas (ordenados, cartões refeição) que ainda não entraram.
+    previstas = previstas if previstas in ("1", "0") else request.session.get("painel_previstas", "1")
+    request.session["painel_previstas"] = previstas
+    estados = previsoes.estado_mes(db, ent.id, p.ini) if p.chave == "mes" else []
+    pendentes = [e for e in estados if e.pendente] if previstas == "1" else []
+    r_real = r
+    if pendentes:
+        r = replace(r, receitas=r.receitas + sum(e.valor for e in pendentes))
     despesas = [l for l in rel.linhas_ordenadas(r.por_categoria["DESPESA"]) if l.total > 0]
     n_sem = db.scalar(select(func.count()).select_from(Movimento).join(Conta).where(
         Conta.entidade_id == ent.id, Movimento.categoria_id.is_(None), ~Movimento.transferencia,
@@ -85,14 +95,15 @@ def painel(request: Request, entidade: IntOpcional = None, periodo: str = "mes",
         "patrimonio": {"rotulos": [d.strftime("%d-%m-%Y") if d == ref else rel.rotulo_mes(d) for d in meses],
                        "liquido": [x["liquido"] / 100 for x in pat["serie"]],
                        "datas": [d.isoformat() for d in meses]},
-        "sankey": rel.sankey(r),
+        "sankey": rel.sankey(r, previstas=[(e.prev.descricao, e.valor) for e in pendentes]),
         "despesas": [{"nome": l.nome, "valor": l.total / 100, "cor": l.cor} for l in despesas],
     }
     return render(request, "painel.html", visiveis=visiveis, entidade=ent, p=p, periodos=PERIODOS_PAINEL, ref=ref,
                   atual=atual, ha_30=ha_30, grupos_ativos=grupos_ativos, grupos_passivos=grupos_passivos,
                   agrupar=agrupar, ordenar=ordenar, opcoes_agrupar=AGRUPAR, opcoes_ordenar=ORDENAR,
                   avisos=retificacoes.avisos(db, [c.id for c, _ in pat["contas"]]),
-                  r=r, despesas=despesas, n_sem=n_sem, graficos=graficos, ultimo_backup=backup)
+                  r=r, r_real=r_real, estados=estados, pendentes=pendentes, previstas=previstas,
+                  total_previsto=sum(e.valor for e in pendentes), despesas=despesas, n_sem=n_sem, graficos=graficos, ultimo_backup=backup)
 
 
 @router.get("/painel/variacao")

@@ -364,8 +364,12 @@ def variacao_patrimonio(db: Session, entidade_id: int, ini: date, fim: date, lim
                               transferencias=sum(abs(m.montante) for m in movs if m.transferencia) // 2)
 
 
-def sankey(resumo: Resumo, max_categorias: int = 8) -> list[dict]:
-    """Fluxos receitas → Orçamento → despesas (+ poupança/défice)."""
+COR_PREVISTA = "#9cc0ea"   # receitas previstas (ainda não recebidas)
+
+
+def sankey(resumo: Resumo, max_categorias: int = 8, previstas: list[tuple[str, int]] | None = None) -> list[dict]:
+    """Fluxos receitas → Orçamento → despesas (+ poupança/défice).
+    `previstas` são entradas simuladas [(nome, cêntimos)], já somadas a resumo.receitas."""
     fluxos = []
     receitas = [l for l in linhas_ordenadas(resumo.por_categoria["RECEITA"]) if l.total > 0]
     despesas = [l for l in linhas_ordenadas(resumo.por_categoria["DESPESA"]) if l.total > 0]
@@ -378,6 +382,9 @@ def sankey(resumo: Resumo, max_categorias: int = 8) -> list[dict]:
         # Um nó com o mesmo nome dos dois lados (ex.: "Sem categoria") criaria um ciclo.
         nome = f"{l.nome} (entradas)" if l.nome in nomes_despesa else l.nome
         fluxos.append({"from": nome, "to": centro, "flow": l.total / 100, "cor": "#2a78d6"})
+    for nome, valor in previstas or []:
+        if valor > 0:
+            fluxos.append({"from": f"{nome} (previsto)", "to": centro, "flow": valor / 100, "cor": COR_PREVISTA})
     if resumo.poupanca < 0:
         fluxos.append({"from": "Défice (poupanças)", "to": centro, "flow": -resumo.poupanca / 100, "cor": "#e34948"})
     for l in despesas:

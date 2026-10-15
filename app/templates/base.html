@@ -29,6 +29,7 @@
 {% set itens_config = [
   ('/contas', 'contas', 'Contas', caminho.startswith('/contas') and not em_movimentos),
   ('/categorias', 'categorias', 'Categorias e regras', caminho.startswith('/categorias') or caminho.startswith('/regras')),
+  ('/previsoes', 'previsoes', 'Receitas previstas', caminho.startswith('/previsoes')),
 ] + ([('/admin/utilizadores', 'admin', 'Administração', caminho.startswith('/admin'))] if utilizador.is_admin else []) %}
 
 <header class="barra-movel">

@@ -4,7 +4,7 @@ Gestor financeiro doméstico, multiutilizador e self-hosted, para a NAS QNAP. Es
 importa movimentos de bancos portugueses e gere contas à ordem, cartões, investimentos e
 Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIGN.md).
 
-## Estado: v0.16.0
+## Estado: v0.17.0
 
 - Login com várias pessoas: passwords em argon2, bloqueio ao fim de 5 tentativas falhadas,
   proteção CSRF e invalidação das sessões quando a password muda.
@@ -37,6 +37,15 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.17.0 — receitas previstas e cartões refeição:** em **Receitas previstas** (menu Configuração)
+  define-se cada entrada mensal: conta, dia (ex.: ordenado Santander a 23, ActivoBank a 25),
+  valor fixo ou média dos últimos 3 recebidos, e como reconhecer o crédito real (texto da
+  descrição, categoria, ou valor ±15%). No painel, o fluxo de caixa de «Este mês» soma as que
+  ainda não entraram como «(previsto)» no sankey e nos KPIs, com a lista recebida/prevista/em
+  atraso e o atalho «ver só o real». Novo tipo de conta **Cartão refeição** (com retificação de
+  saldo), instituição Caixa Geral de Depósitos e categoria «Subsídio de alimentação». Não há API
+  pública para os cartões refeição Santander nem Caixa Break: o PSD2 exclui estes cartões de rede
+  limitada, por isso os movimentos entram à mão ou por retificação do saldo.
 - **v0.16.0 — desempenho dos investimentos:** nas contas de Investimento e de Certificados de
   Aforro, cada movimento é interpretado como **aplicação** ou **resgate** (transferências, mexem
   no capital investido) ou como **ganho** ou **perda** (todos os outros, incluindo o acerto de uma

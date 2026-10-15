@@ -83,11 +83,40 @@
     </nav>
   </div>
   <div class="kpi-linha">
-    <div class="kpi"><span class="nota">Receitas</span><strong>{{ r.receitas | eur }}</strong></div>
+    <div class="kpi"><span class="nota">Receitas</span><strong>{{ r.receitas | eur }}</strong>
+      {% if total_previsto %}<span class="nota">inclui {{ total_previsto | eur }} previstos</span>{% endif %}</div>
     <div class="kpi"><span class="nota">Despesas</span><strong>{{ r.despesas | eur }}</strong></div>
     <div class="kpi"><span class="nota">Poupança</span><strong class="{{ 'neg' if r.poupanca < 0 else '' }}">{{ r.poupanca | eur }}</strong></div>
     <div class="kpi"><span class="nota">Taxa de poupança</span><strong>{{ '—' if r.taxa_poupanca is none else ('%.0f' % r.taxa_poupanca) ~ '%' }}</strong></div>
   </div>
+  {% if estados %}
+  <div class="previsoes">
+    <div class="previsoes-cabecalho">
+      <strong>Receitas do mês</strong>
+      <span class="nota">
+        {% if previstas == '1' %}<a href="/?entidade={{ entidade.id }}&periodo=mes&previstas=0">ver só o real</a>
+        {% else %}<a href="/?entidade={{ entidade.id }}&periodo=mes&previstas=1">somar as previstas</a>{% endif %}
+        · <a href="/previsoes?entidade={{ entidade.id }}">gerir</a></span>
+    </div>
+    <ul class="lista-previsoes">
+      {% for e in estados %}
+      <li class="{{ 'recebida' if e.recebida else 'prevista' }}">
+        <span class="estado">{{ '✓' if e.recebida else '◷' }}</span>
+        <span class="desc">{{ e.prev.descricao }} <span class="nota">· {{ e.prev.conta.nome }}</span></span>
+        {% if e.recebida %}
+          <span class="nota">recebida a {{ e.recebida.data_mov | data }}</span>
+          <span class="num">{{ e.recebida.montante | eur }}</span>
+        {% else %}
+          <span class="nota">{{ 'prevista' if e.data >= ref else 'em atraso' }} · dia {{ e.data.day }}</span>
+          <span class="num">{{ e.valor | eur if e.valor else 'sem valor' }}</span>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% elif p.chave == 'mes' %}
+  <p class="nota">Ordenados e cartões refeição podem entrar no fluxo antes de chegarem: <a href="/previsoes?entidade={{ entidade.id }}">definir receitas previstas</a>.</p>
+  {% endif %}
   {% if graficos.sankey %}
   <div class="grafico grafico-alto"><canvas data-grafico="sankey" aria-label="Fluxo das receitas para as despesas e poupança" role="img"></canvas></div>
   {% else %}<p class="vazio">Sem movimentos neste período.</p>{% endif %}

@@ -12,6 +12,7 @@ INSTITUICOES = [
     ("Certificados de Aforro (IGCP/CTT)", "igcp"),
     ("Revolut", "revolut"),
     ("Crédito Agrícola", "ca"),
+    ("Caixa Geral de Depósitos", None),
 ]
 
 ENTIDADES = [
@@ -42,6 +43,7 @@ DESPESAS = [
 ]
 RECEITAS = [
     ("Salário", []),
+    ("Subsídio de alimentação", []),
     ("Pensão", []),
     ("Juros e dividendos", []),
     ("Reembolsos", []),
@@ -100,8 +102,8 @@ def _semear_categorias(db: Session) -> None:
 
 def semear(db: Session) -> None:
     from .models import Categoria
-    if not db.scalar(select(func.count()).select_from(Instituicao)):
-        db.add_all(Instituicao(nome=n, parser=p) for n, p in INSTITUICOES)
+    existentes = set(db.scalars(select(Instituicao.nome)))
+    db.add_all(Instituicao(nome=n, parser=p) for n, p in INSTITUICOES if n not in existentes)
     if not db.scalar(select(func.count()).select_from(Entidade)):
         db.add_all(Entidade(nome=n, descricao=d, ordem=o) for n, d, o in ENTIDADES)
     if not db.scalar(select(func.count()).select_from(Categoria)):

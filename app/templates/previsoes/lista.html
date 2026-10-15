@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block titulo %}Receitas previstas{% endblock %}
+{% block conteudo %}
+<h1>Receitas previstas</h1>
+{% set destino = '/previsoes' %}{% include "_entidades.html" %}
+{% if entidade %}
+<section class="cartao">
+  <div class="cartao-cabecalho">
+    <p class="nota sem-margem">Entradas que chegam todos os meses (ordenados, cartões refeição). Enquanto o crédito real do mês
+      não for importado, o fluxo de caixa do mês no painel soma-as como «previstas».</p>
+    {% if pode_editar %}<a class="botao primario" href="/previsoes/nova?entidade={{ entidade.id }}">+ Nova receita prevista</a>{% endif %}
+  </div>
+  <div class="rolar">
+  <table class="tabela compacta">
+    <thead><tr><th>Receita</th><th>Conta</th><th class="num">Dia</th><th>Reconhecida por</th><th class="num">Valor</th>
+      <th>{{ mes }}</th><th></th></tr></thead>
+    <tbody>
+    {% for p in todas %}
+    {% set e = estados.get(p.id) %}
+    <tr class="{{ '' if p.ativa else 'arquivada' }}">
+      <td>{{ p.descricao }}{% if p.categoria %} <span class="nota">· {{ p.categoria.nome_completo }}</span>{% endif %}</td>
+      <td>{{ p.conta.nome }} <span class="nota">{{ p.conta.instituicao.nome }}</span></td>
+      <td class="num">{{ p.dia }}</td>
+      <td class="nota">{% if p.padrao %}descrição contém <code>{{ p.padrao }}</code>{% elif p.categoria %}categoria{% else %}valor ±15%{% endif %}</td>
+      <td class="num">{% if p.valor %}{{ p.valor | eur }}{% elif e and e.valor %}≈ {{ e.valor | eur }} <span class="nota">média</span>{% else %}—{% endif %}</td>
+      <td>{% if not p.ativa %}<span class="etiqueta">inativa</span>
+        {% elif e and e.recebida %}<span class="etiqueta etiqueta-ok">✓ recebida {{ e.recebida.data_mov | data }}</span>
+        {% elif e %}<span class="etiqueta">{{ 'prevista' if e.data >= ref else 'em atraso' }} {{ e.data | data }}</span>{% endif %}</td>
+      <td class="acoes">{% if pode_editar %}<a href="/previsoes/{{ p.id }}">Editar</a>{% endif %}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="7" class="vazio">Sem receitas previstas. Exemplos: ordenado no Santander (dia 23), ordenado no ActivoBank (dia 25),
+      cartão refeição Santander e Caixa Break (cria primeiro as contas do tipo «Cartão refeição»).</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+{% endif %}
+{% endblock %}

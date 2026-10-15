@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block titulo %}{{ 'Editar receita prevista' if prev else 'Nova receita prevista' }}{% endblock %}
+{% block conteudo %}
+<h1>{{ 'Editar «' ~ prev.descricao ~ '»' if prev else 'Nova receita prevista' }} <span class="nota">· {{ entidade.nome }}</span></h1>
+{% if erros %}<div class="aviso aviso-erro"><ul>{% for e in erros %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
+<form method="post" class="formulario" action="{{ '/previsoes/' ~ prev.id if prev else '/previsoes/nova?entidade=' ~ entidade.id }}">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  <div class="linha">
+    <label>Descrição <input name="descricao" value="{{ v.descricao or '' }}" required maxlength="100" placeholder="ex.: Ordenado Sérgio"></label>
+    <label>Conta onde entra
+      <select name="conta_id" required>
+        <option value="">—</option>
+        {% for c in contas %}<option value="{{ c.id }}" {% if v.conta_id|string == c.id|string %}selected{% endif %}>{{ c.nome }} · {{ c.tipo_rotulo }}</option>{% endfor %}
+      </select>
+    </label>
+  </div>
+  <div class="linha">
+    <label>Dia do mês <input name="dia" type="number" min="1" max="31" value="{{ v.dia or '' }}" required></label>
+    <label>Valor <input name="valor" value="{{ v.valor or '' }}" inputmode="decimal" placeholder="vazio = média dos últimos 3"></label>
+  </div>
+  <p class="nota">Sem valor, usa a média dos últimos 3 créditos reais reconhecidos (acompanha aumentos e subsídios de férias/Natal só se os fixares).</p>
+  <div class="linha">
+    <label>Categoria
+      <select name="categoria_id">
+        <option value="">—</option>
+        {% for c in categorias %}<option value="{{ c.id }}" {% if v.categoria_id|string == c.id|string %}selected{% endif %}>{{ c.nome_completo }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>A descrição do crédito real contém <input name="padrao" value="{{ v.padrao or '' }}" maxlength="200" placeholder="ex.: VENCIMENTO|ORDENADO"></label>
+  </div>
+  <p class="nota">O crédito real do mês é reconhecido pelo texto (alternativas separadas por «|»); sem texto, pela categoria; sem nenhum dos dois, por um valor ±15% do previsto.</p>
+  <label class="opcao"><input type="checkbox" name="ativa" value="1" {% if v.ativa %}checked{% endif %}> Ativa</label>
+  <div class="acoes-form">
+    <button class="primario">Guardar</button>
+    <a href="/previsoes?entidade={{ entidade.id }}">Cancelar</a>
+  </div>
+</form>
+{% if prev %}
+<form method="post" action="/previsoes/{{ prev.id }}/apagar" class="form-perigo" onsubmit="return confirm('Apagar esta receita prevista?')">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  <button class="perigo">Apagar</button>
+</form>
+{% endif %}
+{% endblock %}
