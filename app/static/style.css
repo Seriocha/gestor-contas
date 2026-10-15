@@ -195,3 +195,5 @@ tr.sub td { font-size: .9rem; }
 h3 { font-size: .95rem; margin: 1rem 0 .4rem; color: var(--suave); }
 .candidato { display: flex; gap: .5rem; align-items: baseline; flex-wrap: wrap; }
 .candidato form { display: inline; }
+.grelha-3 { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); margin-top: 1rem; align-items: end; }
+.grelha-3 .formulario { max-width: none; }

@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from .models import Conta, Importacao, Movimento, Utilizador
 from .parsers import Extrato
+from . import emprestimos
 from .qualificacao import aplicar_regras
 
 TAMANHO_MAX = 10 * 1024 * 1024
@@ -117,9 +118,14 @@ def confirmar(db: Session, conta: Conta, extrato: Extrato, nome: str, sha: str,
         montante=l.montante, moeda=conta.moeda, saldo_apos=l.saldo, hash_dedup=l.hash_dedup,
     ) for l in novas]
     db.add_all(movs)
-    imp.n_qualificados = aplicar_regras(db, movs)
+    # Nas contas de empréstimo a qualificação é própria (prestação/juros/encargos), não pelas regras gerais.
+    imp.n_qualificados = aplicar_regras(db, movs) if conta.tipo != "EMPRESTIMO" else 0
     db.flush()
     imp.n_pagamentos_cartao = ligar_pagamentos_cartao(db, conta)
+    if conta.tipo == "EMPRESTIMO":
+        emprestimos.qualificar(db, conta, movs)
+        db.flush()
+    imp.emprestimo = emprestimos.processar(db, conta)
 
     msg = None
     primeiro = linhas[0] if linhas else None
@@ -296,6 +302,7 @@ def resumo_cartao(db: Session, conta: Conta, hoje: date) -> ResumoCartao:
 def anular(db: Session, imp: Importacao) -> int:
     n = 0
     for m in db.scalars(select(Movimento).where(Movimento.importacao_id == imp.id)):
+        emprestimos.apagar_estimativa(db, m.id)  # prestação estimada a partir deste débito
         db.delete(m)
         n += 1
     imp.estado = "anulada"

@@ -72,6 +72,12 @@ async def previa(request: Request, u: Utilizador = Depends(utilizador_atual), db
     if conta.instituicao.parser and conta.instituicao.parser != extrato.parser.split("_")[0]:
         avisos.append(f"O ficheiro parece ser do {extrato.banco}, mas a conta é do {conta.instituicao.nome}. "
                       "Confirma que escolheste a conta certa.")
+    if extrato.emprestimo and conta.tipo != "EMPRESTIMO":
+        erros.append("Este ficheiro é um extrato de empréstimo: escolhe a conta do empréstimo "
+                     "(cria-a em Contas, com o tipo «Empréstimo (habitação)», se ainda não existir).")
+    elif conta.tipo == "EMPRESTIMO" and not extrato.emprestimo:
+        erros.append("A conta escolhida é um empréstimo: aqui só se importa o extrato do empréstimo. "
+                     "O extrato da conta à ordem (com o débito da prestação) importa-se na conta à ordem.")
     e_cartao = conta.tipo == "CARTAO_CREDITO"
     if extrato.cartao and not e_cartao:
         erros.append("Este ficheiro é um extrato de cartão de crédito: escolhe a conta do cartão "
@@ -126,6 +132,13 @@ async def confirmar(request: Request, u: Utilizador = Depends(utilizador_atual),
         return RedirectResponse("/importar", status_code=303)
     pagamentos = (f" {imp.n_pagamentos_cartao} movimentos de pagamento de cartão marcados como transferência."
                   if imp.n_pagamentos_cartao else "")
+    emp = imp.emprestimo
+    if emp["ligadas"]:
+        pagamentos += f" {emp['ligadas']} prestação(ões) do empréstimo ligada(s) ao débito na conta à ordem."
+    if emp["estimadas"]:
+        pagamentos += f" {emp['estimadas']} prestação(ões) estimada(s) até chegar o extrato do empréstimo."
+    if emp["substituidas"]:
+        pagamentos += f" {emp['substituidas']} estimativa(s) substituída(s) pelos valores reais."
     flash(request, f"Importados {imp.n_novos} movimentos novos ({imp.n_duplicados} já existiam); "
                    f"{imp.n_qualificados} categorizados pelas regras." + pagamentos + (f" {msg}" if msg else ""))
     return RedirectResponse(f"/contas/{conta.id}/movimentos", status_code=303)

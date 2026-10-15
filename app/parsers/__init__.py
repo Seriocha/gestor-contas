@@ -38,6 +38,7 @@ class Extrato:
     conta_ref: str | None = None      # n.º de conta, quando o ficheiro o traz
     avisos: list[str] = field(default_factory=list)
     cartao: bool = False              # extrato de cartão de crédito (não de conta à ordem)
+    emprestimo: bool = False          # extrato de empréstimo (movimentos da conta do empréstimo)
 
 
 # ---------------------------------------------------------------- utilitários
@@ -124,12 +125,13 @@ def ler_linhas(nome: str, conteudo: bytes) -> list[list]:
 
 
 def ler_extrato(nome: str, conteudo: bytes) -> Extrato:
-    from . import activobank, creditoagricola, santander, santander_cartao
+    from . import activobank, creditoagricola, santander, santander_cartao, santander_emprestimo
     linhas = ler_linhas(nome, conteudo)
-    for parser in (santander.Parser, santander_cartao.Parser, activobank.Parser, creditoagricola.Parser):
+    for parser in (santander.Parser, santander_cartao.Parser, santander_emprestimo.Parser, activobank.Parser,
+                   creditoagricola.Parser):
         if parser.detetar(linhas):
             extrato = parser.ler(linhas)
             extrato.movimentos = para_cronologico(extrato.movimentos)
             extrato.avisos += verificar_saldos(extrato.movimentos)
             return extrato
-    raise FormatoDesconhecido("Formato de extrato não reconhecido. Bancos suportados: Santander (conta e cartão), ActivoBank, Crédito Agrícola.")
+    raise FormatoDesconhecido("Formato de extrato não reconhecido. Bancos suportados: Santander (conta, cartão e empréstimo), ActivoBank, Crédito Agrícola.")

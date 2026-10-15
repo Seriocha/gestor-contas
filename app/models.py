@@ -23,7 +23,10 @@ TIPOS_CONTA = {
     "INVESTIMENTO": "Investimento",
     "AFORRO": "Certificados de Aforro",
     "CARTEIRA_DIGITAL": "Carteira digital (Revolut)",
+    "EMPRESTIMO": "Empréstimo (habitação)",
 }
+# Contas cujo saldo é uma dívida (entram como passivo no património).
+TIPOS_PASSIVO = {"CARTAO_CREDITO", "EMPRESTIMO"}
 
 
 class Utilizador(Base):
@@ -116,10 +119,39 @@ class Conta(Base):
     instituicao: Mapped[Instituicao] = relationship()
     conta_pagamento: Mapped["Conta | None"] = relationship(remote_side="Conta.id")
     titulares: Mapped[list[Utilizador]] = relationship(secondary=conta_titular)
+    emprestimo: Mapped["Emprestimo | None"] = relationship(back_populates="conta", uselist=False,
+                                                           cascade="all, delete-orphan")
 
     @property
     def tipo_rotulo(self) -> str:
         return TIPOS_CONTA.get(self.tipo, self.tipo)
+
+
+TIPOS_TAXA = {"variavel": "Variável", "fixa": "Fixa", "mista": "Mista"}
+
+
+class Emprestimo(Base):
+    """Dados de um empréstimo (1:1 com uma Conta do tipo EMPRESTIMO).
+
+    O saldo da conta é o capital em dívida (negativo). A conta que paga a
+    prestação é Conta.conta_pagamento_id e o dia da prestação Conta.dia_pagamento.
+    Taxas em centésimas de milésima de ponto percentual (1,54895% → 154895)."""
+    __tablename__ = "emprestimo"
+
+    conta_id: Mapped[int] = mapped_column(ForeignKey("conta.id", ondelete="CASCADE"), primary_key=True)
+    montante_contratado: Mapped[int | None] = mapped_column(BigInteger)
+    data_contrato: Mapped[date | None] = mapped_column(Date)
+    prazo_meses: Mapped[int] = mapped_column(Integer)          # n.º total de prestações do contrato
+    # N.º da última prestação paga à data do capital indicado (quando não se importa o extrato do empréstimo).
+    ultima_prestacao_n: Mapped[int | None] = mapped_column(Integer)
+    tipo_taxa: Mapped[str] = mapped_column(String(10), default="variavel")
+    indexante: Mapped[str | None] = mapped_column(String(30))  # ex.: Euribor 12M
+    spread_e5: Mapped[int | None] = mapped_column(Integer)
+    taxa_e5: Mapped[int] = mapped_column(Integer)              # TAN em vigor
+    padrao_prestacao: Mapped[str | None] = mapped_column(String(200))
+    encargos: Mapped[int] = mapped_column(BigInteger, default=0)  # cêntimos por prestação (comissões, selo)
+
+    conta: Mapped["Conta"] = relationship(back_populates="emprestimo")
 
 
 class Importacao(Base):

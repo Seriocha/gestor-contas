@@ -10,7 +10,9 @@ from sqlalchemy.orm import Session, selectinload
 from ..deps import IntOpcional, auditar, entidades_visiveis, exigir_papel, flash, get_db, render, utilizador_atual
 from ..formatos import montante_para_input, mascarar_iban, parse_data, parse_montante
 from ..seguranca import ler_form
-from ..models import PAPEIS, TIPOS_CONTA, Conta, Entidade, Instituicao, Permissao, Utilizador
+from ..emprestimos import PADRAO_OMISSAO, parse_taxa, taxa_para_input
+from ..models import (PAPEIS, TIPOS_CONTA, TIPOS_TAXA, Conta, Emprestimo, Entidade, Instituicao, Permissao,
+                      Utilizador)
 from ..servicos import saldo_conta
 
 router = APIRouter(prefix="/contas")
@@ -29,6 +31,7 @@ def _opcoes(db: Session, entidade_id: int, conta_id: int | None = None) -> dict:
     return {
         "instituicoes": db.scalars(select(Instituicao).where(Instituicao.ativa).order_by(Instituicao.nome)).all(),
         "tipos": TIPOS_CONTA,
+        "tipos_taxa": TIPOS_TAXA,
         "pagadoras": pagadoras,
         "possiveis_titulares": titulares,
     }
@@ -61,19 +64,33 @@ def _ler_campos(form, db: Session, entidade_id: int, conta_id: int | None) -> tu
         erros.append(str(e))
 
     dados["conta_pagamento_id"] = dados["dia_fecho"] = dados["dia_pagamento"] = None
-    if dados["tipo"] == "CARTAO_CREDITO":
+    if dados["tipo"] in ("CARTAO_CREDITO", "EMPRESTIMO"):
         if v["conta_pagamento_id"]:
             pag = db.get(Conta, int(v["conta_pagamento_id"])) if v["conta_pagamento_id"].isdigit() else None
             if not pag or pag.entidade_id != entidade_id or pag.id == conta_id:
                 erros.append("A conta de pagamento tem de ser uma conta da mesma entidade.")
             else:
                 dados["conta_pagamento_id"] = pag.id
-        for campo, rotulo in (("dia_fecho", "Dia de fecho"), ("dia_pagamento", "Dia de pagamento")):
+        campos = [("dia_pagamento", "Dia de pagamento")]
+        if dados["tipo"] == "CARTAO_CREDITO":
+            campos.append(("dia_fecho", "Dia de fecho"))
+        for campo, rotulo in campos:
             if v[campo]:
                 if not v[campo].isdigit() or not 1 <= int(v[campo]) <= 31:
                     erros.append(f"{rotulo} tem de estar entre 1 e 31.")
                 else:
                     dados[campo] = int(v[campo])
+
+    dados["_emprestimo"] = None
+    if dados["tipo"] == "EMPRESTIMO":
+        # O saldo de um empréstimo é a dívida: guarda-se sempre negativo, seja qual for o sinal escrito.
+        dados["saldo_inicial"] = -abs(dados.get("saldo_inicial") or 0)
+        # Capital e data são opcionais: com o extrato do empréstimo, saem da 1.ª importação.
+        if bool(dados["saldo_inicial"]) != bool(dados.get("data_saldo_inicial")):
+            erros.append("Indica o capital em dívida e a data a que se refere — ou deixa ambos vazios "
+                         "para os obter do extrato do empréstimo.")
+        dados["_emprestimo"], erros_emp = _ler_emprestimo(form)
+        erros += erros_emp
 
     titulares_ids = {int(x) for x in form.getlist("titulares") if str(x).isdigit()}
     titulares = db.scalars(
@@ -89,8 +106,60 @@ def _ler_campos(form, db: Session, entidade_id: int, conta_id: int | None) -> tu
     return dados, erros
 
 
+def _ler_emprestimo(form) -> tuple[dict, list[str]]:
+    erros = []
+    t = {k: str(form.get(k, "")).strip() for k in (
+        "emp_prazo", "emp_taxa", "emp_tipo_taxa", "emp_indexante", "emp_spread", "emp_padrao", "emp_encargos",
+        "emp_montante", "emp_data_contrato", "emp_ultima")}
+    dados = {"tipo_taxa": t["emp_tipo_taxa"] if t["emp_tipo_taxa"] in TIPOS_TAXA else "variavel",
+             "indexante": t["emp_indexante"][:30] or None, "padrao_prestacao": t["emp_padrao"][:200] or None}
+    if not t["emp_prazo"].isdigit() or not 1 <= int(t["emp_prazo"]) <= 600:
+        erros.append("Indica o número total de prestações do contrato (1 a 600).")
+    else:
+        dados["prazo_meses"] = int(t["emp_prazo"])
+    dados["ultima_prestacao_n"] = None
+    if t["emp_ultima"]:
+        if not t["emp_ultima"].isdigit() or int(t["emp_ultima"]) > dados.get("prazo_meses", 600):
+            erros.append("A última prestação paga tem de ser um número até ao total de prestações.")
+        else:
+            dados["ultima_prestacao_n"] = int(t["emp_ultima"])
+    try:
+        dados["taxa_e5"] = parse_taxa(t["emp_taxa"])
+        if dados["taxa_e5"] is None:
+            erros.append("Indica a TAN em vigor.")
+        dados["spread_e5"] = parse_taxa(t["emp_spread"])
+    except ValueError as e:
+        erros.append(str(e))
+    try:
+        dados["encargos"] = abs(parse_montante(t["emp_encargos"]))
+        dados["montante_contratado"] = abs(parse_montante(t["emp_montante"])) or None
+        dados["data_contrato"] = parse_data(t["emp_data_contrato"])
+    except ValueError as e:
+        erros.append(str(e))
+    return dados, erros
+
+
+def _gravar_emprestimo(db: Session, c: Conta, dados_emp: dict | None) -> None:
+    if dados_emp is None:
+        if c.emprestimo:
+            db.delete(c.emprestimo)
+        return
+    if c.emprestimo is None:
+        c.emprestimo = Emprestimo(**dados_emp)
+    else:
+        for k, val in dados_emp.items():
+            setattr(c.emprestimo, k, val)
+
+
 def _valores_form(c: Conta) -> dict:
-    return {
+    e = c.emprestimo
+    emp = {} if not e else {
+        "emp_prazo": e.prazo_meses, "emp_ultima": e.ultima_prestacao_n or "", "emp_taxa": taxa_para_input(e.taxa_e5), "emp_tipo_taxa": e.tipo_taxa,
+        "emp_indexante": e.indexante or "", "emp_spread": taxa_para_input(e.spread_e5),
+        "emp_padrao": e.padrao_prestacao or "", "emp_encargos": montante_para_input(e.encargos),
+        "emp_montante": montante_para_input(e.montante_contratado),
+        "emp_data_contrato": e.data_contrato.isoformat() if e.data_contrato else ""}
+    return {**emp,
         "nome": c.nome, "tipo": c.tipo, "moeda": c.moeda, "iban": c.iban_mascarado or "",
         "instituicao_id": c.instituicao_id, "saldo_inicial": montante_para_input(c.saldo_inicial),
         "data_saldo_inicial": c.data_saldo_inicial.isoformat() if c.data_saldo_inicial else "",
@@ -120,7 +189,8 @@ def nova_form(request: Request, entidade: int, u: Utilizador = Depends(utilizado
               db: Session = Depends(get_db)):
     exigir_papel(db, u, entidade, "admin")
     ent = db.get(Entidade, entidade)
-    valores = {"moeda": "EUR", "tipo": "ORDEM", "titulares": {u.id} if ent.nome != "Mãe" else set()}
+    valores = {"moeda": "EUR", "tipo": "ORDEM", "titulares": {u.id} if ent.nome != "Mãe" else set(),
+               "emp_padrao": PADRAO_OMISSAO, "emp_tipo_taxa": "variavel"}
     return render(request, "contas/form.html", entidade=ent, conta=None, v=valores, **_opcoes(db, entidade))
 
 
@@ -136,8 +206,10 @@ async def nova(request: Request, entidade: int, u: Utilizador = Depends(utilizad
         v["titulares"] = {t.id for t in dados["titulares"]}
         return render(request, "contas/form.html", status_code=400, entidade=ent, conta=None, v=v,
                       erros=erros, **_opcoes(db, entidade))
+    dados_emp = dados.pop("_emprestimo")
     conta = Conta(entidade_id=entidade, **dados)
     db.add(conta)
+    _gravar_emprestimo(db, conta, dados_emp)
     db.flush()
     auditar(db, u, "conta_criada", f"{conta.id}: {ent.nome} / {conta.nome}")
     db.commit()
@@ -173,8 +245,10 @@ async def editar(request: Request, conta_id: int, u: Utilizador = Depends(utiliz
         v["titulares"] = {t.id for t in dados["titulares"]}
         return render(request, "contas/form.html", status_code=400, entidade=c.entidade, conta=c, v=v,
                       erros=erros, **_opcoes(db, c.entidade_id, c.id))
+    dados_emp = dados.pop("_emprestimo")
     for k, val in dados.items():
         setattr(c, k, val)
+    _gravar_emprestimo(db, c, dados_emp)
     auditar(db, u, "conta_editada", f"{c.id}: {c.nome}")
     db.commit()
     flash(request, f"Conta «{c.nome}» atualizada.")

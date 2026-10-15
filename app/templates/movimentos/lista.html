@@ -9,7 +9,8 @@
 {% if conta %}
 <div class="titulo-acoes">
   <h1>{{ conta.nome }} <span class="nota">· {{ conta.instituicao.nome }} · {{ conta.entidade.nome }}</span></h1>
-  {% if pode_editar %}<a class="botao primario" href="/importar?conta={{ conta.id }}">Importar extrato</a>{% endif %}
+  {% if conta.tipo == 'EMPRESTIMO' %}<a class="botao primario" href="/contas/{{ conta.id }}/emprestimo">Ver empréstimo</a>
+  {% elif pode_editar %}<a class="botao primario" href="/importar?conta={{ conta.id }}">Importar extrato</a>{% endif %}
 </div>
 {% if saldo.diferenca %}
 <div class="aviso aviso-alerta">

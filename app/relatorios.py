@@ -17,9 +17,9 @@ from datetime import date, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from .models import Categoria, Conta, Movimento
+from .models import TIPOS_PASSIVO, Categoria, Conta, Movimento
 
-PASSIVOS = {"CARTAO_CREDITO"}
+PASSIVOS = TIPOS_PASSIVO
 SEM_CATEGORIA = "Sem categoria"
 
 

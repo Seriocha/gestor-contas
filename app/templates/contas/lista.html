@@ -21,6 +21,7 @@
     {% for c, s in b.contas %}
     <tr class="{{ '' if c.ativa else 'arquivada' }}">
       <td><strong><a href="/contas/{{ c.id }}/movimentos">{{ c.nome }}</a></strong>{% if c.iban_mascarado %}<br><span class="nota">{{ c.iban_mascarado }}</span>{% endif %}
+        {% if c.tipo == 'EMPRESTIMO' %}<br><a class="nota" href="/contas/{{ c.id }}/emprestimo">quadro, taxa e acertos ›</a>{% endif %}
         {% if c.tipo == 'CARTAO_CREDITO' and c.conta_pagamento %}<br><span class="nota">paga por {{ c.conta_pagamento.nome }}{% if c.dia_pagamento %}, dia {{ c.dia_pagamento }}{% endif %}</span>{% endif %}
         {% if not c.ativa %} <span class="etiqueta">arquivada</span>{% endif %}</td>
       <td>{{ c.tipo_rotulo }}{% if c.moeda != 'EUR' %} · {{ c.moeda }}{% endif %}</td>

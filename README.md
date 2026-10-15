@@ -4,7 +4,7 @@ Gestor financeiro doméstico, multiutilizador e self-hosted, para a NAS QNAP. Es
 importa movimentos de bancos portugueses e gere contas à ordem, cartões, investimentos e
 Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIGN.md).
 
-## Estado: v0.7.0
+## Estado: v0.8.0
 
 - Login com várias pessoas: passwords em argon2, bloqueio ao fim de 5 tentativas falhadas,
   proteção CSRF e invalidação das sessões quando a password muda.
@@ -37,6 +37,15 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **Empréstimo à habitação** (v0.8.0): novo tipo de conta, que conta como passivo. Guarda a TAN
+  (5 casas decimais), o tipo de taxa, o indexante, o spread, o total de prestações e a conta de
+  débito. O extrato do empréstimo Santander («Consulta Movimentos Empréstimo», .xls) importa cada
+  prestação com os valores exatos do banco: a prestação é transferência e fica ligada ao débito
+  «Cred. Habitacao…» na conta à ordem; os juros são despesa («Casa › Juros do empréstimo»); o saldo
+  é o saldo em dívida do banco. Se o débito chegar antes do extrato, a prestação é estimada
+  (capital × TAN × dias/360) e depois substituída pelos valores reais. A página do empréstimo mostra
+  o capital em dívida, a próxima prestação, o fim previsto, os juros e o capital do ano, as
+  prestações registadas e um quadro previsional de 12 meses, com «Atualizar taxa» e «Acertar capital».
 - **Pagamentos de cartão ligados** (v0.7.0): os dois lados de cada pagamento ficam ligados.
   A página de detalhe tem uma secção «Ligado a», com link para o outro lado e o botão
   «Desligar». O relatório *Relatórios › Pagamentos de cartão* mostra os pares encontrados e os

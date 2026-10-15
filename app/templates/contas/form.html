@@ -24,22 +24,50 @@
   </div>
   <label>IBAN / n.º de conta <input name="iban" value="{{ v.iban or '' }}" placeholder="Só se guarda o país e os últimos 4 dígitos"></label>
   <div class="linha">
-    <label>Saldo inicial <input name="saldo_inicial" value="{{ v.saldo_inicial or '' }}" inputmode="decimal" placeholder="0,00"></label>
-    <label>Data do saldo inicial <input name="data_saldo_inicial" type="date" value="{{ v.data_saldo_inicial or '' }}"></label>
+    <label><span class="so-tipo" data-tipos="EMPRESTIMO">Capital em dívida</span><span class="so-tipo" data-tipos="!EMPRESTIMO">Saldo inicial</span>
+      <input name="saldo_inicial" value="{{ v.saldo_inicial or '' }}" inputmode="decimal" placeholder="0,00"></label>
+    <label><span class="so-tipo" data-tipos="EMPRESTIMO">À data de</span><span class="so-tipo" data-tipos="!EMPRESTIMO">Data do saldo inicial</span>
+      <input name="data_saldo_inicial" type="date" value="{{ v.data_saldo_inicial or '' }}"></label>
   </div>
-  <p class="nota">Saldo no dia anterior ao primeiro movimento que vais importar. Num cartão de crédito, o montante em dívida vai negativo.</p>
+  <p class="nota so-tipo" data-tipos="!EMPRESTIMO">Saldo no dia anterior ao primeiro movimento que vais importar. Num cartão de crédito, o montante em dívida vai negativo.</p>
+  <p class="nota so-tipo" data-tipos="EMPRESTIMO">Se vais importar o extrato do empréstimo (recomendado), deixa capital e data vazios: saem do extrato, com os valores exatos do banco. Sem extrato, indica o capital em dívida e a data, e as prestações debitadas depois disso são estimadas.</p>
 
-  <fieldset id="campos-cartao">
-    <legend>Cartão de crédito</legend>
-    <label>Conta que paga o cartão
+  <fieldset class="so-tipo" data-tipos="CARTAO_CREDITO EMPRESTIMO">
+    <legend><span class="so-tipo" data-tipos="CARTAO_CREDITO">Cartão de crédito</span><span class="so-tipo" data-tipos="EMPRESTIMO">Pagamento da prestação</span></legend>
+    <label><span class="so-tipo" data-tipos="CARTAO_CREDITO">Conta que paga o cartão</span><span class="so-tipo" data-tipos="EMPRESTIMO">Conta onde a prestação é debitada</span>
       <select name="conta_pagamento_id">
         <option value="">—</option>
         {% for p in pagadoras %}<option value="{{ p.id }}" {% if v.conta_pagamento_id|string == p.id|string %}selected{% endif %}>{{ p.nome }}</option>{% endfor %}
       </select>
     </label>
     <div class="linha">
-      <label>Dia de fecho do extrato <input name="dia_fecho" type="number" min="1" max="31" value="{{ v.dia_fecho or '' }}"></label>
-      <label>Dia de pagamento <input name="dia_pagamento" type="number" min="1" max="31" value="{{ v.dia_pagamento or '' }}"></label>
+      <label class="so-tipo" data-tipos="CARTAO_CREDITO">Dia de fecho do extrato <input name="dia_fecho" type="number" min="1" max="31" value="{{ v.dia_fecho or '' }}"></label>
+      <label><span class="so-tipo" data-tipos="CARTAO_CREDITO">Dia de pagamento</span><span class="so-tipo" data-tipos="EMPRESTIMO">Dia da prestação</span>
+        <input name="dia_pagamento" type="number" min="1" max="31" value="{{ v.dia_pagamento or '' }}"></label>
+    </div>
+  </fieldset>
+
+  <fieldset class="so-tipo" data-tipos="EMPRESTIMO">
+    <legend>Empréstimo</legend>
+    <div class="linha">
+      <label>Total de prestações do contrato <input name="emp_prazo" type="number" min="1" max="600" value="{{ v.emp_prazo or '' }}" placeholder="ex.: 360"></label>
+      <label>N.º da última prestação paga <input name="emp_ultima" type="number" min="0" max="600" value="{{ v.emp_ultima or '' }}" placeholder="vem do extrato"></label>
+      <label>TAN em vigor (%) <input name="emp_taxa" value="{{ v.emp_taxa or '' }}" inputmode="decimal" placeholder="ex.: 3,25"></label>
+      <label>Tipo de taxa
+        <select name="emp_tipo_taxa">{% for k, r in tipos_taxa.items() %}<option value="{{ k }}" {% if v.emp_tipo_taxa == k %}selected{% endif %}>{{ r }}</option>{% endfor %}</select>
+      </label>
+    </div>
+    <div class="linha">
+      <label>Indexante <input name="emp_indexante" value="{{ v.emp_indexante or '' }}" placeholder="ex.: Euribor 12M" maxlength="30"></label>
+      <label>Spread (%) <input name="emp_spread" value="{{ v.emp_spread or '' }}" inputmode="decimal" placeholder="ex.: 0,85"></label>
+      <label>Encargos por prestação <input name="emp_encargos" value="{{ v.emp_encargos or '' }}" inputmode="decimal" placeholder="comissões e selo, ex.: 2,60"></label>
+    </div>
+    <label>A prestação aparece no extrato como (alternativas separadas por |)
+      <input name="emp_padrao" value="{{ v.emp_padrao or '' }}" maxlength="200"></label>
+    <p class="nota">Vazio: reconhece a prestação pelo valor (±10% da prestação estimada) e pelo dia (±5 dias).</p>
+    <div class="linha">
+      <label>Montante contratado <input name="emp_montante" value="{{ v.emp_montante or '' }}" inputmode="decimal" placeholder="opcional"></label>
+      <label>Data do contrato <input name="emp_data_contrato" type="date" value="{{ v.emp_data_contrato or '' }}"></label>
     </div>
   </fieldset>
 
@@ -57,8 +85,13 @@
   </div>
 </form>
 <script>
-  const tipo = document.getElementById('tipo'), cartao = document.getElementById('campos-cartao');
-  const atualizar = () => { cartao.hidden = tipo.value !== 'CARTAO_CREDITO'; };
+  // Mostra só os campos do tipo de conta escolhido (data-tipos="A B" ou "!A").
+  const tipo = document.getElementById('tipo');
+  const atualizar = () => document.querySelectorAll('.so-tipo').forEach(el => {
+    const t = el.dataset.tipos, nega = t.startsWith('!');
+    const inclui = t.replace('!', '').split(' ').includes(tipo.value);
+    el.hidden = nega ? inclui : !inclui;
+  });
   tipo.addEventListener('change', atualizar); atualizar();
 </script>
 {% endblock %}

@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block titulo %}{{ conta.nome }}{% endblock %}
+{% block conteudo %}
+<div class="titulo-acoes">
+  <h1>{{ conta.nome }} <span class="nota">· {{ conta.instituicao.nome }} · {{ conta.entidade.nome }}</span></h1>
+  <div class="acoes-form">
+    <a href="/contas/{{ conta.id }}/movimentos">Movimentos</a>
+    {% if pode_editar %}<a href="/contas/{{ conta.id }}/editar">Editar dados</a>{% endif %}
+  </div>
+</div>
+
+<section class="kpi-grelha">
+  <div class="cartao kpi"><span class="nota">Capital em dívida</span><strong class="neg">{{ r.capital | eur }}</strong>
+    {% if e.montante_contratado %}<span class="nota">{{ '%.0f' % (100 - r.capital / e.montante_contratado * 100) }}% já amortizado de {{ e.montante_contratado | eur }}</span>{% endif %}</div>
+  <div class="cartao kpi"><span class="nota">TAN em vigor</span><strong>{{ fmt_taxa(e.taxa_e5) }}</strong>
+    <span class="nota">{{ tipos_taxa[e.tipo_taxa] }}{% if e.indexante %} · {{ e.indexante }}{% endif %}{% if e.spread_e5 is not none %} + {{ fmt_taxa(e.spread_e5) }}{% endif %}</span></div>
+  <div class="cartao kpi"><span class="nota">Próxima prestação (estimada)</span><strong>{{ r.prestacao_estimada | eur }}</strong>
+    <span class="nota">{% if r.ultima_n %}n.º {{ r.ultima_n + 1 }} · {% endif %}{{ r.n_restantes }} em falta{% if r.fim_previsto %} · fim {{ r.fim_previsto.strftime('%m/%Y') }}{% endif %}</span></div>
+  <div class="cartao kpi"><span class="nota">Juros pagos em {{ hoje.year }}</span><strong>{{ r.juros_ano | eur }}</strong>
+    <span class="nota">despesa nos relatórios</span></div>
+  <div class="cartao kpi"><span class="nota">Capital amortizado em {{ hoje.year }}</span><strong class="pos">{{ r.capital_ano | eur }}</strong>
+    <span class="nota">reduz a dívida, não é despesa</span></div>
+</section>
+
+<section class="cartao">
+  <h2>Como as prestações são tratadas</h2>
+  <p class="nota sem-margem">Importa aqui o <strong>extrato do empréstimo</strong> (Santander: «Consulta Movimentos Empréstimo»):
+    cada prestação entra com os valores exatos do banco — <strong>juros</strong> (despesa em «Casa › Juros do empréstimo»)
+    e <strong>capital</strong> (reduz a dívida, não é despesa) — e fica ligada ao débito da prestação em
+    <strong>{{ conta.conta_pagamento.nome if conta.conta_pagamento else '— (definir em Editar dados)' }}</strong>, que passa a transferência.
+    Se o débito chegar antes do extrato, a prestação é <strong>estimada</strong> (capital × TAN × dias/360) e substituída
+    pelos valores reais quando importares o extrato.
+    {% if r.n_estimadas %}<br><span class="etiqueta">{{ r.n_estimadas }} prestação(ões) estimada(s) à espera do extrato</span>{% endif %}</p>
+  {% if pode_editar %}<p><a class="botao primario" href="/importar?conta={{ conta.id }}">Importar extrato do empréstimo</a></p>{% endif %}
+  {% if pode_editar %}
+  <div class="grelha-3">
+    <form method="post" action="/contas/{{ conta.id }}/emprestimo/taxa" class="formulario">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
+      <label>Revisão da taxa — nova TAN (%) <input name="taxa" value="{{ taxa_input }}" inputmode="decimal" required></label>
+      <button>Atualizar taxa</button>
+    </form>
+    <form method="post" action="/contas/{{ conta.id }}/emprestimo/acertar" class="formulario">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
+      <div class="linha">
+        <label>Capital em dívida (banco) <input name="capital" inputmode="decimal" required placeholder="{{ (r.capital / 100) | round(2) }}"></label>
+        <label>Em <input name="data" type="date" value="{{ hoje }}"></label>
+      </div>
+      <button>Acertar capital</button>
+    </form>
+    <form method="post" action="/contas/{{ conta.id }}/emprestimo/processar" class="formulario">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
+      <p class="nota sem-margem">Procurar de novo prestações na conta de débito (ex.: depois de mudar o padrão).</p>
+      <button>Processar prestações</button>
+    </form>
+  </div>
+  {% endif %}
+</section>
+
+<section class="cartao">
+  <h2>Prestações registadas</h2>
+  {% if not historico %}<p class="vazio">Ainda nenhuma. Importa o extrato do empréstimo.</p>{% else %}
+  <div class="rolar">
+  <table class="tabela compacta">
+    <thead><tr><th>N.º</th><th>Data</th><th class="num">Prestação</th><th class="num">Juros</th><th class="num">Capital</th>
+      <th class="num">Encargos</th><th class="num">Em dívida após</th><th>Débito</th></tr></thead>
+    {% for h in historico %}
+    <tr><td>{{ h.numero }}{% if h.estimada %} <span class="etiqueta">estimada</span>{% endif %}</td><td>{{ h.data | data }}</td>
+      <td class="num">{{ h.prestacao | eur }}</td><td class="num">{{ h.juros | eur }}</td><td class="num">{{ h.capital | eur }}</td>
+      <td class="num">{{ h.encargos | eur }}</td><td class="num">{{ h.em_divida | eur }}</td>
+      <td>{% if h.par_id %}<a href="/movimentos/{{ h.par_id }}">ligado ↔</a>{% else %}<span class="nota">sem débito</span>{% endif %}</td></tr>
+    {% endfor %}
+  </table>
+  </div>
+  {% endif %}
+</section>
+
+<section class="cartao">
+  <h2>Quadro previsional <span class="nota">· próximos 12 meses à TAN atual</span></h2>
+  {% if not previsao %}<p class="vazio">Sem prestações em falta.</p>{% else %}
+  <div class="rolar">
+  <table class="tabela compacta">
+    <thead><tr><th>#</th><th>Data</th><th class="num">Prestação</th><th class="num">Juros</th><th class="num">Capital</th>{% if e.encargos %}<th class="num">Encargos</th>{% endif %}<th class="num">Em dívida após</th></tr></thead>
+    {% for l in previsao %}
+    <tr><td class="nota">{{ l.n }}</td><td>{{ l.data | data }}</td><td class="num">{{ (l.prestacao + l.encargos) | eur }}</td>
+      <td class="num">{{ l.juros | eur }}</td><td class="num">{{ l.capital | eur }}</td>{% if e.encargos %}<td class="num">{{ l.encargos | eur }}</td>{% endif %}
+      <td class="num">{{ l.em_divida | eur }}</td></tr>
+    {% endfor %}
+    <tfoot><tr class="total"><td></td><td>12 meses</td><td class="num">{{ (previsao | sum(attribute='prestacao') + previsao | sum(attribute='encargos')) | eur }}</td>
+      <td class="num">{{ previsao | sum(attribute='juros') | eur }}</td><td class="num">{{ previsao | sum(attribute='capital') | eur }}</td>
+      {% if e.encargos %}<td class="num">{{ previsao | sum(attribute='encargos') | eur }}</td>{% endif %}<td></td></tr></tfoot>
+  </table>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}
