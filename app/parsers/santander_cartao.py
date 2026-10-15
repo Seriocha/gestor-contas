@@ -37,6 +37,16 @@ def _sinal_e_valor(linha, inicio: int):
 class Parser:
     chave = "santander_cartao"
     banco = "Santander (cartão de crédito)"
+    FICHA = {
+        "extrato": "Cartão de crédito",
+        "ficheiro": "XLS (Excel 97)",
+        "onde": "NetBanco › Cartões › Consulta Movimentos Extracto › Exportar",
+        "colunas": "Movimento, Data, Descrição, Estado, (C/D sem título), Montante",
+        "ordem": "Indiferente (a app ordena por data)",
+        "saldo": False,
+        "destino": "Cartão de crédito",
+        "notas": "Valores sempre positivos: o sinal vem da coluna C/D. Só se importam movimentos EXTRACTADO. O pagamento («PAG…») liga-se ao débito na conta pagadora.",
+    }
 
     @staticmethod
     def detetar(linhas) -> bool:

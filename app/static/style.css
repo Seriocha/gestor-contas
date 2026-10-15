@@ -258,6 +258,10 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .organizar select { width: auto; min-height: 38px; padding: .35rem .6rem; font-size: .9rem; }
 .dica-grafico { margin-top: .5rem; }
 .detalhe-variacao { border-color: var(--texto); scroll-margin-top: 16px; }
+.tabela-importadores { min-width: 1000px; }
+.tabela-importadores td { vertical-align: top; }
+.tabela-importadores td:nth-child(4) { width: 22%; }
+.tabela-importadores td:nth-child(6) { width: 26%; }
 .total-lado { font-family: var(--fonte-titulo); font-size: 1.15rem; font-variant-numeric: tabular-nums; }
 .grafico { position: relative; width: 100%; }
 .grafico-medio { height: 280px; }

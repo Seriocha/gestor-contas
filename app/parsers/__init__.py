@@ -131,11 +131,16 @@ def ler_linhas(nome: str, conteudo: bytes) -> list[list]:
     raise FormatoDesconhecido("Tipo de ficheiro não suportado (usa .xls, .xlsx ou .csv).")
 
 
+def todos() -> list:
+    """Todos os parsers, pela ordem de deteção (o 1.º que reconhecer o ficheiro ganha)."""
+    from . import activobank, big, creditoagricola, revolut, santander, santander_cartao, santander_emprestimo
+    return [santander.Parser, santander_cartao.Parser, santander_emprestimo.Parser, activobank.Parser,
+            creditoagricola.Parser, big.Parser, revolut.Parser]
+
+
 def ler_extrato(nome: str, conteudo: bytes) -> Extrato:
-    from . import activobank, creditoagricola, revolut, santander, santander_cartao, santander_emprestimo
     linhas = ler_linhas(nome, conteudo)
-    for parser in (santander.Parser, santander_cartao.Parser, santander_emprestimo.Parser, activobank.Parser,
-                   creditoagricola.Parser, revolut.Parser):
+    for parser in todos():
         if parser.detetar(linhas):
             extrato = parser.ler(linhas)
             if extrato.subcontas:
@@ -147,4 +152,4 @@ def ler_extrato(nome: str, conteudo: bytes) -> Extrato:
                 extrato.movimentos = para_cronologico(extrato.movimentos)
                 extrato.avisos += verificar_saldos(extrato.movimentos)
             return extrato
-    raise FormatoDesconhecido("Formato de extrato não reconhecido. Bancos suportados: Santander (conta, cartão e empréstimo), ActivoBank, Crédito Agrícola, Revolut (CSV).")
+    raise FormatoDesconhecido("Formato de extrato não reconhecido. Bancos suportados: Santander (conta, cartão e empréstimo), ActivoBank, Crédito Agrícola, Banco BiG, Revolut. Vê os formatos em Administração › Importadores.")

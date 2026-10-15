@@ -171,6 +171,18 @@ async def nova_entidade(request: Request, admin: Utilizador = Depends(exigir_adm
     return RedirectResponse("/admin/entidades", status_code=303)
 
 
+@router.get("/importadores")
+def importadores(request: Request, admin: Utilizador = Depends(exigir_admin), db: Session = Depends(get_db)):
+    """Tabela com os atributos de cada importador (vindos das fichas dos parsers) e a sua utilização."""
+    from ..models import Importacao
+    from ..parsers import todos
+    uso = {}
+    for parser, n, ultima in db.execute(select(Importacao.parser, func.count(), func.max(Importacao.criado_em))
+                                        .where(Importacao.estado == "confirmada").group_by(Importacao.parser)):
+        uso[parser] = {"n": n, "ultima": ultima}
+    return render(request, "admin/importadores.html", importadores=todos(), uso=uso)
+
+
 @router.post("/preferencias")
 async def gravar_preferencias(request: Request, admin: Utilizador = Depends(exigir_admin),
                               db: Session = Depends(get_db)):

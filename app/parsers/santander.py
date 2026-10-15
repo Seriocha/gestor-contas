@@ -15,6 +15,16 @@ COLUNAS = ["dataopera", "datavalor", "descri", "montante", "saldo"]
 class Parser:
     chave = "santander"
     banco = "Santander"
+    FICHA = {
+        "extrato": "Conta à ordem",
+        "ficheiro": "XLS (Excel 97)",
+        "onde": "NetBanco › Saldos e movimentos › Exportar",
+        "colunas": "Data Operação, Data valor, Descrição, Montante( EUR ), Saldo Contabilístico( EUR )",
+        "ordem": "Mais recente primeiro",
+        "saldo": True,
+        "destino": "Conta à ordem (Santander)",
+        "notas": "Datas em texto dd-mm-aaaa. A moeda vem no título da coluna do montante.",
+    }
 
     @staticmethod
     def detetar(linhas) -> bool:

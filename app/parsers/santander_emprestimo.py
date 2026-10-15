@@ -26,6 +26,16 @@ COLUNAS = ["datamovimento", "datavalor", "numeroprest", "descri", "montante", "s
 class Parser:
     chave = "santander_emprestimo"
     banco = "Santander (empréstimo)"
+    FICHA = {
+        "extrato": "Empréstimo",
+        "ficheiro": "XLS (Excel 97)",
+        "onde": "NetBanco › Crédito › Consulta Movimentos Empréstimo › Exportar",
+        "colunas": "Data Movimento, Data Valor, Número Prestação, Descrição, Montante, Saldo em Dívida",
+        "ordem": "Mais recente primeiro",
+        "saldo": True,
+        "destino": "Empréstimo (habitação)",
+        "notas": "Duas linhas por prestação (JUROS e CAPIT.): vira prestação (transferência ligada ao débito) + juros (despesa). Saldo = −capital em dívida.",
+    }
 
     @staticmethod
     def detetar(linhas) -> bool:

@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block titulo %}Importadores{% endblock %}
+{% block conteudo %}
+<h1>Administração</h1>
+{% include "admin/_menu.html" %}
+<section class="cartao">
+  <div class="cartao-cabecalho">
+    <h2>Importadores de extratos</h2>
+    <a class="botao" href="/importar">Importar extrato</a>
+  </div>
+  <p class="nota">Cada importador reconhece sozinho o seu formato pelo cabeçalho do ficheiro (o primeiro que reconhecer ganha, por esta ordem).
+    Movimentos repetidos são ignorados; com saldo, a cadeia de saldos é verificada linha a linha.</p>
+  <div class="rolar">
+  <table class="tabela tabela-importadores">
+    <thead><tr><th>Banco</th><th>Extrato e conta de destino</th><th>Ficheiro e onde exportar</th><th>Colunas reconhecidas</th>
+      <th>Ordem e saldo</th><th>Particularidades</th><th class="num">Importações</th></tr></thead>
+    <tbody>
+    {% for p in importadores %}
+    {% set u = uso.get(p.chave) %}
+    <tr>
+      <td><strong>{{ p.banco }}</strong><br><code>{{ p.chave }}</code></td>
+      <td>{{ p.FICHA.extrato }}<br><span class="nota">→ {{ p.FICHA.destino }}</span></td>
+      <td><strong>{{ p.FICHA.ficheiro }}</strong><br><span class="nota">{{ p.FICHA.onde }}</span></td>
+      <td class="nota">{{ p.FICHA.colunas }}</td>
+      <td>{{ p.FICHA.ordem }}<br>{% if p.FICHA.saldo %}<span class="etiqueta etiqueta-cor">com saldo</span>{% else %}<span class="etiqueta">sem saldo</span>{% endif %}</td>
+      <td class="nota">{{ p.FICHA.notas }}</td>
+      <td class="num">{% if u %}<strong>{{ u.n }}</strong><br><span class="nota">última {{ u.ultima.strftime('%d-%m-%Y') }}</span>{% else %}<span class="nota">—</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+<section class="cartao">
+  <h2>Sem importador</h2>
+  <p class="nota sem-margem">Contas de depósitos a prazo, fundos e Certificados de Aforro não têm extrato para importar:
+    usa «+ Movimento» na página da conta para registar entradas, saídas e juros, e liga-os ao movimento da conta à ordem.</p>
+</section>
+{% endblock %}

@@ -25,6 +25,16 @@ def _texto(valor) -> str:
 class Parser:
     chave = "ca"
     banco = "Crédito Agrícola"
+    FICHA = {
+        "extrato": "Conta à ordem",
+        "ficheiro": "XLSX",
+        "onde": "CA Online › Consulta actividade › Exportar Excel",
+        "colunas": "Data Movimento, Data Valor, Descrição, Valor, Saldo após movimento, Tipo, Ordenante, Beneficiário, Descritivo1/2, Referência",
+        "ordem": "Mais recente primeiro",
+        "saldo": True,
+        "destino": "Conta à ordem (Crédito Agrícola)",
+        "notas": "Valores e datas em texto («-1.366,96 €», dd/mm/aaaa). O Descritivo1 junta-se à descrição.",
+    }
 
     @staticmethod
     def detetar(linhas) -> bool:

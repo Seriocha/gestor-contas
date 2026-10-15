@@ -15,6 +15,16 @@ COLUNAS = ["datalanc", "datavalor", "descri", "valor", "saldo"]
 class Parser:
     chave = "activobank"
     banco = "ActivoBank"
+    FICHA = {
+        "extrato": "Conta à ordem",
+        "ficheiro": "XLSX",
+        "onde": "ActivoBank › Contas › Movimentos › Exportar Excel",
+        "colunas": "Data Lanc., Data Valor, Descrição, Valor, Saldo",
+        "ordem": "Mais antigo primeiro",
+        "saldo": True,
+        "destino": "Conta à ordem (ActivoBank)",
+        "notas": "N.º de conta lido do cabeçalho «HISTÓRICO DE CONTA NÚMERO …».",
+    }
 
     @staticmethod
     def detetar(linhas) -> bool:

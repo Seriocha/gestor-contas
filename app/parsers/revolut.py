@@ -41,6 +41,16 @@ def _data(texto):
 class Parser:
     chave = "revolut"
     banco = "Revolut"
+    FICHA = {
+        "extrato": "Conta corrente e poupança",
+        "ficheiro": "CSV (pt ou en)",
+        "onde": "App Revolut › Conta › Extrato › Excel/CSV",
+        "colunas": "Tipo, Produto, Data de início, Data de Conclusão, Descrição, Montante, Comissão, Moeda, Estado, Saldo",
+        "ordem": "Mais antigo primeiro",
+        "saldo": True,
+        "destino": "Carteira digital («Atual») e Poupança («Depósito»/Conta reforçada)",
+        "notas": "Uma subconta por produto e moeda: o mesmo ficheiro importa-se nas duas contas. Comissões à parte; revertidos ignorados; carregamentos e câmbios são transferências.",
+    }
 
     @staticmethod
     def _colunas(linhas):
