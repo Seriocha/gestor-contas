@@ -4,14 +4,17 @@ import io
 from datetime import date
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import RedirectResponse, StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .. import relatorios as rel
-from ..deps import IntOpcional, entidade_escolhida, get_db, render, utilizador_atual
+from .. import servicos
+from ..deps import (IntOpcional, auditar, entidade_escolhida, exigir_papel, flash, get_db, render,
+                    utilizador_atual)
 from ..formatos import parse_data
-from ..models import Conta, Etiqueta, Movimento, Utilizador
+from ..models import PAPEIS, Conta, Etiqueta, Movimento, Utilizador
+from ..seguranca import ler_form
 
 router = APIRouter(prefix="/relatorios")
 
@@ -100,3 +103,29 @@ def exportar_csv(request: Request, entidade: IntOpcional = None, periodo: str = 
     conteudo = "﻿" + buf.getvalue()  # BOM: o Excel abre com acentos corretos
     return StreamingResponse(iter([conteudo]), media_type="text/csv; charset=utf-8",
                              headers={"Content-Disposition": f'attachment; filename="{nome.encode("ascii", "ignore").decode()}"'})
+
+
+@router.get("/cartoes")
+def pagamentos_cartoes(request: Request, entidade: IntOpcional = None, u: Utilizador = Depends(utilizador_atual),
+                       db: Session = Depends(get_db)):
+    """Pagamentos de cartão: os pares encontrados (cartão ↔ conta pagadora) e os pagamentos sem par."""
+    visiveis, ent, papel = entidade_escolhida(request, db, u, entidade)
+    if not ent:
+        return render(request, "relatorios_cartoes.html", entidade=None, visiveis=visiveis)
+    return render(request, "relatorios_cartoes.html", visiveis=visiveis, entidade=ent,
+                  cartoes=servicos.relatorio_pagamentos_cartao(db, ent.id),
+                  pode_editar=PAPEIS[papel] >= PAPEIS["editar"])
+
+
+@router.post("/cartoes/procurar")
+async def procurar_pares(request: Request, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
+    """Volta a procurar pares em todos os cartões da entidade (ex.: depois de atualizar a app)."""
+    form = await ler_form(request)
+    entidade_id = int(form["entidade"]) if str(form.get("entidade", "")).isdigit() else 0
+    exigir_papel(db, u, entidade_id, "editar")
+    n = sum(servicos.ligar_pagamentos_cartao(db, c) for c in rel.contas_da_entidade(db, entidade_id)
+            if c.tipo == "CARTAO_CREDITO")
+    auditar(db, u, "pagamentos_cartao_procurados", f"entidade {entidade_id}: {n}")
+    db.commit()
+    flash(request, f"Procura concluída: {n} pagamento(s) marcado(s) ou ligado(s)." if n else "Nada de novo encontrado.")
+    return RedirectResponse(f"/relatorios/cartoes?entidade={entidade_id}", status_code=303)

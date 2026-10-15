@@ -19,6 +19,11 @@ def run_migrations_offline() -> None:
 def run_migrations_online() -> None:
     engine = create_engine(url, poolclass=pool.NullPool)
     with engine.connect() as connection:
+        # As alterações em SQLite recriam a tabela (DROP + CREATE). Com as chaves
+        # estrangeiras ativas, o DROP apagaria em cascata as linhas dependentes
+        # (ex.: etiquetas dos movimentos). Desligadas durante as migrações.
+        connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+        connection.commit()  # fecha a transação implícita; senão as migrações nunca eram gravadas
         context.configure(connection=connection, target_metadata=target_metadata, render_as_batch=True)
         with context.begin_transaction():
             context.run_migrations()

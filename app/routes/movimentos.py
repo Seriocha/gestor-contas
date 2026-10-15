@@ -14,6 +14,7 @@ from ..formatos import parse_data
 from ..models import PAPEIS, Categoria, Conta, Etiqueta, Movimento, Utilizador
 from ..qualificacao import aplicar_regras, arvore_categorias, qualificar_manual, repor
 from ..seguranca import ler_form
+from .. import servicos
 from ..servicos import resumo_cartao, saldo_conta
 
 router = APIRouter()
@@ -152,7 +153,10 @@ def editar_form(request: Request, mov_id: int, voltar: str = "", u: Utilizador =
     if not m:
         raise HTTPException(status_code=404, detail="Não encontrado.")
     papel = exigir_papel(db, u, m.conta.entidade_id, "ver")
-    return render(request, "movimentos/editar.html", m=m, categorias=arvore_categorias(db),
+    par = db.get(Movimento, m.par_id) if m.par_id else None
+    if par and not papel_em(db, u, par.conta.entidade_id):
+        par = None  # o outro lado está numa entidade que este utilizador não vê
+    return render(request, "movimentos/editar.html", m=m, par=par, categorias=arvore_categorias(db),
                   etiquetas=db.scalars(select(Etiqueta).order_by(Etiqueta.nome)).all(),
                   pode_editar=PAPEIS[papel] >= PAPEIS["editar"], voltar=_voltar_seguro(voltar))
 
@@ -247,3 +251,33 @@ async def lote(request: Request, u: Utilizador = Depends(utilizador_atual), db: 
     db.commit()
     flash(request, f"{len(movs)} movimentos atualizados." + extra)
     return RedirectResponse(voltar, status_code=303)
+
+
+@router.post("/movimentos/{mov_id}/desligar")
+async def desligar(request: Request, mov_id: int, u: Utilizador = Depends(utilizador_atual),
+                   db: Session = Depends(get_db)):
+    m = _movimento_editavel(db, u, mov_id)
+    form = await ler_form(request)
+    outro = servicos.desligar(db, m)
+    auditar(db, u, "movimentos_desligados", f"{m.id} ↔ {outro.id if outro else '—'}")
+    db.commit()
+    flash(request, "Ligação desfeita. A marca de transferência mantém-se; muda-a no movimento, se for preciso.")
+    return RedirectResponse(_voltar_seguro(str(form.get("voltar", ""))) if form.get("voltar") else f"/movimentos/{m.id}",
+                            status_code=303)
+
+
+@router.post("/movimentos/{mov_id}/ligar")
+async def ligar(request: Request, mov_id: int, u: Utilizador = Depends(utilizador_atual),
+                db: Session = Depends(get_db)):
+    """Liga à mão este movimento a outro (o outro lado da mesma transferência)."""
+    m = _movimento_editavel(db, u, mov_id)
+    form = await ler_form(request)
+    outro = _movimento_editavel(db, u, _int(form.get("par_id")) or 0)
+    if outro.id == m.id or outro.conta.entidade_id != m.conta.entidade_id or (outro.montante > 0) == (m.montante > 0):
+        raise HTTPException(status_code=400, detail="Só se ligam uma entrada e uma saída da mesma entidade.")
+    servicos.ligar_manual(db, m, outro)
+    auditar(db, u, "movimentos_ligados", f"{m.id} ↔ {outro.id}")
+    db.commit()
+    flash(request, "Movimentos ligados e marcados como transferência.")
+    return RedirectResponse(_voltar_seguro(str(form.get("voltar", ""))) if form.get("voltar") else f"/movimentos/{m.id}",
+                            status_code=303)

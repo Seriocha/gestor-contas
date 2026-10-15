@@ -146,12 +146,27 @@ def _marcar_transferencia(m: Movimento) -> bool:
     return True
 
 
+def pagamentos_do_cartao(db: Session, cartao: Conta) -> list[Movimento]:
+    """Créditos no cartão que são pagamentos (descrição "PAG…"/"PAGAMENTO…"),
+    ou que já foram ligados a um débito."""
+    return [m for m in db.scalars(select(Movimento).where(
+        Movimento.conta_id == cartao.id, Movimento.montante > 0).order_by(Movimento.data_mov, Movimento.id))
+        if m.par_id or PAGAMENTO_CARTAO.search(m.descricao_norm or m.descricao_original)]
+
+
+def _pode_ligar(m: Movimento) -> bool:
+    # Um movimento que alguém marcou à mão como "não é transferência" fica de fora.
+    return not (m.qualificado_por == "manual" and not m.transferencia)
+
+
 def ligar_pagamentos_cartao(db: Session, conta: Conta) -> int:
     """O pagamento de um cartão não é despesa (a despesa são as compras do
     cartão): marca como transferência o crédito "PAG…" no cartão e o débito
-    do mesmo valor na conta que o paga (±7 dias). Corre ao importar tanto o
-    cartão como a conta pagadora, por isso a ordem das importações não
-    importa. Nunca mexe em movimentos qualificados à mão."""
+    do mesmo valor na conta que o paga (±7 dias, o mais próximo), e grava a
+    ligação entre os dois (par_id). Corre ao importar tanto o cartão como a
+    conta pagadora, por isso a ordem das importações não importa. Nunca muda
+    a qualificação de movimentos tratados à mão. Devolve quantos movimentos
+    foram marcados ou ligados."""
     if conta.tipo == "CARTAO_CREDITO":
         cartoes = [conta]
     else:
@@ -159,27 +174,78 @@ def ligar_pagamentos_cartao(db: Session, conta: Conta) -> int:
                                                  Conta.conta_pagamento_id == conta.id)).all()
     n = 0
     for cartao in cartoes:
-        pagamentos = [m for m in db.scalars(select(Movimento).where(
-            Movimento.conta_id == cartao.id, Movimento.montante > 0).order_by(Movimento.data_mov))
-            if PAGAMENTO_CARTAO.search(m.descricao_norm or m.descricao_original)]
+        pagamentos = [m for m in pagamentos_do_cartao(db, cartao) if _pode_ligar(m)]
         if not pagamentos:
             continue
-        candidatos = []
+        livres = []
         if cartao.conta_pagamento_id:
-            menor = min(m.data_mov for m in pagamentos) - JANELA_PAGAMENTO
-            candidatos = db.scalars(select(Movimento).where(
-                Movimento.conta_id == cartao.conta_pagamento_id, Movimento.montante < 0,
-                Movimento.data_mov >= menor)).all()
-        usados: set[int] = set()
+            livres = [d for d in db.scalars(select(Movimento).where(
+                Movimento.conta_id == cartao.conta_pagamento_id, Movimento.montante < 0, Movimento.par_id.is_(None),
+                Movimento.data_mov >= pagamentos[0].data_mov - JANELA_PAGAMENTO,
+                Movimento.data_mov <= pagamentos[-1].data_mov + JANELA_PAGAMENTO)) if _pode_ligar(d)]
         for pag in pagamentos:
-            n += _marcar_transferencia(pag)
-            pares = [d for d in candidatos if d.id not in usados and d.montante == -pag.montante
-                     and abs(d.data_mov - pag.data_mov) <= JANELA_PAGAMENTO]
-            if pares:
-                par = min(pares, key=lambda d: (abs(d.data_mov - pag.data_mov), d.id))
-                usados.add(par.id)
-                n += _marcar_transferencia(par)
+            mudou = _marcar_transferencia(pag)
+            if not pag.par_id:
+                pares = [d for d in livres if d.montante == -pag.montante
+                         and abs(d.data_mov - pag.data_mov) <= JANELA_PAGAMENTO]
+                if pares:
+                    par = min(pares, key=lambda d: (abs(d.data_mov - pag.data_mov), d.id))
+                    livres.remove(par)
+                    pag.par_id, par.par_id = par.id, pag.id
+                    _marcar_transferencia(par)
+                    mudou = True
+            n += mudou
     return n
+
+
+def desligar(db: Session, m: Movimento) -> Movimento | None:
+    """Desfaz a ligação nos dois lados (não muda a marca de transferência)."""
+    outro = db.get(Movimento, m.par_id) if m.par_id else None
+    m.par_id = None
+    if outro and outro.par_id == m.id:
+        outro.par_id = None
+    return outro
+
+
+@dataclass
+class PagamentosCartao:
+    cartao: Conta
+    pares: list            # [(pagamento no cartão, débito na conta pagadora)]
+    sem_par: list          # [(pagamento, [débitos candidatos com o mesmo valor, ±30 dias])]
+
+
+def relatorio_pagamentos_cartao(db: Session, entidade_id: int) -> list[PagamentosCartao]:
+    out = []
+    cartoes = db.scalars(select(Conta).where(Conta.entidade_id == entidade_id, Conta.tipo == "CARTAO_CREDITO")
+                         .order_by(Conta.nome)).all()
+    for cartao in cartoes:
+        pares, sem_par = [], []
+        for pag in sorted(pagamentos_do_cartao(db, cartao), key=lambda m: m.data_mov, reverse=True):
+            if pag.par_id:
+                pares.append((pag, db.get(Movimento, pag.par_id)))
+                continue
+            candidatos = []
+            if cartao.conta_pagamento_id:
+                candidatos = db.scalars(select(Movimento).where(
+                    Movimento.conta_id == cartao.conta_pagamento_id, Movimento.montante == -pag.montante,
+                    Movimento.par_id.is_(None),
+                    Movimento.data_mov.between(pag.data_mov - timedelta(days=30), pag.data_mov + timedelta(days=30)))
+                    .order_by(Movimento.data_mov)).all()
+            sem_par.append((pag, candidatos))
+        out.append(PagamentosCartao(cartao, pares, sem_par))
+    return out
+
+
+def ligar_manual(db: Session, a: Movimento, b: Movimento) -> None:
+    """Liga à mão dois movimentos (ex.: pagamento fora da janela de 7 dias)."""
+    for m in (a, b):
+        if m.par_id:
+            desligar(db, m)
+    a.par_id, b.par_id = b.id, a.id
+    for m in (a, b):
+        m.transferencia = True
+        m.qualificado_por = "manual"
+        m.regra_id = None
 
 
 def _dia_no_mes(ano: int, mes: int, dia: int):

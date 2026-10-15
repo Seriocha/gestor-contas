@@ -10,7 +10,10 @@
 {% block conteudo %}
 <div class="titulo-acoes">
   <h1>Relatórios</h1>
-  {% if entidade %}<a class="botao" href="/relatorios/csv?{{ request.url.query }}">Exportar CSV</a>{% endif %}
+  {% if entidade %}<div class="acoes-form">
+    <a href="/relatorios/cartoes?entidade={{ entidade.id }}">Pagamentos de cartão</a>
+    <a class="botao" href="/relatorios/csv?{{ request.url.query }}">Exportar CSV</a>
+  </div>{% endif %}
 </div>
 {% set destino = "/relatorios" %}{% include "_entidades.html" %}
 {% if not entidade %}<p class="vazio">Sem acesso a nenhuma entidade.</p>{% else %}

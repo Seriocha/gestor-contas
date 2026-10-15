@@ -34,6 +34,7 @@
     {% endif %}
     {% if cartao.proximo_pagamento %}<div><span class="nota">Pagamento do último extrato</span><strong>{{ cartao.proximo_pagamento | data }}</strong></div>{% endif %}
     {% if conta.conta_pagamento %}<div><span class="nota">Pago por</span><strong><a href="/contas/{{ conta.conta_pagamento.id }}/movimentos">{{ conta.conta_pagamento.nome }}</a></strong></div>{% endif %}
+    <div><span class="nota">Pagamentos</span><strong><a href="/relatorios/cartoes?entidade={{ conta.entidade_id }}">ver pares</a></strong></div>
     {% if not conta.dia_fecho %}<div><span class="nota">Ciclo do extrato</span><strong><a href="/contas/{{ conta.id }}/editar">definir dia de fecho</a></strong></div>{% endif %}
     {% elif conta %}
     <div><span class="nota">Saldo{% if saldo.data %} em {{ saldo.data | data }}{% endif %}</span><strong>{{ saldo.atual | eur(conta.moeda) }}</strong></div>
@@ -142,7 +143,7 @@
         {% if not conta %}<td class="nota">{{ m.conta.nome }}</td>{% endif %}
         <td>
           <a href="/movimentos/{{ m.id }}?voltar={{ aqui | urlencode }}" class="descricao">{{ m.descricao_original }}</a>
-          {% if m.transferencia %}<span class="etiqueta">transferência</span>{% endif %}
+          {% if m.transferencia %}<span class="etiqueta">transferência{% if m.par_id %} ↔{% endif %}</span>{% endif %}
           {% if m.excluido %}<span class="etiqueta">excluído</span>{% endif %}
           {% for e in m.etiquetas %}<span class="etiqueta etiqueta-cor">#{{ e.nome }}</span>{% endfor %}
           {% if m.notas %}<br><span class="nota">{{ m.notas }}</span>{% endif %}

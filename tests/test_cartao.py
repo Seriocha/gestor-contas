@@ -110,3 +110,66 @@ def test_resumo_do_cartao(admin, app):
         assert r.gastos_ciclo == 4510 and r.pagamentos_ciclo == 20936
     pagina = admin.get("/contas/2/movimentos").text
     assert "Em dívida" in pagina and "25,11" in pagina and "Pago por" in pagina
+
+
+def _por_desc(app):
+    with app.state.SessionLocal() as db:
+        return {m.descricao_original: (m.id, m.par_id, m.transferencia) for m in db.query(Movimento)}
+
+
+def test_par_gravado_e_ligado_a_no_detalhe(admin, app):
+    _importar(admin, "ordem.xls", xls_santander(ORDEM), conta_id="1")
+    _importar(admin, "CC.xls", xls_cartao(CARTAO), conta_id="2")
+    m = _por_desc(app)
+    pag, deb = m["PAG.TRANS.BANCARIA"], m["TRF CARTAO CREDITO"]
+    assert pag[1] == deb[0] and deb[1] == pag[0]
+    det = admin.get(f"/movimentos/{pag[0]}").text
+    assert "Ligado a" in det and "TRF CARTAO CREDITO" in det and f'href="/movimentos/{deb[0]}' in det
+    det = admin.get(f"/movimentos/{deb[0]}").text
+    assert "PAG.TRANS.BANCARIA" in det and "pagamento do cartão" in det
+    # compras não estão ligadas
+    assert "Não está ligado" in admin.get(f"/movimentos/{m['CONTINENTE MODELO'][0]}").text
+
+
+def test_relatorio_pares_desligar_e_ligar_a_mao(admin, app):
+    # pagamento fora da janela de 7 dias: fica sem par, com o débito como candidato
+    ordem = [("10-07-2026", "Farmacia", -12.0, 778.64), ("25-06-2026", "TRF CARTAO CREDITO", -209.36, 790.64),
+             ("01-06-2026", "Vencimento", 1000.0, 1000.0)]
+    _importar(admin, "ordem.xls", xls_santander(ordem), conta_id="1")
+    _importar(admin, "CC.xls", xls_cartao(CARTAO), conta_id="2")
+    m = _por_desc(app)
+    pag, deb = m["PAG.TRANS.BANCARIA"], m["TRF CARTAO CREDITO"]
+    assert pag[1] is None and not deb[2]
+    rel = admin.get("/relatorios/cartoes?entidade=1").text
+    assert "1 sem par" in rel and "0 ligados" in rel and "Ligar" in rel
+    # ligar à mão a partir do relatório
+    r = admin.post(f"/movimentos/{pag[0]}/ligar", data={"csrf": _csrf(admin.get("/relatorios/cartoes")),
+                   "par_id": str(deb[0]), "voltar": "/relatorios/cartoes?entidade=1"}, follow_redirects=False)
+    assert r.status_code == 303
+    m = _por_desc(app)
+    assert m["PAG.TRANS.BANCARIA"][1] == deb[0] and m["TRF CARTAO CREDITO"][1:] == (pag[0], True)
+    assert "1 ligado" in admin.get("/relatorios/cartoes?entidade=1").text
+    # desligar desfaz nos dois lados, mas mantém a marca de transferência
+    admin.post(f"/movimentos/{pag[0]}/desligar", data={"csrf": _csrf(admin.get("/relatorios/cartoes"))})
+    m = _por_desc(app)
+    assert m["PAG.TRANS.BANCARIA"][1:] == (None, True) and m["TRF CARTAO CREDITO"][1:] == (None, True)
+
+
+def test_ligar_recusa_dois_debitos(admin, app):
+    _importar(admin, "ordem.xls", xls_santander(ORDEM), conta_id="1")
+    m = _por_desc(app)
+    r = admin.post(f"/movimentos/{m['Farmacia'][0]}/ligar",
+                   data={"csrf": _csrf(admin.get("/movimentos")), "par_id": str(m["TRF CARTAO CREDITO"][0])})
+    assert r.status_code == 400
+
+
+def test_procurar_pares_liga_dados_da_v060(admin, app):
+    """Na NAS, a v0.6.0 marcou transferências sem gravar o par: «Procurar pares agora» liga-os."""
+    _importar(admin, "ordem.xls", xls_santander(ORDEM), conta_id="1")
+    _importar(admin, "CC.xls", xls_cartao(CARTAO), conta_id="2")
+    with app.state.SessionLocal() as db:
+        for mv in db.query(Movimento):
+            mv.par_id = None
+        db.commit()
+    r = admin.post("/relatorios/cartoes/procurar", data={"csrf": _csrf(admin.get("/relatorios/cartoes")), "entidade": "1"})
+    assert "1 pagamento(s) marcado(s) ou ligado(s)" in r.text and "1 ligado" in r.text

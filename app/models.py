@@ -171,8 +171,12 @@ class Movimento(Base):
     # 'manual' protege a qualificação de ser reescrita pelas regras.
     qualificado_por: Mapped[str | None] = mapped_column(String(10))  # manual | regra
     regra_id: Mapped[int | None] = mapped_column(ForeignKey("regra.id", ondelete="SET NULL"))
+    # O outro lado de uma transferência (ex.: pagamento do cartão ↔ débito na conta pagadora).
+    par_id: Mapped[int | None] = mapped_column(ForeignKey("movimento.id", ondelete="SET NULL"))
 
     conta: Mapped[Conta] = relationship()
+    par: Mapped["Movimento | None"] = relationship(remote_side="Movimento.id", foreign_keys=[par_id],
+                                                   post_update=True)
     categoria: Mapped["Categoria | None"] = relationship()
     etiquetas: Mapped[list["Etiqueta"]] = relationship(secondary="movimento_etiqueta")
 

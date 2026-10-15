@@ -10,6 +10,41 @@
     <div><span class="nota">Qualificado</span><strong>{{ {'manual': 'à mão', 'regra': 'por regra'}.get(m.qualificado_por, '—') }}</strong></div>
   </div>
   <p>{{ m.descricao_original }}</p>
+</section>
+
+<section class="cartao">
+  <h2>Ligado a</h2>
+  {% if par %}
+  <p class="nota">Este movimento e o seguinte são os dois lados da mesma transferência
+    {%- if m.conta.tipo == 'CARTAO_CREDITO' or par.conta.tipo == 'CARTAO_CREDITO' %} (pagamento do cartão){% endif %}:
+    contam como transferência e não entram nos relatórios de receitas e despesas.</p>
+  <table class="tabela compacta">
+    <tr>
+      <td class="sem-quebra">{{ par.data_mov | data }}</td>
+      <td><a href="/contas/{{ par.conta.id }}/movimentos">{{ par.conta.nome }}</a></td>
+      <td><a href="/movimentos/{{ par.id }}?voltar={{ voltar | urlencode }}">{{ par.descricao_original }}</a></td>
+      <td class="num {{ 'neg' if par.montante < 0 else 'pos' }}">{{ par.montante | eur(par.moeda) }}</td>
+      <td>{% if par.transferencia %}<span class="etiqueta">transferência</span>{% endif %}</td>
+    </tr>
+  </table>
+  {% if pode_editar %}
+  <form method="post" action="/movimentos/{{ m.id }}/desligar" class="separado"
+        onsubmit="return confirm('Desfazer a ligação entre estes dois movimentos?')">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <button>Desligar</button>
+  </form>
+  {% endif %}
+  {% elif m.par_id %}
+  <p class="nota">Ligado a um movimento de uma entidade a que não tens acesso.</p>
+  {% else %}
+  <p class="vazio">Não está ligado a nenhum outro movimento.
+    {% if m.conta.tipo == 'CARTAO_CREDITO' or m.transferencia %}
+    Vê os candidatos em <a href="/relatorios/cartoes?entidade={{ m.conta.entidade_id }}">Pagamentos de cartão</a>.{% endif %}</p>
+  {% endif %}
+</section>
+
+<section class="cartao">
+  <h2>Qualificação</h2>
 
   {% if pode_editar %}
   <form method="post" class="formulario">

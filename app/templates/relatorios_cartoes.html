@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block titulo %}Pagamentos de cartão{% endblock %}
+{% block conteudo %}
+<div class="titulo-acoes">
+  <h1>Pagamentos de cartão</h1>
+  {% if entidade %}<a href="/relatorios?entidade={{ entidade.id }}">‹ Relatórios</a>{% endif %}
+</div>
+{% set destino = "/relatorios/cartoes" %}{% include "_entidades.html" %}
+{% if not entidade %}<p class="vazio">Sem acesso a nenhuma entidade.</p>{% else %}
+
+<section class="cartao">
+  <div class="cartao-cabecalho">
+    <p class="nota sem-margem">O pagamento de um cartão aparece duas vezes: como crédito no cartão e como débito na conta
+      que o paga. Os dois lados ficam ligados e marcados como transferência, para a despesa contar só uma vez — nas compras
+      do cartão. Ligação automática: mesmo valor, até 7 dias de diferença.</p>
+    {% if pode_editar and cartoes %}
+    <form method="post" action="/relatorios/cartoes/procurar">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
+      <input type="hidden" name="entidade" value="{{ entidade.id }}">
+      <button>Procurar pares agora</button>
+    </form>
+    {% endif %}
+  </div>
+</section>
+
+{% if not cartoes %}<p class="vazio">Esta entidade não tem cartões de crédito.</p>{% endif %}
+
+{% for c in cartoes %}
+<section class="cartao">
+  <div class="cartao-cabecalho">
+    <h2><a href="/contas/{{ c.cartao.id }}/movimentos">{{ c.cartao.nome }}</a>
+      <span class="nota">· pago por {{ c.cartao.conta_pagamento.nome if c.cartao.conta_pagamento else '— (definir em Contas › Editar)' }}</span></h2>
+    <span class="nota">{{ c.pares | length }} ligado{{ '' if c.pares | length == 1 else 's' }} · {{ c.sem_par | length }} sem par</span>
+  </div>
+
+  {% if c.sem_par %}
+  <h3>Sem par</h3>
+  <div class="rolar">
+  <table class="tabela compacta">
+    <thead><tr><th>Data</th><th>Pagamento no cartão</th><th class="num">Valor</th><th>Débitos possíveis na conta pagadora (mesmo valor, ±30 dias)</th></tr></thead>
+    {% for pag, candidatos in c.sem_par %}
+    <tr>
+      <td class="sem-quebra">{{ pag.data_mov | data }}</td>
+      <td><a href="/movimentos/{{ pag.id }}">{{ pag.descricao_original }}</a></td>
+      <td class="num pos">{{ pag.montante | eur }}</td>
+      <td>
+        {% for d in candidatos %}
+        <div class="candidato">
+          {{ d.data_mov | data }} · <a href="/movimentos/{{ d.id }}">{{ d.descricao_original }}</a> · {{ d.montante | eur }}
+          {% if pode_editar %}
+          <form method="post" action="/movimentos/{{ pag.id }}/ligar">
+            <input type="hidden" name="csrf" value="{{ csrf_token }}">
+            <input type="hidden" name="par_id" value="{{ d.id }}">
+            <input type="hidden" name="voltar" value="/relatorios/cartoes?entidade={{ entidade.id }}">
+            <button class="ligacao">Ligar</button>
+          </form>
+          {% endif %}
+        </div>
+        {% else %}
+        <span class="nota">{{ 'Nenhum débito com este valor — falta importar esse período da conta pagadora?' if c.cartao.conta_pagamento else 'Define a conta que paga o cartão.' }}</span>
+        {% endfor %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+  {% endif %}
+
+  <h3>Ligados</h3>
+  {% if not c.pares %}<p class="vazio">Nenhum pagamento ligado.</p>{% else %}
+  <div class="rolar">
+  <table class="tabela compacta">
+    <thead><tr><th>No cartão</th><th></th><th>Na conta pagadora</th><th class="num">Valor</th><th class="num">Dias</th></tr></thead>
+    {% for pag, d in c.pares %}
+    <tr>
+      <td><a href="/movimentos/{{ pag.id }}">{{ pag.data_mov | data }} · {{ pag.descricao_original }}</a></td>
+      <td aria-hidden="true">↔</td>
+      <td>{% if d %}<a href="/movimentos/{{ d.id }}">{{ d.data_mov | data }} · {{ d.descricao_original }}</a>
+        <span class="nota">({{ d.conta.nome }})</span>{% endif %}</td>
+      <td class="num">{{ pag.montante | eur }}</td>
+      <td class="num">{{ ((pag.data_mov - d.data_mov).days | abs) if d else '' }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+  {% endif %}
+</section>
+{% endfor %}
+{% endif %}
+{% endblock %}
