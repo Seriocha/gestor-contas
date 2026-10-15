@@ -1,42 +1,104 @@
+{% from "_icones.html" import icone, logo %}
 <!doctype html>
 <html lang="pt">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>{% block titulo %}Gestor de Contas{% endblock %} · Gestor de Contas</title>
-  <link rel="stylesheet" href="/static/style.css">
+  <meta name="theme-color" content="#F3F4F6" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0B0D12" media="(prefers-color-scheme: dark)">
+  <link rel="manifest" href="/static/manifest.webmanifest">
+  <link rel="icon" href="/static/icones/icone.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/icones/icone-192.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <link rel="preload" href="/static/fonts/geist-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/static/fonts/bricolage-grotesque-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/static/style.css?v={{ versao }}">
   {% block cabecalho %}{% endblock %}
 </head>
-<body>
+<body class="{{ 'com-menu' if utilizador else 'sem-menu' }}">
 {% if utilizador %}
-<header class="topo">
-  <a class="marca" href="/">Gestor de Contas</a>
-  <nav>
-    {% set caminho = request.url.path %}
-    <a href="/" {% if caminho == '/' %}class="ativo"{% endif %}>Painel</a>
-    <a href="/movimentos" {% if caminho.startswith('/movimentos') or caminho.endswith('/movimentos') %}class="ativo"{% endif %}>Movimentos</a>
-    <a href="/relatorios" {% if caminho.startswith('/relatorios') %}class="ativo"{% endif %}>Relatórios</a>
-    <a href="/contas" {% if caminho.startswith('/contas') and not caminho.endswith('/movimentos') %}class="ativo"{% endif %}>Contas</a>
-    <a href="/importar" {% if caminho.startswith('/importar') %}class="ativo"{% endif %}>Importar</a>
-    <a href="/categorias" {% if caminho.startswith('/categorias') or caminho.startswith('/regras') %}class="ativo"{% endif %}>Categorias e regras</a>
-    {% if utilizador.is_admin %}
-    <a href="/admin/utilizadores" {% if caminho.startswith('/admin') %}class="ativo"{% endif %}>Administração</a>
-    {% endif %}
+{% set caminho = request.url.path %}
+{% set em_movimentos = caminho.startswith('/movimentos') or caminho.endswith('/movimentos') %}
+{% set itens_dia = [
+  ('/', 'painel', 'Painel', caminho == '/'),
+  ('/movimentos', 'movimentos', 'Movimentos', em_movimentos),
+  ('/relatorios', 'relatorios', 'Relatórios', caminho.startswith('/relatorios')),
+  ('/importar', 'importar', 'Importar', caminho.startswith('/importar')),
+] %}
+{% set itens_config = [
+  ('/contas', 'contas', 'Contas', caminho.startswith('/contas') and not em_movimentos),
+  ('/categorias', 'categorias', 'Categorias e regras', caminho.startswith('/categorias') or caminho.startswith('/regras')),
+] + ([('/admin/utilizadores', 'admin', 'Administração', caminho.startswith('/admin'))] if utilizador.is_admin else []) %}
+
+<header class="barra-movel">
+  <a class="marca" href="/">{{ logo() }}<span>Gestor de Contas</span></a>
+  <button type="button" class="botao-icone" id="abrir-menu" aria-controls="lateral" aria-expanded="false" aria-label="Abrir menu">{{ icone('menu') }}</button>
+</header>
+
+<aside class="lateral" id="lateral" aria-label="Navegação principal">
+  <div class="lateral-topo">
+    <a class="marca" href="/">{{ logo() }}<span>Gestor de Contas</span></a>
+    <button type="button" class="botao-icone so-movel" id="fechar-menu" aria-label="Fechar menu">{{ icone('fechar') }}</button>
+  </div>
+  <nav class="menu">
+    <p class="menu-grupo">Dia a dia</p>
+    {% for href, ic, rotulo, ativo in itens_dia %}
+    <a href="{{ href }}" {% if ativo %}class="ativo" aria-current="page"{% endif %}>{{ icone(ic) }}<span>{{ rotulo }}</span></a>
+    {% endfor %}
+    <p class="menu-grupo">Configuração</p>
+    {% for href, ic, rotulo, ativo in itens_config %}
+    <a href="{{ href }}" {% if ativo %}class="ativo" aria-current="page"{% endif %}>{{ icone(ic) }}<span>{{ rotulo }}</span></a>
+    {% endfor %}
   </nav>
-  <div class="sessao">
-    <a href="/perfil">{{ utilizador.nome }}</a>
+  <div class="lateral-rodape">
+    <a href="/perfil" class="utilizador {{ 'ativo' if caminho.startswith('/perfil') }}">
+      <span class="avatar">{{ utilizador.nome[:1] | upper }}</span>
+      <span><strong>{{ utilizador.nome }}</strong><small>{{ utilizador.login }}</small></span>
+    </a>
     <form method="post" action="/logout">
       <input type="hidden" name="csrf" value="{{ csrf_token }}">
-      <button class="ligacao">Sair</button>
+      <button class="botao-icone" title="Sair" aria-label="Sair">{{ icone('sair') }}</button>
     </form>
   </div>
-</header>
+</aside>
+<div class="veu" id="veu" hidden></div>
 {% endif %}
+
 <main class="{% block classe_main %}conteudo{% endblock %}">
-  {% for tipo, msg in flashes %}<div class="aviso aviso-{{ tipo }}">{{ msg }}</div>{% endfor %}
+  {% for tipo, msg in flashes %}<div class="aviso aviso-{{ tipo }}" role="status">{{ msg }}</div>{% endfor %}
   {% block conteudo %}{% endblock %}
+  <footer class="rodape">Gestor de Contas · v{{ versao }}</footer>
 </main>
-<footer class="rodape">v{{ versao }}</footer>
+
+{% if utilizador %}
+<nav class="abas-movel" aria-label="Navegação rápida">
+  {% for href, ic, rotulo, ativo in itens_dia %}
+  <a href="{{ href }}" {% if ativo %}class="ativo" aria-current="page"{% endif %}>{{ icone(ic) }}<span>{{ rotulo }}</span></a>
+  {% endfor %}
+  <button type="button" id="abrir-menu-2" aria-controls="lateral" aria-label="Mais opções">{{ icone('mais') }}<span>Mais</span></button>
+</nav>
+<script>
+  // Menu deslizante no telemóvel.
+  (() => {
+    const lateral = document.getElementById('lateral'), veu = document.getElementById('veu');
+    const botoes = [document.getElementById('abrir-menu'), document.getElementById('abrir-menu-2')];
+    const abrir = (sim) => {
+      document.body.classList.toggle('menu-aberto', sim); veu.hidden = !sim;
+      botoes.forEach(b => b && b.setAttribute('aria-expanded', String(sim)));
+      if (sim) lateral.querySelector('a')?.focus();
+    };
+    botoes.forEach(b => b && b.addEventListener('click', () => abrir(true)));
+    document.getElementById('fechar-menu').addEventListener('click', () => abrir(false));
+    veu.addEventListener('click', () => abrir(false));
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') abrir(false); });
+  })();
+  // Caixas de filtros: abertas no computador, fechadas no telemóvel.
+  document.querySelectorAll('details.caixa-filtros').forEach(d => {
+    if (window.matchMedia('(min-width: 900px)').matches || d.dataset.ativos === '1') d.open = true;
+  });
+</script>
+{% endif %}
 {% block scripts %}{% endblock %}
 </body>
 </html>

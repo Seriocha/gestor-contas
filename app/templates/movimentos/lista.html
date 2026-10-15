@@ -48,6 +48,10 @@
       {% if n_sem %}<a href="{{ request.url.path }}?{% if not conta %}entidade={{ entidade.id }}&{% endif %}tipo=sem">{{ n_sem }}</a>{% else %}0{% endif %}</strong></div>
   </div>
 
+  {% set n_filtros = [f.categoria, f.etiqueta, f.tipo, f.q, f.de, f.ate] | select | list | length %}
+  <details class="caixa-filtros" data-ativos="{{ '1' if n_filtros else '0' }}">
+  <summary>Filtros{% if n_filtros %} <span class="etiqueta etiqueta-cor">{{ n_filtros }} ativo{{ 's' if n_filtros > 1 }}</span>{% endif %}
+    <span class="nota"><span class="ver">Mostrar</span><span class="esconder">Esconder</span></span></summary>
   <form method="get" class="filtros">
     {% if not conta %}
     <input type="hidden" name="entidade" value="{{ entidade.id }}">
@@ -84,6 +88,7 @@
     <button>Filtrar</button>
     {% if query and query != 'entidade=' ~ entidade.id %}<a href="{{ request.url.path }}{% if not conta %}?entidade={{ entidade.id }}{% endif %}">Limpar</a>{% endif %}
   </form>
+  </details>
 
   {% if not movimentos %}
     <p class="vazio">Sem movimentos{% if query %} para este filtro{% endif %}.</p>
@@ -96,6 +101,7 @@
     <input type="hidden" name="f_entidade" value="{{ entidade.id }}">
     <input type="hidden" name="f_conta" value="{{ conta.id if conta else '' }}">
     {% for k in ['categoria', 'etiqueta', 'tipo', 'q', 'de', 'ate'] %}<input type="hidden" name="f_{{ k }}" value="{{ f[k] }}">{% endfor %}
+    <button type="button" class="abrir-lote" id="abrir-lote">Ações em massa…</button>
     <div class="barra-lote" id="barra-lote">
       <fieldset class="ambito">
         <label class="opcao"><input type="radio" name="ambito" value="selecao" checked> <span id="n-selecionados">0 selecionados</span></label>
@@ -139,17 +145,17 @@
       <tbody>
       {% for m in movimentos %}
       <tr class="{{ 'arquivada' if m.excluido else '' }}">
-        {% if pode_editar %}<td><input type="checkbox" name="ids" value="{{ m.id }}" aria-label="Selecionar"></td>{% endif %}
-        <td class="sem-quebra">{{ m.data_mov | data }}</td>
-        {% if not conta %}<td class="nota">{{ m.conta.nome }}</td>{% endif %}
-        <td>
+        {% if pode_editar %}<td class="c-sel"><input type="checkbox" name="ids" value="{{ m.id }}" aria-label="Selecionar"></td>{% endif %}
+        <td class="c-data sem-quebra">{{ m.data_mov | data }}</td>
+        {% if not conta %}<td class="c-conta nota">{{ m.conta.nome }}</td>{% endif %}
+        <td class="c-desc">
           <a href="/movimentos/{{ m.id }}?voltar={{ aqui | urlencode }}" class="descricao">{{ m.descricao_original }}</a>
           {% if m.transferencia %}<span class="etiqueta">transferência{% if m.par_id %} ↔{% endif %}</span>{% endif %}
           {% if m.excluido %}<span class="etiqueta">excluído</span>{% endif %}
           {% for e in m.etiquetas %}<span class="etiqueta etiqueta-cor">#{{ e.nome }}</span>{% endfor %}
           {% if m.notas %}<br><span class="nota">{{ m.notas }}</span>{% endif %}
         </td>
-        <td>
+        <td class="c-cat">
           {% if pode_editar %}
           <select class="sel-categoria" data-mov="{{ m.id }}" aria-label="Categoria">
             <option value="">— sem categoria —</option>
@@ -164,8 +170,8 @@
           {% if m.categoria %}<span class="pastilha" style="background: {{ m.categoria.cor_efetiva }}"></span>{{ m.categoria.nome_completo }}{% else %}<span class="nota">—</span>{% endif %}
           {% endif %}
         </td>
-        <td class="num {{ 'neg' if m.montante < 0 else 'pos' }}">{{ m.montante | eur(m.moeda) }}</td>
-        {% if conta %}<td class="num">{{ m.saldo_apos | eur(conta.moeda) }}</td>{% endif %}
+        <td class="c-valor num {{ 'neg' if m.montante < 0 else 'pos' }}">{{ m.montante | eur(m.moeda) }}</td>
+        {% if conta %}<td class="c-saldo num">{{ m.saldo_apos | eur(conta.moeda) }}</td>{% endif %}
       </tr>
       {% endfor %}
       </tbody>
@@ -211,8 +217,14 @@
   const atualizar = () => {
     const n = caixas.filter(c => c.checked).length;
     if (contador) contador.textContent = `${n} selecionado${n === 1 ? '' : 's'}`;
+    // No telemóvel a barra só aparece com seleção (ou a pedido).
+    const barra = document.getElementById('barra-lote');
+    if (barra && n > 0) barra.classList.add('ativa');
   };
   caixas.forEach(c => c.addEventListener('change', atualizar));
+  document.getElementById('abrir-lote')?.addEventListener('click', e => {
+    document.getElementById('barra-lote').classList.add('ativa'); e.target.classList.add('escondido');
+  });
   // Confirmação antes de aplicar a todo o filtro ou de repor qualificações.
   document.getElementById('form-lote')?.addEventListener('submit', e => {
     const f = e.target, acao = f.acao.selectedOptions[0];

@@ -4,7 +4,7 @@ Gestor financeiro doméstico, multiutilizador e self-hosted, para a NAS QNAP. Es
 importa movimentos de bancos portugueses e gere contas à ordem, cartões, investimentos e
 Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIGN.md).
 
-## Estado: v0.9.0
+## Estado: v0.10.0
 
 - Login com várias pessoas: passwords em argon2, bloqueio ao fim de 5 tentativas falhadas,
   proteção CSRF e invalidação das sessões quando a password muda.
@@ -37,6 +37,15 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **Novo visual e telemóvel** (v0.10.0), inspirado no [votoavoto.pt](https://votoavoto.pt):
+  tipografia Bricolage Grotesque e Geist (incluídas na app, sem CDN), fundo cinza-claro,
+  cartões brancos de cantos largos e amarelo #FFD23F nas ações, com modo escuro. No computador
+  há uma barra lateral e o conteúdo ocupa a largura disponível (até 1600px). No telemóvel
+  (referência: Galaxy S24, 360×780) há barra de topo, menu deslizante e abas em baixo; os
+  movimentos aparecem como cartões, os filtros são recolhíveis e as ações em massa só aparecem
+  quando são precisas. Nenhuma página excede a largura do ecrã. Com o manifesto e os ícones, a
+  app pode ser instalada no ecrã principal do telemóvel. Para abrir como aplicação, sem a barra
+  do browser, o acesso tem de ser por HTTPS.
 - **Revolut** (v0.9.0): extrato CSV, em português ou inglês. Cada subconta (produto e moeda) é
   importada na conta certa: «Atual» na conta Revolut, «Depósito»/Conta reforçada numa conta
   poupança Revolut. As comissões passam a movimentos à parte, em «Comissões bancárias», e os

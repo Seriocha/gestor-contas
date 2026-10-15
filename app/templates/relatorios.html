@@ -58,11 +58,11 @@
   <div class="grafico grafico-medio"><canvas data-grafico="tendencia" aria-label="Receitas, despesas e saldo por mês" role="img"></canvas></div>
   <details>
     <summary>Ver tabela</summary>
-    <table class="tabela compacta">
+    <div class="rolar"><table class="tabela compacta">
       <thead><tr><th>Mês</th><th class="num">Receitas</th><th class="num">Despesas</th><th class="num">Saldo</th></tr></thead>
       {% for x in mensal %}<tr><td>{{ x.rotulo }}</td><td class="num">{{ x.receitas | eur }}</td><td class="num">{{ x.despesas | eur }}</td>
         <td class="num {{ 'neg' if x.saldo < 0 else '' }}">{{ x.saldo | eur }}</td></tr>{% endfor %}
-    </table>
+    </table></div>
   </details>
 </section>
 
@@ -71,6 +71,7 @@
 <section class="cartao">
   <h2>{{ titulo }} por categoria <span class="nota">· {{ p.rotulo }}</span></h2>
   {% if not linhas %}<p class="vazio">Sem {{ titulo | lower }} neste período.</p>{% else %}
+  <div class="rolar">
   <table class="tabela compacta">
     <thead><tr><th>Categoria</th><th class="num">Valor</th><th class="num">%</th><th class="num">Mov.</th><th class="num">vs. anterior</th></tr></thead>
     <tbody>
@@ -98,6 +99,7 @@
     </tbody>
     <tfoot><tr class="total"><td>Total</td><td class="num">{{ total | eur }}</td><td class="num">100</td><td></td><td class="num">{{ delta(total, total_ant, titulo == 'Despesas') }}</td></tr></tfoot>
   </table>
+  </div>
   {% endif %}
 </section>
 {% endfor %}

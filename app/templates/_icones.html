@@ -1,0 +1,28 @@
+{# Ícones de traço (24×24, 2px), desenhados para esta app. Uso: {{ icone('painel') }} #}
+{% macro icone(nome, classe='icone') -%}
+<svg class="{{ classe }}" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+{%- if nome == 'painel' -%}<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>
+{%- elif nome == 'movimentos' -%}<path d="M7 4v16M7 20l-3-3M7 20l3-3M17 20V4M17 4l-3 3M17 4l3 3"/>
+{%- elif nome == 'relatorios' -%}<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>
+{%- elif nome == 'importar' -%}<path d="M12 3v12M7 10l5 5 5-5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>
+{%- elif nome == 'contas' -%}<rect x="2" y="6" width="20" height="14" rx="2.5"/><path d="M2 10h20M16 15h2"/><path d="M6 6V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"/>
+{%- elif nome == 'categorias' -%}<path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8Z"/><circle cx="8" cy="8" r="1.5"/>
+{%- elif nome == 'admin' -%}<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/>
+{%- elif nome == 'perfil' -%}<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>
+{%- elif nome == 'sair' -%}<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>
+{%- elif nome == 'menu' -%}<path d="M4 7h16M4 12h16M4 17h10"/>
+{%- elif nome == 'fechar' -%}<path d="M6 6l12 12M18 6 6 18"/>
+{%- elif nome == 'mais' -%}<circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>
+{%- elif nome == 'filtro' -%}<path d="M3 5h18l-7 8v6l-4 2v-8Z"/>
+{%- endif -%}
+</svg>
+{%- endmacro %}
+
+{# Logótipo: arco de moedas sobre a base — duas linhas, um ponto amarelo. #}
+{% macro logo() -%}
+<svg class="logo" viewBox="0 0 32 32" width="28" height="28" aria-hidden="true">
+  <path d="M5 23a11 11 0 0 1 22 0" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/>
+  <path d="M10.5 23a5.5 5.5 0 0 1 11 0" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/>
+  <circle cx="16" cy="23" r="2.6" fill="#FFD23F"/>
+</svg>
+{%- endmacro %}

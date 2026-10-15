@@ -10,7 +10,7 @@
 {% for natureza, rotulo in naturezas.items() %}
 <section class="cartao">
   <h2>{{ 'Despesas' if natureza == 'DESPESA' else 'Receitas' }}</h2>
-  <table class="tabela compacta">
+  <div class="rolar"><table class="tabela compacta">
     <thead><tr><th>Categoria</th><th class="num">Movimentos</th><th></th></tr></thead>
     <tbody>
     {% for raiz in arvore if raiz.natureza == natureza %}
@@ -29,7 +29,7 @@
       {% endfor %}
     {% endfor %}
     </tbody>
-  </table>
+  </table></div>
 </section>
 {% endfor %}
 
@@ -102,7 +102,7 @@
   <h2>Etiquetas</h2>
   <p class="nota">Etiquetas agrupam movimentos de categorias diferentes — por exemplo uma viagem, uma obra em casa ou despesas a dividir.</p>
   {% if etiquetas %}
-  <table class="tabela compacta">
+  <div class="rolar"><table class="tabela compacta">
     {% for e in etiquetas %}
     <tr>
       <td><span class="etiqueta etiqueta-cor">#{{ e.nome }}</span></td>
@@ -115,7 +115,7 @@
       </td>
     </tr>
     {% endfor %}
-  </table>
+  </table></div>
   {% endif %}
   <form method="post" action="/etiquetas" class="filtros">
     <input type="hidden" name="csrf" value="{{ csrf_token }}">
