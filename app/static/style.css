@@ -178,6 +178,12 @@ code { font-size: .85em; background: var(--superficie-2); border: 1px solid var(
 .acoes { white-space: nowrap; text-align: right; }
 .acoes form { display: inline; margin-left: .6rem; }
 .recuo { padding-left: 2.2rem !important; }
+/* listas de contas agrupadas (painel, Contas): título do grupo maior, contas ligeiramente indentadas */
+.tabela tr.titulo-grupo th, .tabela tr.titulo-grupo td { font-family: var(--fonte-titulo); font-size: 1.08rem; font-weight: 700;
+  padding-top: 1.1rem; padding-bottom: .45rem; border-bottom: 2px solid var(--linha-forte); }
+.tabela.compacta tr.titulo-grupo th, .tabela.compacta tr.titulo-grupo td { font-size: 1.05rem; }
+.tabela tr.titulo-grupo .nota { font-family: var(--fonte); font-size: .8rem; font-weight: 500; }
+.tabela td.indentada, .tabela.compacta td.indentada { padding-left: 1.4rem; }
 .sem-quebra { white-space: nowrap; }
 
 /* texto auxiliar */
@@ -425,3 +431,17 @@ select.gravado { box-shadow: 0 0 0 3px var(--ok-fundo); border-color: var(--pos)
 .etiqueta-ok { background: var(--ok-fundo); color: var(--ok-texto); border-color: transparent; }
 .linha-prevista td { font-style: italic; color: var(--previsto); }
 .previsoes-aviso { border-left: 3px solid #9cc0ea; padding-left: .6rem; }
+/* Tarefas de importação */
+.grelha-tarefas { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 1rem; align-items: start; }
+.banco-tarefas h2 .etiqueta { margin-left: .4rem; vertical-align: middle; font-family: var(--fonte); }
+.lista-tarefas { list-style: none; margin: 0; padding: 0; }
+.lista-tarefas li { display: grid; gap: .35rem; padding: .75rem 0; border-top: 1px solid var(--linha); justify-items: start; }
+.lista-tarefas li:first-child { border-top: none; }
+.lista-tarefas .tarefa-topo { display: flex; flex-wrap: wrap; align-items: baseline; gap: .35rem; width: 100%; }
+.lista-tarefas .tarefa-ultima { margin-left: auto; }
+.lista-tarefas .estado { width: 1.2rem; color: var(--suave); }
+.lista-tarefas li.feita .estado { color: var(--ok-texto); }
+.lista-tarefas li.feita { opacity: .75; }
+.botao.pequeno { min-height: 32px; padding: .3rem .7rem; font-size: .85rem; }
+.aviso-tarefas { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; }
+@media (max-width: 640px) { .grelha-tarefas { grid-template-columns: 1fr; } }

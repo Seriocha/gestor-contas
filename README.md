@@ -4,7 +4,7 @@ Gestor financeiro doméstico, multiutilizador e self-hosted, para a NAS QNAP. Es
 importa movimentos de bancos portugueses e gere contas à ordem, cartões, investimentos e
 Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIGN.md).
 
-## Estado: v0.18.1
+## Estado: v0.19.0
 
 - Login com várias pessoas: passwords em argon2, bloqueio ao fim de 5 tentativas falhadas,
   proteção CSRF e invalidação das sessões quando a password muda.
@@ -37,6 +37,14 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.19.0 — tarefas de importação, mês nos relatórios, grupos de contas:** novo ecrã
+  **Importar › Tarefas de importação do mês**: por banco, ligação ao serviço online, onde exportar
+  cada extrato (da ficha do importador) e se cada conta já foi atualizada no ciclo; contas sem
+  importador (investimento, aforro, Caixa Break) com a indicação de atualização manual. O lembrete
+  («Tarefas do mês» no menu e aviso no painel) só aparece entre os dias configurados em
+  Administração › Preferências (por omissão 25 a 5). Relatórios: com o período «Mês» escolhe-se
+  qual mês. Painel e Contas: o título de cada grupo é maior e as contas ficam indentadas; Contas
+  passa a agrupar por tipo, banco ou sem grupos.
 - **v0.18.1 — receitas previstas nos relatórios:** no mês de referência, os Relatórios somam
   também as receitas previstas por receber (linhas «… (previsto)» em Receitas por categoria e
   nos KPIs), respeitando o filtro de conta. A escolha «ver só o real / somar as previstas» é a

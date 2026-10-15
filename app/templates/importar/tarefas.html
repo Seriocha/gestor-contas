@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block titulo %}Tarefas de importação{% endblock %}
+{% block conteudo %}
+<div class="titulo-acoes">
+  <h1>Tarefas de importação</h1>
+  <a href="/importar">Importar um ficheiro ›</a>
+</div>
+{% set destino = '/importar/tarefas' %}{% include "_entidades.html" %}
+{% if entidade %}
+<section class="cartao resumo-tarefas">
+  <p class="sem-margem">
+    {% if por_fazer %}<strong>{{ por_fazer }} conta{{ 's' if por_fazer != 1 }} por atualizar</strong>
+    {% else %}<strong>Tudo atualizado</strong>{% endif %}
+    neste ciclo, desde {{ inicio | data }}.</p>
+  <p class="nota sem-margem">Para cada banco: entra no serviço online, exporta o extrato indicado e importa-o aqui
+    (podes sobrepor períodos, os repetidos são ignorados). O lembrete aparece no menu e no painel
+    {% if ativas %}entre o dia {{ dia_ini }} e o dia {{ dia_fim }}{% if dia_fim < dia_ini %} do mês seguinte{% endif %}{% else %}— desligado{% endif %}
+    {% if utilizador.is_admin %}· <a href="/admin/utilizadores#preferencias">alterar</a>{% endif %}.</p>
+</section>
+
+<div class="grelha-tarefas">
+{% for b in bancos %}
+<section class="cartao banco-tarefas">
+  <div class="cartao-cabecalho">
+    <h2>{{ b.nome }}
+      {% if b.por_fazer %}<span class="etiqueta">{{ b.por_fazer }} por fazer</span>{% else %}<span class="etiqueta etiqueta-ok">✓ feito</span>{% endif %}</h2>
+    {% if b.site %}<a class="botao" href="{{ b.site }}" target="_blank" rel="noopener noreferrer">Abrir {{ b.servico }} ↗</a>{% endif %}
+  </div>
+  <ol class="lista-tarefas">
+    {% for t in b.tarefas %}
+    <li class="{{ 'feita' if t.feita else '' }}">
+      <div class="tarefa-topo">
+        <span class="estado" aria-hidden="true">{{ '✓' if t.feita else '○' }}</span>
+        <strong>{{ t.conta.nome }}</strong> <span class="nota">· {{ t.conta.tipo_rotulo }}</span>
+        <span class="nota tarefa-ultima">{% if t.ultima %}atualizada {{ t.ultima.strftime('%d-%m-%Y') }}{% else %}nunca atualizada{% endif %}</span>
+      </div>
+      {% if t.ficha %}
+      <p class="sem-margem">Exportar: <strong>{{ t.ficha.onde }}</strong> <span class="nota">({{ t.ficha.ficheiro }})</span></p>
+      {% if t.ficha.notas %}<p class="nota sem-margem">{{ t.ficha.notas }}</p>{% endif %}
+      {% if pode_editar %}<a class="botao primario pequeno" href="/importar?conta={{ t.conta.id }}">Importar ficheiro</a>{% endif %}
+      {% else %}
+      <p class="nota sem-margem">{{ t.nota_manual }}</p>
+      <a class="botao pequeno" href="/contas/{{ t.conta.id }}/movimentos">Abrir a conta</a>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+</section>
+{% else %}
+<p class="vazio">Sem contas ativas.</p>
+{% endfor %}
+</div>
+{% endif %}
+{% endblock %}

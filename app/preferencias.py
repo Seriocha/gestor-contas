@@ -9,6 +9,10 @@ from .models import Definicao
 
 OMISSAO = {
     "mostrar_iban_completo": "0",  # "1": mostra o NIB/IBAN inteiro; "0": PT50 •••• 1234
+    # Lembrete das tarefas de importação (menu e painel): ligado e entre que dias do mês.
+    "tarefas_ativas": "1",
+    "tarefas_dia_ini": "25",
+    "tarefas_dia_fim": "5",
 }
 
 

@@ -2,18 +2,18 @@
 (sankey) e despesas por categoria — inspirado no painel do Sure."""
 from collections import defaultdict
 from dataclasses import replace
-from datetime import timedelta
+from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .. import relatorios as rel
-from .. import previsoes, retificacoes
+from .. import previsoes, retificacoes, tarefas
 from ..backup import ultimo_backup
 from ..deps import IntOpcional, entidade_escolhida, get_db, render, utilizador_atual
 from ..formatos import parse_data
-from ..models import TIPOS_CONTA, Conta, Movimento, Utilizador
+from ..models import PAPEIS, TIPOS_CONTA, Conta, Movimento, Utilizador
 from .relatorios import data_referencia
 
 router = APIRouter()
@@ -98,7 +98,11 @@ def painel(request: Request, entidade: IntOpcional = None, periodo: str = "mes",
         "sankey": rel.sankey(r, previstas=[(e.prev.descricao, e.valor) for e in pendentes]),
         "despesas": [{"nome": l.nome, "valor": l.total / 100, "cor": l.cor} for l in despesas],
     }
-    return render(request, "painel.html", visiveis=visiveis, entidade=ent, p=p, periodos=PERIODOS_PAINEL, ref=ref,
+    prefs = request.app.state.prefs
+    por_importar = None
+    if tarefas.na_janela(prefs, date.today()) and PAPEIS[papel] >= PAPEIS["editar"]:
+        por_importar = sum(b.por_fazer for b in tarefas.do_ciclo(db, ent.id, tarefas.inicio_ciclo(prefs, date.today())))
+    return render(request, "painel.html", visiveis=visiveis, entidade=ent, p=p, por_importar=por_importar, periodos=PERIODOS_PAINEL, ref=ref,
                   atual=atual, ha_30=ha_30, grupos_ativos=grupos_ativos, grupos_passivos=grupos_passivos,
                   agrupar=agrupar, ordenar=ordenar, opcoes_agrupar=AGRUPAR, opcoes_ordenar=ORDENAR,
                   avisos=retificacoes.avisos(db, [c.id for c, _ in pat["contas"]]),

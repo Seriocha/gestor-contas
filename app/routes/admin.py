@@ -189,7 +189,18 @@ async def gravar_preferencias(request: Request, admin: Utilizador = Depends(exig
     form = await ler_form(request)
     mostrar = "1" if form.get("mostrar_iban_completo") == "1" else "0"
     preferencias.gravar(db, "mostrar_iban_completo", mostrar)
-    auditar(db, admin, "preferencias", f"mostrar_iban_completo={mostrar}")
+    ativas = "1" if form.get("tarefas_ativas") == "1" else "0"
+    preferencias.gravar(db, "tarefas_ativas", ativas)
+    dias = {}
+    for chave in ("tarefas_dia_ini", "tarefas_dia_fim"):
+        v = str(form.get(chave, "")).strip()
+        if v:
+            if not (v.isdigit() and 1 <= int(v) <= 31):
+                flash(request, "Os dias do lembrete têm de estar entre 1 e 31.", "erro")
+                return RedirectResponse("/admin/utilizadores#preferencias", status_code=303)
+            preferencias.gravar(db, chave, str(int(v)))
+            dias[chave] = int(v)
+    auditar(db, admin, "preferencias", f"mostrar_iban_completo={mostrar} tarefas_ativas={ativas} {dias}")
     db.commit()
     request.app.state.prefs = preferencias.carregar(db)
     flash(request, "Preferências guardadas.")

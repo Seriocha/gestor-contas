@@ -5,8 +5,10 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from .. import servicos
-from ..deps import IntOpcional, auditar, entidades_visiveis, exigir_papel, flash, get_db, render, utilizador_atual
+from datetime import date
+
+from .. import servicos, tarefas
+from ..deps import IntOpcional, auditar, entidade_escolhida, entidades_visiveis, exigir_papel, flash, get_db, render, utilizador_atual
 from ..models import PAPEIS, Conta, Importacao, Utilizador
 from ..parsers import FormatoDesconhecido, ler_extrato
 from ..seguranca import ler_form
@@ -35,6 +37,21 @@ def _historico(db: Session, u: Utilizador) -> list[Importacao]:
 def _pagina(request, db, u, status_code=200, **ctx):
     return render(request, "importar/form.html", status_code=status_code, contas=_contas_editaveis(db, u),
                   historico=_historico(db, u), **ctx)
+
+
+@router.get("/tarefas")
+def tarefas_do_mes(request: Request, entidade: IntOpcional = None, u: Utilizador = Depends(utilizador_atual),
+                   db: Session = Depends(get_db)):
+    """Instruções e ligações para tirar os extratos de cada banco, com o estado no ciclo atual."""
+    visiveis, ent, papel = entidade_escolhida(request, db, u, entidade)
+    prefs, hoje = request.app.state.prefs, date.today()
+    inicio = tarefas.inicio_ciclo(prefs, hoje)
+    bancos = tarefas.do_ciclo(db, ent.id, inicio) if ent else []
+    ativas, dia_ini, dia_fim = tarefas.janela(prefs)
+    return render(request, "importar/tarefas.html", visiveis=visiveis, entidade=ent, bancos=bancos, inicio=inicio,
+                  pode_editar=bool(papel) and PAPEIS[papel] >= PAPEIS["editar"], ativas=ativas,
+                  dia_ini=dia_ini, dia_fim=dia_fim, na_janela=tarefas.na_janela(prefs, hoje),
+                  por_fazer=sum(b.por_fazer for b in bancos))
 
 
 @router.get("")

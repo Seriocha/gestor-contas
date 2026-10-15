@@ -25,6 +25,11 @@
       {% for k, rotulo in presets.items() %}<option value="{{ k }}" {% if f.periodo == k %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}
     </select>
   </label>
+  <label class="so-mes">Mês
+    <select name="mes">
+      {% for k, rotulo in meses %}<option value="{{ k }}" {% if f.mes == k %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}
+    </select>
+  </label>
   <label class="so-personalizado">De <input type="date" name="de" value="{{ f.de or p.ini }}"></label>
   <label class="so-personalizado">Até <input type="date" name="ate" value="{{ f.ate or p.fim }}"></label>
   <label>Conta
@@ -174,7 +179,10 @@
 <script src="/static/graficos.js?v={{ versao }}"></script>
 <script>
   const sel = document.getElementById('sel-periodo');
-  const mostrar = () => document.querySelectorAll('.so-personalizado').forEach(l => l.hidden = sel.value !== 'personalizado');
+  const mostrar = () => {
+    document.querySelectorAll('.so-personalizado').forEach(l => l.hidden = sel.value !== 'personalizado');
+    document.querySelectorAll('.so-mes').forEach(l => { l.hidden = sel.value !== 'mes'; l.querySelector('select').disabled = l.hidden; });
+  };
   sel.addEventListener('change', mostrar); mostrar();
   document.querySelectorAll('.expandir').forEach(b => b.addEventListener('click', () => {
     const aberto = b.getAttribute('aria-expanded') === 'true';

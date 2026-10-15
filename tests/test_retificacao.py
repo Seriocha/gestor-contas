@@ -95,7 +95,12 @@ def test_so_aforro_e_investimento(admin):
 def test_ordenar_lista_de_contas(admin):
     def nomes(html):
         return re.findall(r'<strong><a href="/contas/\d+/movimentos">([^<]+)</a>', html)
-    assert nomes(admin.get("/contas?ordem=-saldo").text) == ["Ordem", "Certificados"]   # 500 > 100
+    assert nomes(admin.get("/contas?ordem=-saldo&agrupar=nenhum").text) == ["Ordem", "Certificados"]   # 500 > 100
     assert nomes(admin.get("/contas?ordem=nome").text) == ["Certificados", "Ordem"]
     assert nomes(admin.get("/contas").text) == ["Certificados", "Ordem"]                 # escolha memorizada
     assert 'aria-sort="ascending"' in admin.get("/contas").text
+    # agrupadas por tipo: a ordem vale dentro de cada grupo, os grupos seguem a ordem dos tipos
+    agrupada = admin.get("/contas?agrupar=tipo&ordem=-saldo").text
+    assert nomes(agrupada) == ["Ordem", "Certificados"] and 'class="titulo-grupo"' in agrupada
+    assert 'class="indentada"' in agrupada
+    assert "titulo-grupo" not in admin.get("/contas?agrupar=nenhum").text

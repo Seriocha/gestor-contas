@@ -1,7 +1,10 @@
 {% extends "base.html" %}
 {% block titulo %}Importar{% endblock %}
 {% block conteudo %}
-<h1>Importar extrato</h1>
+<div class="titulo-acoes">
+  <h1>Importar extrato</h1>
+  <a class="botao" href="/importar/tarefas">Tarefas de importação do mês</a>
+</div>
 {% if erro %}<div class="aviso aviso-erro">{{ erro }}</div>{% endif %}
 <section class="cartao">
   {% if not contas %}

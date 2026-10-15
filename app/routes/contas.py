@@ -178,11 +178,30 @@ ORDENS_CONTAS = {
 }
 
 
+AGRUPAR_CONTAS = {"tipo": "Tipo de conta", "banco": "Banco", "nenhum": "Sem grupos"}
+
+
+def _agrupar(contas: list, agrupar: str) -> list[tuple[str, list]]:
+    """[(título, [(conta, saldo)])], mantendo a ordem escolhida dentro de cada grupo."""
+    if agrupar == "nenhum":
+        return [("", contas)]
+    chave = (lambda c: c.tipo_rotulo) if agrupar == "tipo" else (lambda c: c.instituicao.nome)
+    grupos: dict[str, list] = {}
+    for c, s in contas:
+        grupos.setdefault(chave(c), []).append((c, s))
+    if agrupar == "tipo":
+        ordem = list(TIPOS_CONTA.values())
+        return sorted(grupos.items(), key=lambda g: ordem.index(g[0]) if g[0] in ordem else len(ordem))
+    return sorted(grupos.items(), key=lambda g: g[0].lower())
+
+
 @router.get("")
-def lista(request: Request, arquivadas: IntOpcional = 0, ordem: str = "", u: Utilizador = Depends(utilizador_atual),
-          db: Session = Depends(get_db)):
+def lista(request: Request, arquivadas: IntOpcional = 0, ordem: str = "", agrupar: str = "",
+          u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
     ordem = ordem if ordem.lstrip("-") in ORDENS_CONTAS else request.session.get("contas_ordem", "tipo")
     request.session["contas_ordem"] = ordem
+    agrupar = agrupar if agrupar in AGRUPAR_CONTAS else request.session.get("contas_agrupar", "tipo")
+    request.session["contas_agrupar"] = agrupar
     col, desc = ordem.lstrip("-"), ordem.startswith("-")
     blocos, todas = [], []
     for entidade, papel in entidades_visiveis(db, u):
@@ -193,7 +212,7 @@ def lista(request: Request, arquivadas: IntOpcional = 0, ordem: str = "", u: Uti
         contas = sorted(((c, saldo_conta(db, c)) for c in db.scalars(q).all()), key=ORDENS_CONTAS[col], reverse=desc)
         todas += [c.id for c, _ in contas]
         blocos.append({"entidade": entidade, "papel": papel, "pode_gerir": PAPEIS[papel] >= PAPEIS["admin"],
-                       "contas": contas})
+                       "contas": contas, "grupos": _agrupar(contas, agrupar)})
     # Títulos das colunas: clicar ordena; clicar outra vez inverte (saldo começa pelo maior).
     ordens = {}
     for c in ORDENS_CONTAS:
@@ -202,6 +221,7 @@ def lista(request: Request, arquivadas: IntOpcional = 0, ordem: str = "", u: Uti
         ordens[c] = {"href": f"?ordem={nova}" + ("&arquivadas=1" if arquivadas else ""),
                      "seta": ("▼" if desc else "▲") if atual else ""}
     return render(request, "contas/lista.html", blocos=blocos, arquivadas=arquivadas, ordem=ordem, ordens=ordens,
+                  agrupar=agrupar, opcoes_agrupar=AGRUPAR_CONTAS,
                   avisos=retificacoes.avisos(db, todas))
 
 

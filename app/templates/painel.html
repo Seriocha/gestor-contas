@@ -7,6 +7,12 @@
 </div>
 {% set destino = "/" %}{% include "_entidades.html" %}
 
+{% if por_importar %}
+<div class="aviso aviso-tarefas">
+  <span><strong>Tarefas do mês:</strong> {{ por_importar }} conta{{ 's' if por_importar != 1 }} por atualizar com os extratos deste ciclo.</span>
+  <a class="botao pequeno" href="/importar/tarefas?entidade={{ entidade.id }}">Ver tarefas</a>
+</div>
+{% endif %}
 {% if not entidade %}
 <p class="vazio">Ainda não tens acesso a nenhuma entidade. Pede a um administrador.</p>
 {% else %}
@@ -60,9 +66,9 @@
     {% if not grupos %}<p class="vazio">{{ 'Sem dívidas registadas.' if passivo else 'Sem contas.' }}{% if not passivo %} <a href="/contas">Criar contas</a>{% endif %}</p>{% endif %}
     <table class="tabela compacta">
       {% for titulo, total, contas in grupos %}
-        {% if titulo %}<tr class="grupo"><th>{{ titulo }}</th><th class="num">{{ total | abs | eur }}</th></tr>{% endif %}
+        {% if titulo %}<tr class="titulo-grupo"><th>{{ titulo }}</th><th class="num">{{ total | abs | eur }}</th></tr>{% endif %}
         {% for c, s in contas %}
-        <tr><td><a href="/contas/{{ c.id }}/{{ 'emprestimo' if c.tipo == 'EMPRESTIMO' else 'movimentos' }}">{{ c.nome }}</a>
+        <tr><td{% if titulo %} class="indentada"{% endif %}><a href="/contas/{{ c.id }}/{{ 'emprestimo' if c.tipo == 'EMPRESTIMO' else 'movimentos' }}">{{ c.nome }}</a>
               <span class="nota">{{ c.tipo_rotulo if agrupar == 'banco' else c.instituicao.nome }}</span>
               {% if avisos.get(c.id) %}<span class="aviso-conta" title="Saldo retificado em {{ avisos[c.id].data | data }}: {{ avisos[c.id].diferenca | eur }} por explicar com movimentos">⚠</span>{% endif %}</td>
             <td class="num">{{ ((s | abs) if passivo else s) | eur }}</td></tr>

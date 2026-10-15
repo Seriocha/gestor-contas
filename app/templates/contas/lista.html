@@ -3,7 +3,18 @@
 {% block conteudo %}
 <div class="titulo-acoes">
   <h1>Contas</h1>
-  <a href="/contas?arquivadas={{ 0 if arquivadas else 1 }}">{{ 'Esconder arquivadas' if arquivadas else 'Mostrar arquivadas' }}</a>
+  <div class="acoes-form">
+    <form method="get" class="organizar sem-margem">
+      {% if arquivadas %}<input type="hidden" name="arquivadas" value="1">{% endif %}
+      <label>Agrupar por
+        <select name="agrupar" onchange="this.form.submit()">
+          {% for k, r in opcoes_agrupar.items() %}<option value="{{ k }}" {% if agrupar == k %}selected{% endif %}>{{ r }}</option>{% endfor %}
+        </select>
+      </label>
+      <noscript><button>Aplicar</button></noscript>
+    </form>
+    <a href="/contas?arquivadas={{ 0 if arquivadas else 1 }}">{{ 'Esconder arquivadas' if arquivadas else 'Mostrar arquivadas' }}</a>
+  </div>
 </div>
 {% for b in blocos %}
 <section class="cartao">
@@ -21,9 +32,12 @@
     {%- endmacro %}
     <thead><tr>{{ th('nome', 'Conta') }}{{ th('tipo', 'Tipo') }}{{ th('banco', 'Instituição') }}<th>Titulares</th>{{ th('saldo', 'Saldo', 'num') }}{% if b.pode_gerir %}<th></th>{% endif %}</tr></thead>
     <tbody>
-    {% for c, s in b.contas %}
+    {% for titulo, contas in b.grupos %}
+    {% if titulo %}<tr class="titulo-grupo"><th colspan="{{ 6 if b.pode_gerir else 5 }}">{{ titulo }}
+      <span class="nota">· {{ contas | length }} conta{{ 's' if contas | length != 1 }}</span></th></tr>{% endif %}
+    {% for c, s in contas %}
     <tr class="{{ '' if c.ativa else 'arquivada' }}">
-      <td><strong><a href="/contas/{{ c.id }}/movimentos">{{ c.nome }}</a></strong>{% if c.iban %}<br><span class="nota iban">{{ c.iban | iban }}</span>{% endif %}
+      <td{% if titulo %} class="indentada"{% endif %}><strong><a href="/contas/{{ c.id }}/movimentos">{{ c.nome }}</a></strong>{% if c.iban %}<br><span class="nota iban">{{ c.iban | iban }}</span>{% endif %}
         {% if c.tipo == 'EMPRESTIMO' %}<br><a class="nota" href="/contas/{{ c.id }}/emprestimo">quadro, taxa e acertos ›</a>{% endif %}
         {% if c.tipo == 'CARTAO_CREDITO' and c.conta_pagamento %}<br><span class="nota">paga por {{ c.conta_pagamento.nome }}{% if c.dia_pagamento %}, dia {{ c.dia_pagamento }}{% endif %}</span>{% endif %}
         {% if not c.ativa %} <span class="etiqueta">arquivada</span>{% endif %}
@@ -43,6 +57,7 @@
       </td>
       {% endif %}
     </tr>
+    {% endfor %}
     {% endfor %}
     </tbody>
   </table>

@@ -24,8 +24,9 @@
   ('/', 'painel', 'Painel', caminho == '/'),
   ('/movimentos', 'movimentos', 'Movimentos', em_movimentos),
   ('/relatorios', 'relatorios', 'Relatórios', caminho.startswith('/relatorios')),
-  ('/importar', 'importar', 'Importar', caminho.startswith('/importar')),
+  ('/importar', 'importar', 'Importar', caminho.startswith('/importar') and not caminho.startswith('/importar/tarefas')),
 ] %}
+{% set itens_lateral = itens_dia + ([('/importar/tarefas', 'tarefas', 'Tarefas do mês', caminho.startswith('/importar/tarefas'))] if tarefas_janela() else []) %}
 {% set itens_config = [
   ('/contas', 'contas', 'Contas', caminho.startswith('/contas') and not em_movimentos),
   ('/categorias', 'categorias', 'Categorias e regras', caminho.startswith('/categorias') or caminho.startswith('/regras')),
@@ -44,7 +45,7 @@
   </div>
   <nav class="menu">
     <p class="menu-grupo">Dia a dia</p>
-    {% for href, ic, rotulo, ativo in itens_dia %}
+    {% for href, ic, rotulo, ativo in itens_lateral %}
     <a href="{{ href }}" {% if ativo %}class="ativo" aria-current="page"{% endif %}>{{ icone(ic) }}<span>{{ rotulo }}</span></a>
     {% endfor %}
     <p class="menu-grupo">Configuração</p>
