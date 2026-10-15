@@ -63,6 +63,7 @@ class LinhaPrevia:
     ordem: int
     hash_dedup: str
     duplicado: bool
+    transferencia: bool = False
 
 
 def preparar(db: Session, conta: Conta, extrato: Extrato) -> list[LinhaPrevia]:
@@ -88,7 +89,7 @@ def preparar(db: Session, conta: Conta, extrato: Extrato) -> list[LinhaPrevia]:
         linhas.append(LinhaPrevia(
             data_mov=m.data_mov, data_valor=m.data_valor, descricao=m.descricao, descricao_norm=norm,
             montante=m.montante, saldo=m.saldo, ordem=por_dia[m.data_mov],
-            hash_dedup=hashlib.sha256(bruto.encode()).hexdigest(), duplicado=False,
+            hash_dedup=hashlib.sha256(bruto.encode()).hexdigest(), duplicado=False, transferencia=m.transferencia,
         ))
     existentes = set(db.scalars(select(Movimento.hash_dedup).where(
         Movimento.conta_id == conta.id, Movimento.hash_dedup.in_([l.hash_dedup for l in linhas]))))
@@ -116,12 +117,14 @@ def confirmar(db: Session, conta: Conta, extrato: Extrato, nome: str, sha: str,
         conta_id=conta.id, importacao_id=imp.id, data_mov=l.data_mov, data_valor=l.data_valor,
         ordem=l.ordem, descricao_original=l.descricao[:500], descricao_norm=l.descricao_norm[:500],
         montante=l.montante, moeda=conta.moeda, saldo_apos=l.saldo, hash_dedup=l.hash_dedup,
+        transferencia=l.transferencia, qualificado_por="regra" if l.transferencia else None,
     ) for l in novas]
     db.add_all(movs)
     # Nas contas de empréstimo a qualificação é própria (prestação/juros/encargos), não pelas regras gerais.
     imp.n_qualificados = aplicar_regras(db, movs) if conta.tipo != "EMPRESTIMO" else 0
     db.flush()
     imp.n_pagamentos_cartao = ligar_pagamentos_cartao(db, conta)
+    imp.n_transferencias = ligar_transferencias(db, conta.entidade_id)
     if conta.tipo == "EMPRESTIMO":
         emprestimos.qualificar(db, conta, movs)
         db.flush()
@@ -135,6 +138,67 @@ def confirmar(db: Session, conta: Conta, extrato: Extrato, nome: str, sha: str,
         conta.data_saldo_inicial = primeiro.data_mov - timedelta(days=1)
         msg = "Saldo inicial calculado a partir do extrato."
     return imp, msg
+
+
+# ---------------------------------------------------------------- subcontas (Revolut)
+
+def escolher_subconta(extrato: Extrato, conta: Conta) -> tuple[str | None, list[str]]:
+    """Num extrato com várias subcontas (Revolut), escolhe a da conta de destino:
+    «Depósito» (conta reforçada) para uma conta poupança, «Atual» para as outras,
+    na moeda da conta. Devolve (erro, avisos)."""
+    if not extrato.subcontas:
+        return None, []
+    produto = "Depósito" if conta.tipo == "POUPANCA" else "Atual"
+    chave = (produto, conta.moeda)
+    disponiveis = ", ".join(f"{p} {m} ({len(v)})" for (p, m), v in extrato.subcontas.items())
+    if chave not in extrato.subcontas:
+        return (f"O ficheiro não tem movimentos da subconta «{produto}» em {conta.moeda}. "
+                f"Subcontas no ficheiro: {disponiveis}."), []
+    extrato.movimentos, extrato.moeda = extrato.subcontas[chave], conta.moeda
+    outras = [f"{p} {m}" for (p, m) in extrato.subcontas if (p, m) != chave]
+    avisos = [f"Importa-se só a subconta «{produto} {conta.moeda}». O ficheiro também tem: {', '.join(outras)} — "
+              "importa o mesmo ficheiro na conta correspondente (ex.: uma conta poupança Revolut para o «Depósito»)."]         if outras else []
+    return None, avisos
+
+
+# ---------------------------------------------------------------- transferências entre contas próprias
+
+JANELA_TRANSFERENCIA = timedelta(days=5)
+PISTA_TRANSFERENCIA = re.compile(r"REVOLUT", re.IGNORECASE)
+_CONTAS_COM_LIGACAO_PROPRIA = ("CARTAO_CREDITO", "EMPRESTIMO")  # têm a sua própria ligação
+
+
+def ligar_transferencias(db: Session, entidade_id: int) -> int:
+    """Liga as transferências ainda sem par (ex.: carregamento Revolut) ao outro
+    lado noutra conta da mesma entidade: valor simétrico, até 5 dias de
+    diferença, e esse lado também marcado como transferência ou com «REVOLUT»
+    na descrição (só o valor não chega: «TRF P/ Condominio» de 300 € no mesmo dia
+    que um carregamento de 300 € não é o mesmo dinheiro). O lado que estava por
+    marcar passa a transferência. Devolve quantos pares foram ligados."""
+    contas = {c.id: c for c in db.scalars(select(Conta).where(Conta.entidade_id == entidade_id))}
+    validas = [cid for cid, c in contas.items() if c.tipo not in _CONTAS_COM_LIGACAO_PROPRIA]
+    if len(validas) < 2:
+        return 0
+    pendentes = db.scalars(select(Movimento).where(
+        Movimento.conta_id.in_(validas), Movimento.transferencia, Movimento.par_id.is_(None))
+        .order_by(Movimento.data_mov, Movimento.id)).all()
+    n = 0
+    for p in pendentes:
+        if p.par_id:
+            continue  # ligado entretanto, como contraparte de outro
+        candidatos = [c for c in db.scalars(select(Movimento).where(
+            Movimento.conta_id.in_(validas), Movimento.conta_id != p.conta_id, Movimento.montante == -p.montante,
+            Movimento.par_id.is_(None), Movimento.data_mov.between(p.data_mov - JANELA_TRANSFERENCIA,
+                                                                    p.data_mov + JANELA_TRANSFERENCIA)))
+            if _pode_ligar(c) and (c.transferencia or PISTA_TRANSFERENCIA.search(c.descricao_original or ""))]
+        if not candidatos:
+            continue
+        c = min(candidatos, key=lambda x: (abs(x.data_mov - p.data_mov), x.id))
+        p.par_id, c.par_id = c.id, p.id
+        _marcar_transferencia(c)
+        n += 1
+    db.flush()
+    return n
 
 
 # ---------------------------------------------------------------- cartões de crédito

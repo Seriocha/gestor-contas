@@ -65,8 +65,9 @@ async def previa(request: Request, u: Utilizador = Depends(utilizador_atual), db
         return _pagina(request, db, u, 400, erro=f"Não foi possível ler o ficheiro: {e}", conta_id=conta.id)
 
     sha = servicos.guardar_upload(request.app.state.defs.data_dir, ficheiro.filename, conteudo)
-    avisos = list(extrato.avisos)
-    erros = []
+    erro_sub, avisos_sub = servicos.escolher_subconta(extrato, conta)
+    avisos = list(extrato.avisos) + avisos_sub
+    erros = [erro_sub] if erro_sub else []
     if extrato.moeda != conta.moeda:
         erros.append(f"O extrato está em {extrato.moeda} e a conta em {conta.moeda}.")
     if conta.instituicao.parser and conta.instituicao.parser != extrato.parser.split("_")[0]:
@@ -119,8 +120,9 @@ async def confirmar(request: Request, u: Utilizador = Depends(utilizador_atual),
     except (FileNotFoundError, FormatoDesconhecido):
         flash(request, "O ficheiro da pré-visualização já não está disponível. Volta a carregá-lo.", "erro")
         return RedirectResponse("/importar", status_code=303)
-    if extrato.moeda != conta.moeda:
-        raise HTTPException(status_code=400, detail="Moeda do extrato diferente da da conta.")
+    erro_sub, _ = servicos.escolher_subconta(extrato, conta)
+    if erro_sub or extrato.moeda != conta.moeda:
+        raise HTTPException(status_code=400, detail=erro_sub or "Moeda do extrato diferente da da conta.")
     imp, msg = servicos.confirmar(db, conta, extrato, nome, sha, u)
     auditar(db, u, "importacao", f"{imp.id}: {conta.nome} — {imp.n_novos} novos, {imp.n_duplicados} duplicados")
     try:
@@ -132,6 +134,8 @@ async def confirmar(request: Request, u: Utilizador = Depends(utilizador_atual),
         return RedirectResponse("/importar", status_code=303)
     pagamentos = (f" {imp.n_pagamentos_cartao} movimentos de pagamento de cartão marcados como transferência."
                   if imp.n_pagamentos_cartao else "")
+    if imp.n_transferencias:
+        pagamentos += f" {imp.n_transferencias} transferência(s) ligada(s) ao outro lado noutra conta."
     emp = imp.emprestimo
     if emp["ligadas"]:
         pagamentos += f" {emp['ligadas']} prestação(ões) do empréstimo ligada(s) ao débito na conta à ordem."

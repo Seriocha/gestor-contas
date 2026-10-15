@@ -4,7 +4,7 @@ Gestor financeiro doméstico, multiutilizador e self-hosted, para a NAS QNAP. Es
 importa movimentos de bancos portugueses e gere contas à ordem, cartões, investimentos e
 Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIGN.md).
 
-## Estado: v0.8.0
+## Estado: v0.9.0
 
 - Login com várias pessoas: passwords em argon2, bloqueio ao fim de 5 tentativas falhadas,
   proteção CSRF e invalidação das sessões quando a password muda.
@@ -37,6 +37,14 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **Revolut** (v0.9.0): extrato CSV, em português ou inglês. Cada subconta (produto e moeda) é
+  importada na conta certa: «Atual» na conta Revolut, «Depósito»/Conta reforçada numa conta
+  poupança Revolut. As comissões passam a movimentos à parte, em «Comissões bancárias», e os
+  movimentos revertidos ficam de fora. Carregamentos, câmbios, transferências entre subcontas e
+  transferências para investimento contam como transferência. **Ligação automática de
+  transferências entre contas:** valor simétrico, até 5 dias de diferença, e o outro lado com
+  «REVOLUT» na descrição ou já marcado como transferência. A leitura de CSV passou a aceitar aspas
+  e vírgulas dentro das descrições.
 - **Empréstimo à habitação** (v0.8.0): novo tipo de conta, que conta como passivo. Guarda a TAN
   (5 casas decimais), o tipo de taxa, o indexante, o spread, o total de prestações e a conta de
   débito. O extrato do empréstimo Santander («Consulta Movimentos Empréstimo», .xls) importa cada

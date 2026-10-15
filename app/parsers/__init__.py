@@ -27,6 +27,7 @@ class MovimentoBruto:
     descricao: str
     montante: int            # cêntimos
     saldo: int | None = None  # saldo após o movimento, se o banco o der
+    transferencia: bool = False  # o banco diz que é movimento entre contas próprias (ex.: carregamento Revolut)
 
 
 @dataclass
@@ -39,6 +40,8 @@ class Extrato:
     avisos: list[str] = field(default_factory=list)
     cartao: bool = False              # extrato de cartão de crédito (não de conta à ordem)
     emprestimo: bool = False          # extrato de empréstimo (movimentos da conta do empréstimo)
+    # Extratos com várias subcontas (Revolut: (produto, moeda) → movimentos). `movimentos` é a principal.
+    subcontas: dict | None = None
 
 
 # ---------------------------------------------------------------- utilitários
@@ -119,19 +122,29 @@ def ler_linhas(nome: str, conteudo: bytes) -> list[list]:
                 break
             except UnicodeDecodeError:
                 continue
-        dialeto = csv.Sniffer().sniff(texto[:4096], delimiters=";,\t")
-        return [linha for linha in csv.reader(io.StringIO(texto), dialeto)]
+        # Só se adivinha o separador; as aspas seguem a norma do CSV. O Sniffer, com descrições que
+        # têm aspas e vírgulas (Revolut: '…subconta "Conta reforçada" relativos a Sep 10, 2026'),
+        # escolhia mal as regras de aspas e baralhava as colunas.
+        cabecalho = texto.split("\n", 1)[0]
+        separador = max(";,\t", key=cabecalho.count)
+        return [linha for linha in csv.reader(io.StringIO(texto), delimiter=separador)]
     raise FormatoDesconhecido("Tipo de ficheiro não suportado (usa .xls, .xlsx ou .csv).")
 
 
 def ler_extrato(nome: str, conteudo: bytes) -> Extrato:
-    from . import activobank, creditoagricola, santander, santander_cartao, santander_emprestimo
+    from . import activobank, creditoagricola, revolut, santander, santander_cartao, santander_emprestimo
     linhas = ler_linhas(nome, conteudo)
     for parser in (santander.Parser, santander_cartao.Parser, santander_emprestimo.Parser, activobank.Parser,
-                   creditoagricola.Parser):
+                   creditoagricola.Parser, revolut.Parser):
         if parser.detetar(linhas):
             extrato = parser.ler(linhas)
-            extrato.movimentos = para_cronologico(extrato.movimentos)
-            extrato.avisos += verificar_saldos(extrato.movimentos)
+            if extrato.subcontas:
+                for chave, movs in extrato.subcontas.items():
+                    extrato.subcontas[chave] = para_cronologico(movs)
+                    extrato.avisos += [f"{chave[0]} {chave[1]}: {a}" for a in verificar_saldos(extrato.subcontas[chave])]
+                extrato.movimentos = para_cronologico(extrato.movimentos)
+            else:
+                extrato.movimentos = para_cronologico(extrato.movimentos)
+                extrato.avisos += verificar_saldos(extrato.movimentos)
             return extrato
-    raise FormatoDesconhecido("Formato de extrato não reconhecido. Bancos suportados: Santander (conta, cartão e empréstimo), ActivoBank, Crédito Agrícola.")
+    raise FormatoDesconhecido("Formato de extrato não reconhecido. Bancos suportados: Santander (conta, cartão e empréstimo), ActivoBank, Crédito Agrícola, Revolut (CSV).")
