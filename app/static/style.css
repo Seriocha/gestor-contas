@@ -28,7 +28,7 @@
   --destaque-suave: #FFF6D6;
   --primario: #0B0D12;          /* ligações e estados ativos */
   --primario-texto: #FFFFFF;
-  --ok-fundo: #E7F6EC; --ok-texto: #146C2E;
+  --ok-fundo: #E7F6EC; --ok-texto: #146C2E; --previsto: #3d6fb0;
   --erro-fundo: #FDECEC; --erro-texto: #A11B1B;
   --alerta-fundo: #FFF6D6; --alerta-texto: #6B4E00;
   --pos: #12813A; --neg: #C62828;
@@ -53,7 +53,7 @@
     --destaque-suave: #2B2410;
     --primario: #FFD23F;
     --primario-texto: #0B0D12;
-    --ok-fundo: #10301C; --ok-texto: #8FD8AC;
+    --ok-fundo: #10301C; --ok-texto: #8FD8AC; --previsto: #8fb8ea;
     --erro-fundo: #3A1717; --erro-texto: #F3A5A5;
     --alerta-fundo: #2B2410; --alerta-texto: #F1CF7A;
     --pos: #6FD394; --neg: #F08A8A;
@@ -416,10 +416,12 @@ select.gravado { box-shadow: 0 0 0 3px var(--ok-fundo); border-color: var(--pos)
 .lista-previsoes li + li { border-top: 1px solid var(--linha); }
 .lista-previsoes .estado { text-align: center; }
 .lista-previsoes .recebida .estado { color: var(--ok-texto, #1b7a4a); }
-.lista-previsoes .prevista .estado, .lista-previsoes .prevista .num { color: #3d6fb0; }
+.lista-previsoes .prevista .estado, .lista-previsoes .prevista .num { color: var(--previsto); }
 .lista-previsoes .prevista .num { font-style: italic; }
 @media (max-width: 640px) {
   .lista-previsoes li { grid-template-columns: 1.4rem 1fr auto; }
   .lista-previsoes li > .nota { grid-column: 2 / 4; grid-row: 2; }
 }
 .etiqueta-ok { background: var(--ok-fundo); color: var(--ok-texto); border-color: transparent; }
+.linha-prevista td { font-style: italic; color: var(--previsto); }
+.previsoes-aviso { border-left: 3px solid #9cc0ea; padding-left: .6rem; }

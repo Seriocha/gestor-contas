@@ -134,6 +134,7 @@ class Linha:
     categoria_id: int | None = None
     filhas: dict = field(default_factory=dict)
     anterior: int = 0
+    prevista: date | None = None   # receita prevista (simulada): data em que deve entrar
 
     @property
     def variacao(self) -> float | None:
@@ -191,7 +192,7 @@ def linhas_ordenadas(grupo: dict, anterior: dict | None = None) -> list[Linha]:
     valor do período anterior e as subcategorias já em lista."""
     out = []
     for l in sorted(grupo.values(), key=lambda l: -l.total):
-        ant = anterior.get(l.categoria_id or 0) if anterior else None
+        ant = anterior.get(l.categoria_id or 0) if anterior and not l.prevista else None
         out.append(replace(l, anterior=ant.total if ant else 0,
                            filhas=sorted(l.filhas.values(), key=lambda x: -x.total)))
     return out

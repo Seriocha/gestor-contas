@@ -10,7 +10,7 @@ Enquanto não for recebida, o fluxo de caixa do mês soma-a como «prevista». O
 valor, quando não é fixado, é a média dos últimos 3 créditos reais que
 corresponderam.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 
 from sqlalchemy import select
@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from .models import Categoria, Conta, Movimento, ReceitaPrevista
 from .qualificacao import compilar
-from .relatorios import fim_do_mes
+from .relatorios import COR_PREVISTA, Linha, Resumo, fim_do_mes
 
 CATEGORIA_REFEICAO = "Subsídio de alimentação"
 TOLERANCIA = 0.15
@@ -43,6 +43,27 @@ def categoria_refeicao(db: Session) -> Categoria:
         db.add(cat)
         db.flush()
     return cat
+
+
+def pendentes(db: Session, entidade_id: int, ini: date, fim: date, ref: date,
+              conta_ids: list[int] | None = None) -> list[Estado]:
+    """Receitas previstas ainda por receber no mês de `ref`, se esse mês cabe no período."""
+    if not (ini <= ref <= fim):
+        return []
+    return [e for e in estado_mes(db, entidade_id, ref)
+            if e.pendente and (not conta_ids or e.prev.conta_id in conta_ids)]
+
+
+def somar(resumo: Resumo, estados: list[Estado]) -> Resumo:
+    """Cópia do resumo com as receitas previstas como linhas próprias «(previsto)»."""
+    if not estados:
+        return resumo
+    receitas = dict(resumo.por_categoria["RECEITA"])
+    for e in estados:
+        receitas[f"prev{e.prev.id}"] = Linha(f"{e.prev.descricao} (previsto)", COR_PREVISTA, total=e.valor,
+                                             n=1, prevista=e.data)
+    return replace(resumo, receitas=resumo.receitas + sum(e.valor for e in estados),
+                   por_categoria={**resumo.por_categoria, "RECEITA": receitas})
 
 
 def corresponde(prev: ReceitaPrevista, m: Movimento, valor_ref: int | None) -> bool:

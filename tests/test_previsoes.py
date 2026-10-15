@@ -111,3 +111,19 @@ def test_sem_permissao_de_edicao(com_previsoes):
     c = TestClient(com_previsoes.app)
     _post(c, "/login", login="leitora", password=PW)
     assert c.get("/previsoes/nova?entidade=1").status_code in (403, 404)
+
+
+def test_relatorio_do_mes_inclui_previstas(com_previsoes):
+    r = com_previsoes.get("/relatorios?entidade=1&periodo=mes&previstas=1").text
+    receitas = r.split("Receitas por categoria")[1].split("</section>")[0]
+    assert "Ordenado Santander (previsto)" in receitas and "Cartão refeição (previsto)" in receitas
+    assert "inclui 2.248,00 € previstos" in r and "Ver só o real" in r
+    so_real = com_previsoes.get("/relatorios?entidade=1&periodo=mes&previstas=0").text
+    assert "(previsto)" not in so_real and "Somar as previstas" in so_real
+    # a escolha é partilhada com o painel
+    assert "(previsto)" not in json.dumps(_sankey(com_previsoes.get("/?entidade=1&periodo=mes").text))
+    # filtrar por conta mostra só as previstas dessa conta; outros meses não têm previstas
+    so_santander = com_previsoes.get("/relatorios?entidade=1&periodo=mes&conta=1&previstas=1").text
+    assert "Ordenado Santander (previsto)" in so_santander and "Cartão refeição (previsto)" not in so_santander
+    agosto = com_previsoes.get("/relatorios?entidade=1&periodo=personalizado&de=2026-08-01&ate=2026-08-31").text
+    assert "(previsto)" not in agosto

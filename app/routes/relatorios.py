@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .. import relatorios as rel
-from .. import servicos
+from .. import previsoes, servicos
 from ..deps import (IntOpcional, auditar, entidade_escolhida, exigir_papel, flash, get_db, render,
                     utilizador_atual)
 from ..formatos import parse_data
@@ -25,7 +25,8 @@ def data_referencia(db: Session, entidade_id: int) -> date:
     return min(ultimo, date.today()) if ultimo else date.today()
 
 
-def _contexto(request: Request, db: Session, u: Utilizador, entidade, periodo, de, ate, conta, etiqueta):
+def _contexto(request: Request, db: Session, u: Utilizador, entidade, periodo, de, ate, conta, etiqueta,
+              previstas: str = "0"):
     visiveis, ent, papel = entidade_escolhida(request, db, u, entidade)
     if not ent:
         return None
@@ -41,6 +42,11 @@ def _contexto(request: Request, db: Session, u: Utilizador, entidade, periodo, d
     movs = rel.movimentos_reportaveis(db, ent.id, p.ini, p.fim, conta_ids, etiqueta or None)
     movs_ant = rel.movimentos_reportaveis(db, ent.id, ant.ini, ant.fim, conta_ids, etiqueta or None)
     r, r_ant = rel.resumir(movs), rel.resumir(movs_ant)
+    # Receitas previstas (ordenados, cartões refeição) ainda por receber no mês de referência.
+    pendentes = [] if etiqueta else previsoes.pendentes(db, ent.id, p.ini, p.fim, ref, conta_ids)
+    r_real = r
+    if previstas == "1":
+        r = previsoes.somar(r, pendentes)
     # Tendências: sempre 12 meses até ao fim do período, para haver contexto.
     janela = rel.Periodo("ano", rel.somar_meses(p.fim.replace(day=1), -11), p.fim, "12 meses")
     movs_janela = rel.movimentos_reportaveis(db, ent.id, janela.ini, janela.fim, conta_ids, etiqueta or None)
@@ -48,7 +54,8 @@ def _contexto(request: Request, db: Session, u: Utilizador, entidade, periodo, d
         "visiveis": visiveis, "entidade": ent, "p": p, "ant": ant, "presets": rel.PRESETS, "contas": contas,
         "etiquetas": db.scalars(select(Etiqueta).order_by(Etiqueta.nome)).all(),
         "f": {"periodo": p.chave, "de": de, "ate": ate, "conta": conta or "", "etiqueta": etiqueta or ""},
-        "r": r, "r_ant": r_ant, "janela": janela, "movs_janela": movs_janela,
+        "r": r, "r_ant": r_ant, "r_real": r_real, "pendentes": pendentes, "previstas": previstas,
+        "total_previsto": sum(e.valor for e in pendentes), "janela": janela, "movs_janela": movs_janela,
         "despesas": rel.linhas_ordenadas(r.por_categoria["DESPESA"], r_ant.por_categoria["DESPESA"]),
         "receitas": rel.linhas_ordenadas(r.por_categoria["RECEITA"], r_ant.por_categoria["RECEITA"]),
     }
@@ -56,9 +63,12 @@ def _contexto(request: Request, db: Session, u: Utilizador, entidade, periodo, d
 
 @router.get("")
 def relatorios(request: Request, entidade: IntOpcional = None, periodo: str = "mes", de: str = "", ate: str = "",
-               conta: IntOpcional = None, etiqueta: IntOpcional = None, u: Utilizador = Depends(utilizador_atual),
-               db: Session = Depends(get_db)):
-    ctx = _contexto(request, db, u, entidade, periodo, de, ate, conta, etiqueta)
+               conta: IntOpcional = None, etiqueta: IntOpcional = None, previstas: str = "",
+               u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
+    # a escolha «somar as previstas / só o real» é a mesma do painel
+    previstas = previstas if previstas in ("1", "0") else request.session.get("painel_previstas", "1")
+    request.session["painel_previstas"] = previstas
+    ctx = _contexto(request, db, u, entidade, periodo, de, ate, conta, etiqueta, previstas)
     if not ctx:
         return render(request, "relatorios.html", entidade=None, visiveis=[])
     ent, p, ant, janela = ctx["entidade"], ctx["p"], ctx["ant"], ctx["janela"]
