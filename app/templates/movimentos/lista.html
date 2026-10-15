@@ -37,6 +37,42 @@
   O saldo mostrado é o real; insere os movimentos em falta (reforços, resgates, juros, valorizações) e a diferença diminui sozinha.
 </div>
 {% endif %}
+{% if desempenho %}
+{% set d = desempenho %}
+<section class="cartao desempenho">
+  <div class="cartao-cabecalho">
+    <h2>Desempenho</h2>
+    <span class="nota">ganho/perda = valor da conta − capital investido</span>
+  </div>
+  <div class="kpi-linha">
+    <div class="kpi kpi-grande"><span class="nota">Valor atual</span><strong>{{ d.valor | eur(conta.moeda) }}</strong></div>
+    <div class="kpi"><span class="nota">Capital investido</span><strong>{{ d.capital | eur(conta.moeda) }}</strong>
+      <span class="nota">aplicado {{ d.aplicado_total | eur(conta.moeda) }} · resgatado {{ d.resgatado_total | eur(conta.moeda) }}</span></div>
+    <div class="kpi"><span class="nota">Ganho / perda acumulado</span>
+      <strong class="{{ 'pos' if d.resultado > 0 else 'neg' if d.resultado < 0 else '' }}">{{ '+' if d.resultado > 0 }}{{ d.resultado | eur(conta.moeda) }}</strong>
+      <span class="nota">{% if d.rentabilidade is not none %}{{ ('%+.2f' % d.rentabilidade).replace('.', ',') }}% sobre o capital{% endif %}</span></div>
+    <div class="kpi"><span class="nota">Ganho / perda este ano</span>
+      <strong class="{{ 'pos' if d.resultado_ano > 0 else 'neg' if d.resultado_ano < 0 else '' }}">{{ '+' if d.resultado_ano > 0 }}{{ d.resultado_ano | eur(conta.moeda) }}</strong></div>
+  </div>
+  {% if d.serie.rotulos | length > 1 %}
+  <div class="grafico grafico-medio"><canvas data-grafico="investimento" aria-label="Valor da conta e capital investido ao longo do tempo" role="img"></canvas></div>
+  {% endif %}
+  <details>
+    <summary>Ver por mês</summary>
+    <div class="rolar"><table class="tabela compacta">
+      <thead><tr><th>Mês</th><th class="num">Aplicações</th><th class="num">Resgates</th><th class="num">Ganho / perda</th>
+        <th class="num">Capital</th><th class="num">Valor no fim</th></tr></thead>
+      {% for x in d.meses %}
+      <tr><td>{{ x.mes.strftime('%m/%Y') }}</td><td class="num">{{ x.aplicacoes | eur(conta.moeda) if x.aplicacoes else '—' }}</td>
+        <td class="num">{{ x.resgates | eur(conta.moeda) if x.resgates else '—' }}</td>
+        <td class="num {{ 'pos' if x.resultado > 0 else 'neg' if x.resultado < 0 else '' }}">{{ x.resultado | eur(conta.moeda) if x.resultado else '—' }}</td>
+        <td class="num">{{ x.capital_fim | eur(conta.moeda) }}</td><td class="num">{{ x.valor_fim | eur(conta.moeda) }}</td></tr>
+      {% endfor %}
+    </table></div>
+  </details>
+</section>
+{% endif %}
+
 <details class="cartao caixa-retificacao">
   <summary><strong>Retificar saldo</strong> <span class="nota">· acertar a conta ao valor real numa data{% if retificacoes %} ({{ retificacoes | length }} registada{{ 's' if retificacoes | length > 1 }}){% endif %}</span></summary>
   {% if pode_editar %}
@@ -216,6 +252,7 @@
           {% if m.excluido %}<span class="etiqueta">excluído</span>{% endif %}
           {% if (m.hash_dedup or '').startswith('manual:') %}<span class="etiqueta">à mão</span>{% endif %}
           {% if (m.hash_dedup or '').startswith('retif:') %}<span class="etiqueta etiqueta-cor">retificação</span>{% endif %}
+          {% if naturezas_inv.get(m.id) %}{% set n = naturezas_inv[m.id] %}<span class="etiqueta natureza natureza-{{ n }}">{{ {'aplicacao': 'aplicação', 'resgate': 'resgate', 'ganho': 'ganho', 'perda': 'perda'}[n] }}</span>{% endif %}
           {% for e in m.etiquetas %}<span class="etiqueta etiqueta-cor">#{{ e.nome }}</span>{% endfor %}
           {% if m.notas %}<br><span class="nota">{{ m.notas }}</span>{% endif %}
         </td>
@@ -255,6 +292,11 @@
 {% endblock %}
 
 {% block scripts %}
+{% if desempenho and desempenho.serie.rotulos | length > 1 %}
+<script type="application/json" id="dados-graficos">{{ {'investimento': desempenho.serie} | tojson }}</script>
+<script src="/static/vendor/chart.umd.min.js?v={{ versao }}"></script>
+<script src="/static/graficos.js?v={{ versao }}"></script>
+{% endif %}
 <script>
 (() => {
   const csrf = document.querySelector('#form-lote input[name=csrf]')?.value;

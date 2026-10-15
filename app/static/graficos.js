@@ -81,6 +81,29 @@
       }
     },
 
+    investimento(canvas) {
+      // Valor da conta vs capital investido: a distância entre as linhas é o ganho/perda.
+      const d = dados.investimento;
+      new Chart(canvas, {
+        type: 'line',
+        data: { labels: d.rotulos, datasets: [
+          { label: 'Valor da conta', data: d.valor, borderColor: COR.patrimonio, backgroundColor: COR.patrimonio + '1f',
+            borderWidth: 2, fill: '+1', tension: 0.2, pointRadius: 0, pointHoverRadius: 5, pointHitRadius: 12 },
+          { label: 'Capital investido', data: d.capital, borderColor: COR.suave, borderWidth: 2, borderDash: [6, 4],
+            stepped: true, fill: false, pointRadius: 0, pointHoverRadius: 4, pointHitRadius: 12 },
+        ] },
+        options: { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+          plugins: { legend: { position: 'top', align: 'end', labels: { boxWidth: 12, boxHeight: 2 } },
+            tooltip: { callbacks: { afterBody: items => {
+              const v = items.find(i => i.datasetIndex === 0)?.parsed.y, c = items.find(i => i.datasetIndex === 1)?.parsed.y;
+              if (v == null || c == null) return '';
+              const g = v - c;
+              return `Ganho/perda: ${g >= 0 ? '+' : ''}${eur.format(g)}`;
+            } } } },
+          scales: eixos },
+      });
+    },
+
     tendencia(canvas) {
       const d = dados.tendencia;
       const barra = { borderRadius: 4, borderSkipped: 'start', maxBarThickness: 22, categoryPercentage: 0.7, barPercentage: 0.9 };

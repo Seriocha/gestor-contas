@@ -17,7 +17,7 @@ from ..models import CORES, PAPEIS, Categoria, Conta, Etiqueta, Movimento, Utili
 from ..qualificacao import aplicar_regras, arvore_categorias, qualificar_manual, repor
 from ..servicos import normalizar_descricao
 from ..seguranca import ler_form
-from .. import retificacoes, servicos
+from .. import investimentos, retificacoes, servicos
 from ..servicos import resumo_cartao, saldo_conta
 
 router = APIRouter()
@@ -185,6 +185,8 @@ def _listar(request: Request, db: Session, u: Utilizador, *, entidade: int | Non
         saldo=saldo_conta(db, conta) if conta else None,
         cartao=resumo_cartao(db, conta, date.today()) if conta and conta.tipo == "CARTAO_CREDITO" else None,
         retificaveis=conta is not None and retificacoes.retificavel(conta),
+        desempenho=investimentos.desempenho(db, conta, date.today()) if investimentos.e_investimento(conta) else None,
+        naturezas_inv={m.id: investimentos.natureza(m) for m in lista} if investimentos.e_investimento(conta) else {},
         retificacoes=retificacoes.estados(db, conta) if conta and retificacoes.retificavel(conta) else [],
         contas=db.scalars(select(Conta).where(Conta.entidade_id == ent.id).order_by(Conta.nome)).all(),
         categorias=arvore_categorias(db), etiquetas=db.scalars(select(Etiqueta).order_by(Etiqueta.nome)).all(),
@@ -272,7 +274,12 @@ def _ler_movimento_manual(form, conta: Conta) -> tuple[dict, list[str]]:
         erros.append(str(e))
     if not valor:
         erros.append("Indica um valor diferente de zero.")
-    montante = valor if form.get("sentido") == "entrada" else -valor
+    nat = str(form.get("natureza", ""))
+    if investimentos.e_investimento(conta) and nat in investimentos.NATUREZAS:
+        entrada = nat in ("aplicacao", "ganho")
+    else:
+        entrada = form.get("sentido") == "entrada"
+    montante = valor if entrada else -valor
     return {"data_mov": data, "descricao_original": descricao, "descricao_norm": normalizar_descricao(descricao),
             "montante": montante}, erros
 
@@ -296,7 +303,9 @@ def novo_manual_form(request: Request, conta_id: int, u: Utilizador = Depends(ut
     if not c:
         raise HTTPException(status_code=404, detail="Não encontrado.")
     exigir_papel(db, u, c.entidade_id, "editar")
-    return render(request, "movimentos/manual.html", conta=c, v={"data": date.today().isoformat(), "sentido": "saida"},
+    return render(request, "movimentos/manual.html", conta=c,
+                  v={"data": date.today().isoformat(), "sentido": "saida", "natureza": "ganho"},
+                  investimento=investimentos.e_investimento(c), naturezas=investimentos.NATUREZAS,
                   categorias=arvore_categorias(db), tem_extrato=_tem_extrato(db, c))
 
 
@@ -318,6 +327,7 @@ async def novo_manual(request: Request, conta_id: int, u: Utilizador = Depends(u
     if erros:
         v = {k: str(form.get(k, "")) for k in form.keys()}
         return render(request, "movimentos/manual.html", status_code=400, conta=c, v=v, erros=erros,
+                      investimento=investimentos.e_investimento(c), naturezas=investimentos.NATUREZAS,
                       categorias=arvore_categorias(db), tem_extrato=_tem_extrato(db, c))
     ordem = (db.scalar(select(func.max(Movimento.ordem)).where(Movimento.conta_id == c.id,
                                                                 Movimento.data_mov == dados["data_mov"])) or 0) + 1
@@ -325,9 +335,15 @@ async def novo_manual(request: Request, conta_id: int, u: Utilizador = Depends(u
                   notas=str(form.get("notas", "")).strip()[:2000] or None, **dados)
     db.add(m)
     categoria_id = _int(form.get("categoria_id"))
-    if categoria_id or form.get("transferencia") == "1":
+    transferencia = form.get("transferencia") == "1"
+    nat = str(form.get("natureza", ""))
+    if investimentos.e_investimento(c) and nat in investimentos.NATUREZAS:
+        transferencia = nat in ("aplicacao", "resgate")
+        if not transferencia and not categoria_id:
+            categoria_id = investimentos.categoria_rendimentos(db).id
+    if categoria_id or transferencia:
         db.flush()
-        qualificar_manual(db, m, categoria_id=categoria_id, transferencia=form.get("transferencia") == "1")
+        qualificar_manual(db, m, categoria_id=categoria_id if not transferencia else None, transferencia=transferencia)
     else:
         aplicar_regras(db, [m])
     db.flush()

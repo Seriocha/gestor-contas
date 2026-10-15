@@ -10,6 +10,21 @@
 <section class="cartao">
   <form method="post" class="formulario">
     <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    {% if investimento %}
+    <fieldset>
+      <legend>Natureza</legend>
+      <div class="opcoes-linha">
+        {% set ajuda = {'aplicacao': 'dinheiro que entra vindo de outra conta tua', 'resgate': 'dinheiro que sai para outra conta tua',
+                        'ganho': 'valorização, juros, dividendos', 'perda': 'desvalorização, comissões, impostos'} %}
+        {% for k, rotulo in naturezas.items() %}
+        <label class="opcao"><input type="radio" name="natureza" value="{{ k }}" {% if v.natureza == k %}checked{% endif %}>
+          {{ rotulo }} <span class="nota">({{ ajuda[k] }})</span></label>
+        {% endfor %}
+      </div>
+      <p class="nota sem-margem">Aplicações e resgates mexem no capital investido (são transferências, liga-as ao movimento da conta à ordem);
+        ganhos e perdas são o resultado do investimento («Rendimentos de investimento»).</p>
+    </fieldset>
+    {% else %}
     <fieldset>
       <legend>Sentido</legend>
       <div class="opcoes-linha">
@@ -19,6 +34,7 @@
           Saída <span class="nota">(resgate, levantamento, comissão)</span></label>
       </div>
     </fieldset>
+    {% endif %}
     <div class="linha">
       <label>Data <input type="date" name="data" value="{{ v.data or '' }}" required></label>
       <label>Valor ({{ conta.moeda }}) <input name="valor" value="{{ v.valor or '' }}" inputmode="decimal" placeholder="0,00" required></label>
@@ -34,8 +50,10 @@
         {% endfor %}
       </select>
     </label>
+    {% if not investimento %}
     <label class="opcao"><input type="checkbox" name="transferencia" value="1" {% if v.transferencia %}checked{% endif %}>
       Transferência de/para outra conta minha (ex.: reforço vindo da conta à ordem) — não conta como receita nem despesa</label>
+    {% endif %}
     <label>Notas <textarea name="notas" rows="2">{{ v.notas or '' }}</textarea></label>
     <div class="acoes-form">
       <button class="primario">Criar movimento</button>
