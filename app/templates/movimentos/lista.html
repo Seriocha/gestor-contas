@@ -154,13 +154,21 @@
       </tr></thead>
       <tbody>
       {% for m in movimentos %}
-      <tr class="{{ 'arquivada' if m.excluido else '' }}">
+      {% set par = pares.get(m.id) %}
+      <tr id="mov-{{ m.id }}" class="{{ 'arquivada' if m.excluido else '' }}{{ ' com-par' if par }}"{% if par %} style="--cor-par: {{ par.cor }}" data-par="{{ par.par_id }}"{% endif %}>
         {% if pode_editar %}<td class="c-sel"><input type="checkbox" name="ids" value="{{ m.id }}" aria-label="Selecionar"></td>{% endif %}
         <td class="c-data sem-quebra">{{ m.data_mov | data }}</td>
         {% if not conta %}<td class="c-conta nota">{{ m.conta.nome }}</td>{% endif %}
         <td class="c-desc">
           <a href="/movimentos/{{ m.id }}?voltar={{ aqui | urlencode }}" class="descricao">{{ m.descricao_original }}</a>
-          {% if m.transferencia %}<span class="etiqueta">transferência{% if m.par_id %} ↔{% endif %}</span>{% endif %}
+          {% if par %}
+          {% set o = par.outro %}
+          <a class="etiqueta-par" href="{{ '#mov-%d' % par.par_id if par.na_pagina else '/movimentos/%d' % par.par_id }}"
+             data-alvo="{{ par.par_id }}" style="--cor-par: {{ par.cor }}"
+             title="Ligado a: {% if o %}{{ o.data_mov | data }} · {{ o.conta.nome }} · {{ o.descricao_original }} · {{ o.montante | eur(o.moeda) }}{% else %}movimento {{ par.par_id }}{% endif %}">
+            <span aria-hidden="true">↔</span> {{ par.letra }}{% if not par.na_pagina and o %}<span class="par-fora"> · {{ o.conta.nome }}</span>{% endif %}
+          </a>
+          {% elif m.transferencia %}<span class="etiqueta">transferência</span>{% endif %}
           {% if m.excluido %}<span class="etiqueta">excluído</span>{% endif %}
           {% if (m.hash_dedup or '').startswith('manual:') %}<span class="etiqueta">à mão</span>{% endif %}
           {% for e in m.etiquetas %}<span class="etiqueta etiqueta-cor">#{{ e.nome }}</span>{% endfor %}
@@ -220,6 +228,21 @@
       } catch (e) {
         alert('Não foi possível gravar a categoria. Recarrega a página.');
       } finally { sel.disabled = false; }
+    });
+  });
+  // Pares ligados: realçar os dois lados; clicar salta para o outro (se estiver na página).
+  const linhaDe = id => document.getElementById('mov-' + id);
+  document.querySelectorAll('.etiqueta-par').forEach(et => {
+    const eu = et.closest('tr'), outro = linhaDe(et.dataset.alvo);
+    const realce = (sim) => [eu, outro].forEach(l => l && l.classList.toggle('realce-par', sim));
+    et.addEventListener('mouseenter', () => realce(true));
+    et.addEventListener('mouseleave', () => realce(false));
+    et.addEventListener('focus', () => realce(true));
+    et.addEventListener('blur', () => realce(false));
+    if (outro) et.addEventListener('click', e => {
+      e.preventDefault();
+      outro.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      [eu, outro].forEach(l => { l.classList.remove('pisca-par'); void l.offsetWidth; l.classList.add('pisca-par'); });
     });
   });
   // Seleção em massa.

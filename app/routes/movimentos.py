@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session, selectinload
 from ..deps import (IntOpcional, auditar, entidade_escolhida, exigir_papel, flash, get_db, papel_em, render,
                     utilizador_atual)
 from ..formatos import parse_data, parse_montante
-from ..models import PAPEIS, Categoria, Conta, Etiqueta, Movimento, Utilizador
+from ..models import CORES, PAPEIS, Categoria, Conta, Etiqueta, Movimento, Utilizador
 from ..qualificacao import aplicar_regras, arvore_categorias, qualificar_manual, repor
 from ..servicos import normalizar_descricao
 from ..seguranca import ler_form
@@ -99,6 +99,35 @@ def _filtrar(q, *, conta_id, categoria, etiqueta, tipo, texto, d_de, d_ate, vmin
     return q
 
 
+def _pares_da_pagina(db: Session, movimentos: list[Movimento]) -> dict[int, dict]:
+    """Para cada movimento ligado (par_id): letra e cor do par, iguais nos dois lados, e onde está o outro.
+    As letras seguem a ordem em que os pares aparecem na página (A, B, …, Z, AA, …)."""
+    ligados = [m for m in movimentos if m.par_id]
+    if not ligados:
+        return {}
+    na_pagina = {m.id for m in movimentos}
+    fora = {m.par_id for m in ligados if m.par_id not in na_pagina}
+    outros = {o.id: o for o in db.scalars(select(Movimento).where(Movimento.id.in_(fora))
+                                          .options(selectinload(Movimento.conta)))} if fora else {}
+    por_movimento = {m.id: m for m in movimentos}
+    pares, chaves = {}, {}
+    for m in ligados:
+        chave = min(m.id, m.par_id)
+        if chave not in chaves:
+            n = len(chaves)
+            letra = ""
+            while True:
+                letra = chr(65 + n % 26) + letra
+                n = n // 26 - 1
+                if n < 0:
+                    break
+            chaves[chave] = {"letra": letra, "cor": CORES[len(chaves) % len(CORES)]}
+        outro = por_movimento.get(m.par_id) or outros.get(m.par_id)
+        pares[m.id] = {**chaves[chave], "par_id": m.par_id, "na_pagina": m.par_id in na_pagina,
+                       "outro": outro}
+    return pares
+
+
 def _listar(request: Request, db: Session, u: Utilizador, *, entidade: int | None, conta: Conta | None,
             categoria: int, etiqueta: int, tipo: str, q: str, de: str, ate: str, pagina: int,
             vmin: str = "", vmax: str = "", ordem: str = "-data"):
@@ -160,7 +189,7 @@ def _listar(request: Request, db: Session, u: Utilizador, *, entidade: int | Non
         tipos=TIPOS_FILTRO, movimentos=lista, total=total, entradas=entradas, saidas=saidas, n_sem=n_sem,
         pagina=pagina, paginas=max(1, -(-total // POR_PAGINA)), erro=erro, f=filtros,
         query=urlencode({**{k: v for k, v in filtros.items() if v}, **({"ordem": ordem} if ordem != "-data" else {})}),
-        ordem=ordem, ordens=ordens,
+        ordem=ordem, ordens=ordens, pares=_pares_da_pagina(db, lista),
         pode_editar=PAPEIS[papel] >= PAPEIS["editar"])
 
 

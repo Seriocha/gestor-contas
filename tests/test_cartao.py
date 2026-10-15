@@ -173,3 +173,17 @@ def test_procurar_pares_liga_dados_da_v060(admin, app):
         db.commit()
     r = admin.post("/relatorios/cartoes/procurar", data={"csrf": _csrf(admin.get("/relatorios/cartoes")), "entidade": "1"})
     assert "1 pagamento(s) marcado(s) ou ligado(s)" in r.text and "1 ligado" in r.text
+
+
+def test_lista_marca_pares_com_mesma_letra_e_cor(admin, app):
+    import re
+    _importar(admin, "ordem.xls", xls_santander(ORDEM), conta_id="1")
+    _importar(admin, "CC.xls", xls_cartao(CARTAO), conta_id="2")
+    # lista global: os dois lados na mesma página, com a mesma letra e cor
+    pagina = admin.get("/movimentos?entidade=1").text
+    etiquetas = re.findall(r'class="etiqueta-par" href="(#mov-\d+)"\s+data-alvo="\d+" style="--cor-par: (#[0-9a-f]{6})"', pagina)
+    assert len(etiquetas) == 2 and etiquetas[0][1] == etiquetas[1][1]
+    assert pagina.count("</span> A") == 2
+    # só a conta à ordem: o outro lado está fora da página → ligação para o detalhe e nome da conta
+    conta = admin.get("/contas/1/movimentos").text
+    assert 'href="/movimentos/' in conta.split('class="etiqueta-par"')[1][:40] and "· Cartão Santander" in conta
