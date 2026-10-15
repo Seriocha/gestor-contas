@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .. import relatorios as rel
+from .. import retificacoes
 from ..backup import ultimo_backup
 from ..deps import IntOpcional, entidade_escolhida, get_db, render, utilizador_atual
 from ..formatos import parse_data
@@ -90,6 +91,7 @@ def painel(request: Request, entidade: IntOpcional = None, periodo: str = "mes",
     return render(request, "painel.html", visiveis=visiveis, entidade=ent, p=p, periodos=PERIODOS_PAINEL, ref=ref,
                   atual=atual, ha_30=ha_30, grupos_ativos=grupos_ativos, grupos_passivos=grupos_passivos,
                   agrupar=agrupar, ordenar=ordenar, opcoes_agrupar=AGRUPAR, opcoes_ordenar=ORDENAR,
+                  avisos=retificacoes.avisos(db, [c.id for c, _ in pat["contas"]]),
                   r=r, despesas=despesas, n_sem=n_sem, graficos=graficos, ultimo_backup=backup)
 
 

@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from .models import Conta, Importacao, Movimento, Utilizador
 from .parsers import Extrato
-from . import emprestimos
+from . import emprestimos, retificacoes
 from .qualificacao import aplicar_regras
 
 TAMANHO_MAX = 10 * 1024 * 1024
@@ -129,6 +129,7 @@ def confirmar(db: Session, conta: Conta, extrato: Extrato, nome: str, sha: str,
         emprestimos.qualificar(db, conta, movs)
         db.flush()
     imp.emprestimo = emprestimos.processar(db, conta)
+    retificacoes.recalcular_contas(db, [conta])
 
     msg = None
     primeiro = linhas[0] if linhas else None
@@ -370,6 +371,7 @@ def anular(db: Session, imp: Importacao) -> int:
         db.delete(m)
         n += 1
     imp.estado = "anulada"
+    retificacoes.recalcular_contas(db, [imp.conta])
     return n
 
 

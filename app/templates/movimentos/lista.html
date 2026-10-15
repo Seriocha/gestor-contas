@@ -28,6 +28,50 @@
 {% endif %}
 {% if erro %}<div class="aviso aviso-erro">{{ erro }}</div>{% endif %}
 
+{% if conta and retificaveis %}
+{% set pendentes = retificacoes | selectattr('diferenca') | list %}
+{% if pendentes %}
+<div class="aviso aviso-alerta aviso-retificacao">
+  <strong>Saldo retificado.</strong>
+  {% for e in pendentes %}Em {{ e.retificacao.data | data }}: {{ e.diferenca | eur(conta.moeda) }} por explicar com movimentos{{ ';' if not loop.last else '.' }} {% endfor %}
+  O saldo mostrado é o real; insere os movimentos em falta (reforços, resgates, juros, valorizações) e a diferença diminui sozinha.
+</div>
+{% endif %}
+<details class="cartao caixa-retificacao">
+  <summary><strong>Retificar saldo</strong> <span class="nota">· acertar a conta ao valor real numa data{% if retificacoes %} ({{ retificacoes | length }} registada{{ 's' if retificacoes | length > 1 }}){% endif %}</span></summary>
+  {% if pode_editar %}
+  <form method="post" action="/contas/{{ conta.id }}/retificar" class="formulario">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <div class="linha">
+      <label>Data <input type="date" name="data" required></label>
+      <label>Saldo real ({{ conta.moeda }}) <input name="saldo" inputmode="decimal" required placeholder="valor da carteira / dos certificados"></label>
+    </div>
+    <label>Nota <input name="nota" maxlength="500" placeholder="ex.: valor do AforroNet a 30-09"></label>
+    <p class="nota sem-margem">A diferença para o saldo dos movimentos vira um acerto fora dos relatórios (não é receita nem despesa).
+      Fica um aviso na conta até os movimentos explicarem o saldo.</p>
+    <div class="acoes-form"><button class="primario">Retificar saldo</button></div>
+  </form>
+  {% endif %}
+  {% if retificacoes %}
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th>Data</th><th class="num">Saldo real</th><th class="num">Por explicar</th><th>Nota</th><th></th></tr></thead>
+    {% for e in retificacoes %}
+    <tr>
+      <td class="sem-quebra">{{ e.retificacao.data | data }}</td>
+      <td class="num">{{ e.retificacao.saldo | eur(conta.moeda) }}</td>
+      <td class="num">{% if e.diferenca %}<span class="etiqueta etiqueta-cor">{{ e.diferenca | eur(conta.moeda) }}</span>{% else %}<span class="etiqueta">explicado</span>{% endif %}</td>
+      <td class="nota">{{ e.retificacao.nota or '' }}</td>
+      <td class="acoes">{% if pode_editar %}
+        <form method="post" action="/contas/{{ conta.id }}/retificacoes/{{ e.retificacao.id }}/apagar" onsubmit="return confirm('Apagar esta retificação?')">
+          <input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="ligacao">Apagar</button>
+        </form>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% endif %}
+</details>
+{% endif %}
+
 <section class="cartao">
   <div class="resumo">
     {% if cartao %}
@@ -171,6 +215,7 @@
           {% elif m.transferencia %}<span class="etiqueta">transferência</span>{% endif %}
           {% if m.excluido %}<span class="etiqueta">excluído</span>{% endif %}
           {% if (m.hash_dedup or '').startswith('manual:') %}<span class="etiqueta">à mão</span>{% endif %}
+          {% if (m.hash_dedup or '').startswith('retif:') %}<span class="etiqueta etiqueta-cor">retificação</span>{% endif %}
           {% for e in m.etiquetas %}<span class="etiqueta etiqueta-cor">#{{ e.nome }}</span>{% endfor %}
           {% if m.notas %}<br><span class="nota">{{ m.notas }}</span>{% endif %}
         </td>

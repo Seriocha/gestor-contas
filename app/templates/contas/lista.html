@@ -16,14 +16,19 @@
   {% else %}
   <div class="rolar">
   <table class="tabela">
-    <thead><tr><th>Conta</th><th>Tipo</th><th>Instituição</th><th>Titulares</th><th class="num">Saldo</th>{% if b.pode_gerir %}<th></th>{% endif %}</tr></thead>
+    {% macro th(col, rotulo, classe='') -%}
+    <th class="{{ classe }}"{% if ordens[col].seta %} aria-sort="{{ 'descending' if ordem.startswith('-') else 'ascending' }}"{% endif %}><a class="ordenar" href="{{ ordens[col].href }}">{{ rotulo }}{% if ordens[col].seta %} <span aria-hidden="true">{{ ordens[col].seta }}</span>{% endif %}</a></th>
+    {%- endmacro %}
+    <thead><tr>{{ th('nome', 'Conta') }}{{ th('tipo', 'Tipo') }}{{ th('banco', 'Instituição') }}<th>Titulares</th>{{ th('saldo', 'Saldo', 'num') }}{% if b.pode_gerir %}<th></th>{% endif %}</tr></thead>
     <tbody>
     {% for c, s in b.contas %}
     <tr class="{{ '' if c.ativa else 'arquivada' }}">
       <td><strong><a href="/contas/{{ c.id }}/movimentos">{{ c.nome }}</a></strong>{% if c.iban %}<br><span class="nota iban">{{ c.iban | iban }}</span>{% endif %}
         {% if c.tipo == 'EMPRESTIMO' %}<br><a class="nota" href="/contas/{{ c.id }}/emprestimo">quadro, taxa e acertos ›</a>{% endif %}
         {% if c.tipo == 'CARTAO_CREDITO' and c.conta_pagamento %}<br><span class="nota">paga por {{ c.conta_pagamento.nome }}{% if c.dia_pagamento %}, dia {{ c.dia_pagamento }}{% endif %}</span>{% endif %}
-        {% if not c.ativa %} <span class="etiqueta">arquivada</span>{% endif %}</td>
+        {% if not c.ativa %} <span class="etiqueta">arquivada</span>{% endif %}
+        {% if avisos.get(c.id) %}<br><a class="aviso-conta nota" href="/contas/{{ c.id }}/movimentos"
+          title="Saldo retificado: diferença ainda sem movimentos que a expliquem">⚠ saldo retificado em {{ avisos[c.id].data | data }} · {{ avisos[c.id].diferenca | eur(c.moeda) }} por explicar</a>{% endif %}</td>
       <td>{{ c.tipo_rotulo }}{% if c.moeda != 'EUR' %} · {{ c.moeda }}{% endif %}</td>
       <td>{{ c.instituicao.nome }}</td>
       <td>{{ c.titulares | map(attribute='nome') | join(', ') or '—' }}</td>

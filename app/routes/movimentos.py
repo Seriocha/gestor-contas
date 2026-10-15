@@ -17,7 +17,7 @@ from ..models import CORES, PAPEIS, Categoria, Conta, Etiqueta, Movimento, Utili
 from ..qualificacao import aplicar_regras, arvore_categorias, qualificar_manual, repor
 from ..servicos import normalizar_descricao
 from ..seguranca import ler_form
-from .. import servicos
+from .. import retificacoes, servicos
 from ..servicos import resumo_cartao, saldo_conta
 
 router = APIRouter()
@@ -184,6 +184,8 @@ def _listar(request: Request, db: Session, u: Utilizador, *, entidade: int | Non
         request, "movimentos/lista.html", visiveis=visiveis, entidade=ent, conta=conta,
         saldo=saldo_conta(db, conta) if conta else None,
         cartao=resumo_cartao(db, conta, date.today()) if conta and conta.tipo == "CARTAO_CREDITO" else None,
+        retificaveis=conta is not None and retificacoes.retificavel(conta),
+        retificacoes=retificacoes.estados(db, conta) if conta and retificacoes.retificavel(conta) else [],
         contas=db.scalars(select(Conta).where(Conta.entidade_id == ent.id).order_by(Conta.nome)).all(),
         categorias=arvore_categorias(db), etiquetas=db.scalars(select(Etiqueta).order_by(Etiqueta.nome)).all(),
         tipos=TIPOS_FILTRO, movimentos=lista, total=total, entradas=entradas, saidas=saidas, n_sem=n_sem,
@@ -329,6 +331,7 @@ async def novo_manual(request: Request, conta_id: int, u: Utilizador = Depends(u
     else:
         aplicar_regras(db, [m])
     db.flush()
+    retificacoes.recalcular_contas(db, [c])
     auditar(db, u, "movimento_manual", f"{m.id}: {c.nome} {dados['data_mov']} {dados['montante']}")
     db.commit()
     flash(request, "Movimento criado." + (" Se for o outro lado de uma transferência, liga-o abaixo." if m.transferencia else ""))
@@ -344,9 +347,10 @@ async def apagar_manual(request: Request, mov_id: int, u: Utilizador = Depends(u
         raise HTTPException(status_code=400, detail="Só se apagam movimentos inseridos à mão; os importados anulam-se pela importação.")
     if m.par_id:
         servicos.desligar(db, m)
-    conta_id = m.conta_id
+    conta_id, conta = m.conta_id, m.conta
     auditar(db, u, "movimento_manual_apagado", f"{m.id}: {m.descricao_original} {m.montante}")
     db.delete(m)
+    retificacoes.recalcular_contas(db, [conta])
     db.commit()
     flash(request, "Movimento apagado.")
     return RedirectResponse(_voltar_seguro(str(form.get("voltar", ""))) if form.get("voltar") else f"/contas/{conta_id}/movimentos",
@@ -397,6 +401,7 @@ async def editar(request: Request, mov_id: int, u: Utilizador = Depends(utilizad
     qualificar_manual(db, m, categoria_id=_int(form.get("categoria_id")), transferencia=form.get("transferencia") == "1",
                       excluido=form.get("excluido") == "1", etiquetas_ids=ids,
                       notas=str(form.get("notas", "")).strip()[:2000])
+    retificacoes.recalcular_contas(db, [m.conta])
     db.commit()
     flash(request, "Movimento atualizado.")
     return RedirectResponse(_voltar_seguro(str(form.get("voltar", ""))), status_code=303)
@@ -505,3 +510,52 @@ async def ligar(request: Request, mov_id: int, u: Utilizador = Depends(utilizado
     flash(request, "Movimentos ligados e marcados como transferência.")
     return RedirectResponse(_voltar_seguro(str(form.get("voltar", ""))) if form.get("voltar") else f"/movimentos/{m.id}",
                             status_code=303)
+
+
+
+@router.post("/contas/{conta_id}/retificar")
+async def retificar(request: Request, conta_id: int, u: Utilizador = Depends(utilizador_atual),
+                    db: Session = Depends(get_db)):
+    """Saldo real da conta numa data (Certificados de Aforro, Investimento)."""
+    c = db.get(Conta, conta_id)
+    if not c:
+        raise HTTPException(status_code=404, detail="Não encontrado.")
+    exigir_papel(db, u, c.entidade_id, "editar")
+    if not retificacoes.retificavel(c):
+        raise HTTPException(status_code=400, detail="A retificação de saldo só existe em contas de Aforro e de Investimento.")
+    form = await ler_form(request)
+    try:
+        data = parse_data(str(form.get("data", "")))
+        saldo = parse_montante(str(form.get("saldo", "")))
+    except ValueError as e:
+        flash(request, str(e), "erro")
+        return RedirectResponse(f"/contas/{c.id}/movimentos", status_code=303)
+    if not data or not str(form.get("saldo", "")).strip():
+        flash(request, "Indica a data e o saldo real.", "erro")
+        return RedirectResponse(f"/contas/{c.id}/movimentos", status_code=303)
+    estado = retificacoes.criar(db, c, data, saldo, str(form.get("nota", "")).strip()[:500] or None, u.id)
+    auditar(db, u, "saldo_retificado", f"{c.id}: {data} → {saldo} (diferença {estado.diferenca})")
+    db.commit()
+    from ..formatos import fmt_montante
+    flash(request, f"Saldo retificado para {fmt_montante(saldo, c.moeda)} em {data:%d-%m-%Y}. " + (
+        f"Diferença por explicar com movimentos: {fmt_montante(estado.diferenca, c.moeda)}." if estado.diferenca
+        else "Os movimentos já explicam este saldo."))
+    return RedirectResponse(f"/contas/{c.id}/movimentos", status_code=303)
+
+
+@router.post("/contas/{conta_id}/retificacoes/{ret_id}/apagar")
+async def apagar_retificacao(request: Request, conta_id: int, ret_id: int, u: Utilizador = Depends(utilizador_atual),
+                             db: Session = Depends(get_db)):
+    from ..models import RetificacaoSaldo
+    r = db.get(RetificacaoSaldo, ret_id)
+    if not r or r.conta_id != conta_id:
+        raise HTTPException(status_code=404, detail="Não encontrado.")
+    exigir_papel(db, u, r.conta.entidade_id, "editar")
+    await ler_form(request)
+    conta = r.conta
+    auditar(db, u, "retificacao_apagada", f"{conta.id}: {r.data} {r.saldo}")
+    db.delete(r)
+    retificacoes.recalcular(db, conta)
+    db.commit()
+    flash(request, "Retificação apagada; o saldo volta a ser só o dos movimentos.")
+    return RedirectResponse(f"/contas/{conta_id}/movimentos", status_code=303)

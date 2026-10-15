@@ -4,7 +4,7 @@ Gestor financeiro doméstico, multiutilizador e self-hosted, para a NAS QNAP. Es
 importa movimentos de bancos portugueses e gere contas à ordem, cartões, investimentos e
 Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIGN.md).
 
-## Estado: v0.14.0
+## Estado: v0.15.0
 
 - Login com várias pessoas: passwords em argon2, bloqueio ao fim de 5 tentativas falhadas,
   proteção CSRF e invalidação das sessões quando a password muda.
@@ -37,6 +37,13 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.15.0 — retificação de saldo e ordenação de contas:** nas contas de Certificados de Aforro
+  e de Investimento, «Retificar saldo» acerta a conta ao valor real numa data. A diferença vira
+  um acerto fora dos relatórios. O acerto é recalculado sempre que os movimentos da conta mudam,
+  por isso os movimentos em falta podem ser inseridos depois e a diferença encolhe até
+  desaparecer. Enquanto houver diferença por explicar, a conta mostra um aviso na sua página, na
+  lista de contas e no painel. A lista de contas ordena-se clicando no título das colunas (Conta,
+  Tipo, Instituição, Saldo), e a escolha fica memorizada.
 - **v0.14.0 — pares visíveis:** na lista de movimentos, os dois lados de uma ligação têm a mesma
   cor (barra lateral) e a mesma letra (etiqueta «↔ A»). Passar o rato sobre a etiqueta realça os
   dois; clicar salta para o outro lado, ou abre-o se estiver noutra conta (a etiqueta indica qual).

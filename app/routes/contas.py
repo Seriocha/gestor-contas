@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, selectinload
 from ..deps import IntOpcional, auditar, entidades_visiveis, exigir_papel, flash, get_db, render, utilizador_atual
 from ..formatos import montante_para_input, normalizar_iban, parse_data, parse_montante
 from ..seguranca import ler_form
+from .. import retificacoes
 from ..emprestimos import PADRAO_OMISSAO, parse_taxa, taxa_para_input
 from ..models import (PAPEIS, TIPOS_CONTA, TIPOS_TAXA, Conta, Emprestimo, Entidade, Instituicao, Permissao,
                       Utilizador)
@@ -169,19 +170,39 @@ def _valores_form(c: Conta) -> dict:
     }
 
 
+ORDENS_CONTAS = {
+    "tipo": lambda cs: (list(TIPOS_CONTA).index(cs[0].tipo), cs[0].nome.lower()),
+    "nome": lambda cs: cs[0].nome.lower(),
+    "banco": lambda cs: (cs[0].instituicao.nome.lower(), cs[0].nome.lower()),
+    "saldo": lambda cs: (cs[1].atual, cs[0].nome.lower()),
+}
+
+
 @router.get("")
-def lista(request: Request, arquivadas: IntOpcional = 0, u: Utilizador = Depends(utilizador_atual),
+def lista(request: Request, arquivadas: IntOpcional = 0, ordem: str = "", u: Utilizador = Depends(utilizador_atual),
           db: Session = Depends(get_db)):
-    blocos = []
+    ordem = ordem if ordem.lstrip("-") in ORDENS_CONTAS else request.session.get("contas_ordem", "tipo")
+    request.session["contas_ordem"] = ordem
+    col, desc = ordem.lstrip("-"), ordem.startswith("-")
+    blocos, todas = [], []
     for entidade, papel in entidades_visiveis(db, u):
         q = select(Conta).where(Conta.entidade_id == entidade.id).options(
             selectinload(Conta.instituicao), selectinload(Conta.titulares), selectinload(Conta.conta_pagamento))
         if not arquivadas:
             q = q.where(Conta.ativa)
-        contas = sorted(db.scalars(q).all(), key=lambda c: (list(TIPOS_CONTA).index(c.tipo), c.nome.lower()))
+        contas = sorted(((c, saldo_conta(db, c)) for c in db.scalars(q).all()), key=ORDENS_CONTAS[col], reverse=desc)
+        todas += [c.id for c, _ in contas]
         blocos.append({"entidade": entidade, "papel": papel, "pode_gerir": PAPEIS[papel] >= PAPEIS["admin"],
-                       "contas": [(c, saldo_conta(db, c)) for c in contas]})
-    return render(request, "contas/lista.html", blocos=blocos, arquivadas=arquivadas)
+                       "contas": contas})
+    # Títulos das colunas: clicar ordena; clicar outra vez inverte (saldo começa pelo maior).
+    ordens = {}
+    for c in ORDENS_CONTAS:
+        atual = col == c
+        nova = (c if desc else f"-{c}") if atual else (f"-{c}" if c == "saldo" else c)
+        ordens[c] = {"href": f"?ordem={nova}" + ("&arquivadas=1" if arquivadas else ""),
+                     "seta": ("▼" if desc else "▲") if atual else ""}
+    return render(request, "contas/lista.html", blocos=blocos, arquivadas=arquivadas, ordem=ordem, ordens=ordens,
+                  avisos=retificacoes.avisos(db, todas))
 
 
 @router.get("/nova")
@@ -249,6 +270,7 @@ async def editar(request: Request, conta_id: int, u: Utilizador = Depends(utiliz
     for k, val in dados.items():
         setattr(c, k, val)
     _gravar_emprestimo(db, c, dados_emp)
+    retificacoes.recalcular_contas(db, [c])  # o saldo inicial entra na diferença das retificações
     auditar(db, u, "conta_editada", f"{c.id}: {c.nome}")
     db.commit()
     flash(request, f"Conta «{c.nome}» atualizada.")

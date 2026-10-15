@@ -290,6 +290,28 @@ class Regra(Base):
     etiqueta: Mapped[Etiqueta | None] = relationship()
 
 
+# Contas cujo saldo se pode retificar à data (valor real da carteira / dos certificados).
+TIPOS_RETIFICAVEIS = {"AFORRO", "INVESTIMENTO"}
+
+
+class RetificacaoSaldo(Base):
+    """Saldo real de uma conta numa data. A diferença para o saldo calculado pelos
+    movimentos vira um movimento de acerto (fora dos relatórios), recalculado
+    sempre que os movimentos da conta mudam — os movimentos em falta podem ser
+    inseridos depois e o acerto encolhe até zero."""
+    __tablename__ = "retificacao_saldo"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    conta_id: Mapped[int] = mapped_column(ForeignKey("conta.id", ondelete="CASCADE"), index=True)
+    data: Mapped[date] = mapped_column(Date)
+    saldo: Mapped[int] = mapped_column(BigInteger)       # cêntimos
+    nota: Mapped[str | None] = mapped_column(Text)
+    criado_por: Mapped[int | None] = mapped_column(ForeignKey("utilizador.id", ondelete="SET NULL"))
+    criado_em: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, server_default=func.now())
+
+    conta: Mapped["Conta"] = relationship()
+
+
 class Definicao(Base):
     """Preferências da app (chave → valor em texto), editáveis em Administração."""
     __tablename__ = "definicao"

@@ -63,7 +63,8 @@
         {% if titulo %}<tr class="grupo"><th>{{ titulo }}</th><th class="num">{{ total | abs | eur }}</th></tr>{% endif %}
         {% for c, s in contas %}
         <tr><td><a href="/contas/{{ c.id }}/{{ 'emprestimo' if c.tipo == 'EMPRESTIMO' else 'movimentos' }}">{{ c.nome }}</a>
-              <span class="nota">{{ c.tipo_rotulo if agrupar == 'banco' else c.instituicao.nome }}</span></td>
+              <span class="nota">{{ c.tipo_rotulo if agrupar == 'banco' else c.instituicao.nome }}</span>
+              {% if avisos.get(c.id) %}<span class="aviso-conta" title="Saldo retificado em {{ avisos[c.id].data | data }}: {{ avisos[c.id].diferenca | eur }} por explicar com movimentos">⚠</span>{% endif %}</td>
             <td class="num">{{ ((s | abs) if passivo else s) | eur }}</td></tr>
         {% endfor %}
       {% endfor %}
