@@ -14,7 +14,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from .models import TIPOS_PASSIVO, Categoria, Conta, Movimento
@@ -298,6 +298,70 @@ def patrimonio(db: Session, entidade_id: int, datas: list[date]) -> dict:
         if s is not None and (h.conta.ativa or s):
             detalhe.append((h.conta, s))
     return {"serie": serie, "contas": detalhe}
+
+
+@dataclass
+class VariacaoConta:
+    conta: Conta
+    inicio: int
+    fim: int
+    movimentos: int          # soma dos movimentos registados no período
+
+    @property
+    def variacao(self) -> int:
+        return self.fim - self.inicio
+
+    @property
+    def nao_explicado(self) -> int:
+        """Parte da variação do saldo sem movimentos registados (ex.: falta o extrato desse período)."""
+        return self.variacao - self.movimentos
+
+
+@dataclass
+class VariacaoPatrimonio:
+    ini: date
+    fim: date
+    contas: list            # [VariacaoConta], só as que mudaram
+    movimentos: list        # [Movimento] do período, maiores primeiro
+    resumo: Resumo          # receitas e despesas (sem transferências nem excluídos)
+    transferencias: int     # soma (absoluta) das transferências internas, que se anulam
+
+    @property
+    def variacao(self) -> int:
+        return sum(c.variacao for c in self.contas)
+
+    @property
+    def nao_explicado(self) -> int:
+        return sum(c.nao_explicado for c in self.contas)
+
+
+def variacao_patrimonio(db: Session, entidade_id: int, ini: date, fim: date, limite: int = 200) -> VariacaoPatrimonio:
+    """O que fez mudar o património líquido entre o fim de `ini − 1 dia` e `fim`.
+
+    A variação de cada conta é a diferença de saldos (como no gráfico); os
+    movimentos do período explicam-na, e o que sobra é «não explicado»
+    (tipicamente um período sem extrato importado)."""
+    from datetime import timedelta as _td
+    contas = [c for c in contas_da_entidade(db, entidade_id) if c.moeda == "EUR"]
+    variacoes = []
+    for c in contas:
+        h = HistoricoConta(db, c)
+        s_ini, s_fim = h.saldo_em(ini - _td(days=1)) or 0, h.saldo_em(fim) or 0
+        soma = sum(m.montante for m in h.movs if ini <= m.data_mov <= fim and
+                   (not c.data_saldo_inicial or m.data_mov > c.data_saldo_inicial or h.com_saldo))
+        if s_ini or s_fim or soma:
+            v = VariacaoConta(c, s_ini, s_fim, soma)
+            if v.variacao or v.movimentos:
+                variacoes.append(v)
+    variacoes.sort(key=lambda v: -abs(v.variacao))
+    ids = [c.id for c in contas]
+    movs = db.scalars(select(Movimento).where(Movimento.conta_id.in_(ids), Movimento.data_mov >= ini,
+                                              Movimento.data_mov <= fim)
+                      .options(selectinload(Movimento.conta), selectinload(Movimento.categoria).selectinload(Categoria.pai))
+                      .order_by(func.abs(Movimento.montante).desc(), Movimento.data_mov).limit(limite)).all()
+    reportaveis = [m for m in movs if not m.transferencia and not m.excluido]
+    return VariacaoPatrimonio(ini=ini, fim=fim, contas=variacoes, movimentos=movs, resumo=resumir(reportaveis),
+                              transferencias=sum(abs(m.montante) for m in movs if m.transferencia) // 2)
 
 
 def sankey(resumo: Resumo, max_categorias: int = 8) -> list[dict]:

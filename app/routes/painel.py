@@ -3,13 +3,14 @@
 from collections import defaultdict
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .. import relatorios as rel
 from ..backup import ultimo_backup
 from ..deps import IntOpcional, entidade_escolhida, get_db, render, utilizador_atual
+from ..formatos import parse_data
 from ..models import TIPOS_CONTA, Conta, Movimento, Utilizador
 from .relatorios import data_referencia
 
@@ -81,7 +82,8 @@ def painel(request: Request, entidade: IntOpcional = None, periodo: str = "mes",
         ~Movimento.excluido))
     graficos = {
         "patrimonio": {"rotulos": [d.strftime("%d-%m-%Y") if d == ref else rel.rotulo_mes(d) for d in meses],
-                       "liquido": [x["liquido"] / 100 for x in pat["serie"]]},
+                       "liquido": [x["liquido"] / 100 for x in pat["serie"]],
+                       "datas": [d.isoformat() for d in meses]},
         "sankey": rel.sankey(r),
         "despesas": [{"nome": l.nome, "valor": l.total / 100, "cor": l.cor} for l in despesas],
     }
@@ -89,3 +91,19 @@ def painel(request: Request, entidade: IntOpcional = None, periodo: str = "mes",
                   atual=atual, ha_30=ha_30, grupos_ativos=grupos_ativos, grupos_passivos=grupos_passivos,
                   agrupar=agrupar, ordenar=ordenar, opcoes_agrupar=AGRUPAR, opcoes_ordenar=ORDENAR,
                   r=r, despesas=despesas, n_sem=n_sem, graficos=graficos, ultimo_backup=backup)
+
+
+@router.get("/painel/variacao")
+def variacao(request: Request, de: str, ate: str, entidade: IntOpcional = None,
+             u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
+    """Fragmento HTML «O que mudou» entre duas datas (pedido pelo clique no gráfico do património)."""
+    _, ent, _ = entidade_escolhida(request, db, u, entidade)
+    if not ent:
+        raise HTTPException(status_code=404, detail="Não encontrado.")
+    try:
+        ini, fim = parse_data(de), parse_data(ate)
+    except ValueError:
+        ini = fim = None
+    if not ini or not fim or ini > fim or (fim - ini).days > 400:
+        raise HTTPException(status_code=400, detail="Período inválido.")
+    return render(request, "_variacao.html", entidade=ent, v=rel.variacao_patrimonio(db, ent.id, ini, fim))

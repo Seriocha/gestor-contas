@@ -35,7 +35,9 @@
   const desenhar = {
     patrimonio(canvas) {
       const d = dados.patrimonio;
-      new Chart(canvas, {
+      const detalhe = document.getElementById('detalhe-variacao');
+      let escolhido = null;
+      const grafico = new Chart(canvas, {
         type: 'line',
         data: { labels: d.rotulos, datasets: [{
           label: 'Património líquido', data: d.liquido, borderColor: COR.patrimonio, borderWidth: 2,
@@ -43,8 +45,40 @@
           pointRadius: 0, pointHoverRadius: 5, pointHitRadius: 12,
         }] },
         options: { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
-                   plugins: { legend: { display: false } }, scales: eixos },
+                   plugins: { legend: { display: false } }, scales: eixos,
+                   onHover: (e, el) => { if (detalhe) e.native.target.style.cursor = el.length ? 'pointer' : 'default'; },
+                   onClick: (e, el) => { if (detalhe && el.length && d.datas) abrirVariacao(el[0].index); } },
       });
+
+      // Clique num ponto: o que mudou desde o ponto anterior (ou desde o início do mês, no 1.º).
+      async function abrirVariacao(i) {
+        const fim = d.datas[i];
+        let ini;
+        if (i > 0) {
+          const a = new Date(d.datas[i - 1] + 'T12:00:00'); a.setDate(a.getDate() + 1);
+          ini = a.toISOString().slice(0, 10);
+        } else {
+          ini = fim.slice(0, 8) + '01';
+        }
+        escolhido = i;
+        grafico.data.datasets[0].pointRadius = d.datas.map((_, k) => (k === i ? 6 : 0));
+        grafico.update('none');
+        detalhe.hidden = false;
+        detalhe.innerHTML = '<p class="nota">A carregar…</p>';
+        const url = `/painel/variacao?entidade=${detalhe.dataset.entidade}&de=${ini}&ate=${fim}`;
+        try {
+          const r = await fetch(url);
+          if (!r.ok) throw new Error(r.status);
+          detalhe.innerHTML = await r.text();
+        } catch (err) {
+          detalhe.innerHTML = '<p class="aviso aviso-erro">Não foi possível obter o detalhe deste período.</p>';
+        }
+        detalhe.querySelector('[data-fechar-variacao]')?.addEventListener('click', () => {
+          detalhe.hidden = true; escolhido = null;
+          grafico.data.datasets[0].pointRadius = 0; grafico.update('none');
+        });
+        detalhe.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
     },
 
     tendencia(canvas) {

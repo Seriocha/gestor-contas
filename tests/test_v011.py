@@ -126,3 +126,36 @@ def test_movimento_manual_validacao(admin):
     r = admin.post("/contas/2/movimentos/novo", data={"csrf": _csrf(form), "sentido": "saida", "data": "", "valor": "0",
                                                        "descricao": ""})
     assert r.status_code == 400 and "Indica a data" in r.text and "Indica a descrição" in r.text
+
+
+def test_variacao_do_patrimonio_explicada(admin, app):
+    from datetime import date
+    from app import relatorios as rel
+    with app.state.SessionLocal() as db:
+        v = rel.variacao_patrimonio(db, 1, date(2025, 10, 1), date(2025, 10, 31))
+    santander = next(c for c in v.contas if c.conta.nome == "Santander ordem")
+    # 1092,10 → 1000,00: variação −92,10 = soma dos 3 movimentos de outubro (o vencimento foi em 10-10)
+    assert (santander.inicio, santander.fim) == (-790, 100000)
+    assert santander.variacao == santander.movimentos and santander.nao_explicado == 0
+    assert v.resumo.receitas == 110000 and v.resumo.despesas == 9210
+    assert [m.descricao_original for m in v.movimentos][:1] == ["Vencimento"]  # maiores primeiro
+
+
+def test_variacao_nao_explicada_quando_falta_extrato(admin, app):
+    # setembro sem extrato: o saldo salta de 1092,10 (antes) para 5000 (novo extrato em novembro)
+    _importar(admin, "nov.xls", xls_santander([("05-11-2025", "Bonus", 100.0, 5000.0)]))
+    from datetime import date
+    from app import relatorios as rel
+    with app.state.SessionLocal() as db:
+        v = rel.variacao_patrimonio(db, 1, date(2025, 10, 14), date(2025, 11, 30))
+    s = next(c for c in v.contas if c.conta.nome == "Santander ordem")
+    assert s.variacao == 400000 and s.movimentos == 10000 and s.nao_explicado == 390000
+
+
+def test_rota_variacao_e_dica_no_painel(admin):
+    r = admin.get("/painel/variacao?entidade=1&de=2025-10-01&ate=2025-10-31")
+    assert r.status_code == 200 and "O que mudou" in r.text and "Santander ordem" in r.text and "Vencimento" in r.text
+    assert "ordem=-montante" in r.text  # ligação «Ver todos em Movimentos»
+    assert admin.get("/painel/variacao?entidade=1&de=2025-10-31&ate=2025-10-01").status_code == 400
+    p = admin.get("/").text
+    assert 'id="detalhe-variacao"' in p and '"datas":' in p and "Clica (ou toca) num ponto" in p

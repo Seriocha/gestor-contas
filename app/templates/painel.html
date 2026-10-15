@@ -30,7 +30,9 @@
     <div class="kpi"><span class="nota">Passivos</span><strong>{{ atual.passivos | eur }}</strong></div>
   </div>
   <div class="grafico grafico-medio"><canvas data-grafico="patrimonio" aria-label="Evolução do património líquido nos últimos 12 meses" role="img"></canvas></div>
+  <p class="nota sem-margem dica-grafico">Clica (ou toca) num ponto para ver o que mudou desde o ponto anterior.</p>
 </section>
+<section class="cartao detalhe-variacao" id="detalhe-variacao" data-entidade="{{ entidade.id }}" hidden aria-live="polite"></section>
 
 <form method="get" class="organizar" aria-label="Organização das contas">
   <input type="hidden" name="entidade" value="{{ entidade.id }}">
@@ -122,8 +124,8 @@
 {% block scripts %}
 {% if entidade %}
 <script type="application/json" id="dados-graficos">{{ graficos | tojson }}</script>
-<script src="/static/vendor/chart.umd.min.js"></script>
-<script src="/static/vendor/chartjs-chart-sankey.min.js"></script>
-<script src="/static/graficos.js"></script>
+<script src="/static/vendor/chart.umd.min.js?v={{ versao }}"></script>
+<script src="/static/vendor/chartjs-chart-sankey.min.js?v={{ versao }}"></script>
+<script src="/static/graficos.js?v={{ versao }}"></script>
 {% endif %}
 {% endblock %}

@@ -1,0 +1,62 @@
+{# Fragmento: «O que mudou» entre duas datas (aberto ao clicar num ponto do gráfico do património). #}
+<div class="cartao-cabecalho">
+  <h2>O que mudou <span class="nota">· {{ v.ini | data }} a {{ v.fim | data }}</span></h2>
+  <button type="button" class="botao-icone" data-fechar-variacao aria-label="Fechar">×</button>
+</div>
+
+<div class="resumo">
+  <div><span class="nota">Variação do património</span>
+    <strong class="{{ 'pos' if v.variacao > 0 else 'neg' if v.variacao < 0 else '' }}">{{ '+' if v.variacao > 0 }}{{ v.variacao | eur }}</strong></div>
+  <div><span class="nota">Receitas</span><strong>{{ v.resumo.receitas | eur }}</strong></div>
+  <div><span class="nota">Despesas</span><strong>{{ v.resumo.despesas | eur }}</strong></div>
+  <div><span class="nota">Transferências internas</span><strong>{{ v.transferencias | eur }}</strong><span class="nota">anulam-se</span></div>
+</div>
+
+{% if v.nao_explicado %}
+<div class="aviso aviso-alerta">
+  {{ v.nao_explicado | eur }} da variação não têm movimentos registados — em geral falta importar o extrato
+  de alguma conta neste período (ver «Não explicado» na tabela).
+</div>
+{% endif %}
+
+<h3>Por conta</h3>
+{% if not v.contas %}<p class="vazio">Nenhuma conta mudou neste período.</p>{% else %}
+<div class="rolar"><table class="tabela compacta">
+  <thead><tr><th>Conta</th><th class="num">Saldo inicial</th><th class="num">Saldo final</th><th class="num">Variação</th>
+    <th class="num">Pelos movimentos</th><th class="num">Não explicado</th></tr></thead>
+  <tbody>
+  {% for c in v.contas %}
+  <tr>
+    <td><a href="/contas/{{ c.conta.id }}/movimentos?de={{ v.ini }}&ate={{ v.fim }}">{{ c.conta.nome }}</a>
+      <span class="nota">{{ c.conta.instituicao.nome }}</span></td>
+    <td class="num">{{ c.inicio | eur }}</td>
+    <td class="num">{{ c.fim | eur }}</td>
+    <td class="num {{ 'pos' if c.variacao > 0 else 'neg' if c.variacao < 0 else '' }}">{{ '+' if c.variacao > 0 }}{{ c.variacao | eur }}</td>
+    <td class="num">{{ c.movimentos | eur }}</td>
+    <td class="num">{% if c.nao_explicado %}<span class="etiqueta etiqueta-cor">{{ c.nao_explicado | eur }}</span>{% else %}—{% endif %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% endif %}
+
+<div class="cartao-cabecalho">
+  <h3>Movimentos do período <span class="nota">· maiores primeiro{% if v.movimentos | length >= 200 %} (primeiros 200){% endif %}</span></h3>
+  <a href="/movimentos?entidade={{ entidade.id }}&de={{ v.ini }}&ate={{ v.fim }}&ordem=-montante">Ver todos em Movimentos ›</a>
+</div>
+{% if not v.movimentos %}<p class="vazio">Sem movimentos registados neste período.</p>{% else %}
+<div class="rolar"><table class="tabela compacta">
+  {% for m in v.movimentos[:40] %}
+  <tr class="{{ 'arquivada' if m.excluido }}">
+    <td class="sem-quebra">{{ m.data_mov | data }}</td>
+    <td class="nota">{{ m.conta.nome }}</td>
+    <td><a href="/movimentos/{{ m.id }}">{{ m.descricao_original }}</a>
+      {% if m.transferencia %}<span class="etiqueta">transferência{% if m.par_id %} ↔{% endif %}</span>{% endif %}
+      {% if m.excluido %}<span class="etiqueta">excluído</span>{% endif %}</td>
+    <td>{% if m.categoria %}<span class="pastilha" style="background: {{ m.categoria.cor_efetiva }}"></span>{{ m.categoria.nome_completo }}{% else %}<span class="nota">—</span>{% endif %}</td>
+    <td class="num {{ 'neg' if m.montante < 0 else 'pos' }}">{{ m.montante | eur(m.moeda) }}</td>
+  </tr>
+  {% endfor %}
+</table></div>
+{% if v.movimentos | length > 40 %}<p class="nota">… e mais {{ v.movimentos | length - 40 }}. <a href="/movimentos?entidade={{ entidade.id }}&de={{ v.ini }}&ate={{ v.fim }}&ordem=-montante">Ver todos</a></p>{% endif %}
+{% endif %}

@@ -135,12 +135,14 @@
 <section class="cartao">
   <h2>Património líquido <span class="nota">· últimos 12 meses</span></h2>
   <div class="grafico grafico-medio"><canvas data-grafico="patrimonio" aria-label="Evolução do património líquido" role="img"></canvas></div>
+  <p class="nota dica-grafico">Clica (ou toca) num ponto para ver o que mudou desde o ponto anterior.</p>
   <div class="kpi-linha">
     <div class="kpi"><span class="nota">Ativos</span><strong>{{ pat.serie[-1].ativos | eur }}</strong></div>
     <div class="kpi"><span class="nota">Passivos</span><strong>{{ pat.serie[-1].passivos | eur }}</strong></div>
     <div class="kpi"><span class="nota">Variação no período</span><strong>{{ (pat.serie[-1].liquido - pat_ant.liquido) | eur }}</strong></div>
   </div>
 </section>
+<section class="cartao detalhe-variacao" id="detalhe-variacao" data-entidade="{{ entidade.id }}" hidden aria-live="polite"></section>
 <p class="nota">Transferências entre contas próprias e movimentos excluídos não contam como receita nem despesa.
   Numa categoria de despesa, uma devolução reduz a despesa.</p>
 {% endif %}
@@ -149,8 +151,8 @@
 {% block scripts %}
 {% if entidade %}
 <script type="application/json" id="dados-graficos">{{ graficos | tojson }}</script>
-<script src="/static/vendor/chart.umd.min.js"></script>
-<script src="/static/graficos.js"></script>
+<script src="/static/vendor/chart.umd.min.js?v={{ versao }}"></script>
+<script src="/static/graficos.js?v={{ versao }}"></script>
 <script>
   const sel = document.getElementById('sel-periodo');
   const mostrar = () => document.querySelectorAll('.so-personalizado').forEach(l => l.hidden = sel.value !== 'personalizado');

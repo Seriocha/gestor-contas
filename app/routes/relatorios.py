@@ -71,7 +71,8 @@ def relatorios(request: Request, entidade: IntOpcional = None, periodo: str = "m
     graficos = {
         "tendencia": {"rotulos": [x["rotulo"] for x in mensal], "receitas": [x["receitas"] / 100 for x in mensal],
                       "despesas": [x["despesas"] / 100 for x in mensal], "saldo": [x["saldo"] / 100 for x in mensal]},
-        "patrimonio": {"rotulos": [rel.rotulo_mes(d) for d in datas], "liquido": [x["liquido"] / 100 for x in pat["serie"]]},
+        "patrimonio": {"rotulos": [rel.rotulo_mes(d) for d in datas], "liquido": [x["liquido"] / 100 for x in pat["serie"]],
+                       "datas": [d.isoformat() for d in datas]},
         "despesas": [{"nome": l.nome, "valor": l.total / 100, "cor": l.cor} for l in ctx["despesas"] if l.total > 0],
     }
     return render(request, "relatorios.html", **ctx, mensal=mensal, estat=estat[:12], pat=pat, pat_ant=pat_ant,
