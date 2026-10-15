@@ -52,6 +52,7 @@ RECEITAS = [
 
 # Regras iniciais para descrições típicas de bancos portugueses:
 # (padrão "contém", alternativas separadas por |, categoria "Pai › Filha", sentido)
+REGRA_REFEICAO = "SUB REFEICAO|SUBSIDIO REFEICAO|SUBS REFEICAO|SUBSIDIO ALIMENTACAO"
 REGRAS = [
     ("LEVANTAMENTO|LEV ATM|LEV", "Levantamentos", "SAIDA"),
     ("EDP|ENDESA|IBERDROLA|GOLDENERGY", "Casa › Eletricidade", "SAIDA"),
@@ -77,6 +78,7 @@ REGRAS = [
     ("JUROS", "Juros e dividendos", "ENTRADA"),
     ("PENSAO|PENSÃO|CENTRO NACIONAL DE PENSOES|CNP", "Pensão", "ENTRADA"),
     ("VENCIMENTO|ORDENADO|SALARIO|SALÁRIO", "Salário", "ENTRADA"),
+    (REGRA_REFEICAO, "Subsídio de alimentação", "ENTRADA"),
 ]
 
 
@@ -108,4 +110,22 @@ def semear(db: Session) -> None:
         db.add_all(Entidade(nome=n, descricao=d, ordem=o) for n, d, o in ENTIDADES)
     if not db.scalar(select(func.count()).select_from(Categoria)):
         _semear_categorias(db)
+    else:
+        _semear_refeicao(db)
     db.commit()
+
+
+def _semear_refeicao(db: Session) -> None:
+    """Bases criadas antes da v0.18: categoria e regra do subsídio de alimentação (uma só vez,
+    para não voltar a criá-las se forem apagadas)."""
+    from .models import Categoria, Definicao, Regra
+    if db.get(Definicao, "seed_refeicao"):
+        return
+    cat = db.scalar(select(Categoria).where(Categoria.nome == "Subsídio de alimentação", Categoria.pai_id.is_(None)))
+    if not cat:
+        cat = Categoria(nome="Subsídio de alimentação", natureza="RECEITA")
+        db.add(cat)
+        db.flush()
+    if not db.scalar(select(Regra).where(Regra.padrao == REGRA_REFEICAO)):
+        db.add(Regra(padrao=REGRA_REFEICAO, modo="contem", sentido="ENTRADA", categoria_id=cat.id, prioridade=99))
+    db.add(Definicao(chave="seed_refeicao", valor="1"))

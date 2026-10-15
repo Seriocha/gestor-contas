@@ -85,6 +85,11 @@ async def previa(request: Request, u: Utilizador = Depends(utilizador_atual), db
                      "(cria-a em Contas, com o tipo «Cartão de crédito», se ainda não existir).")
     elif e_cartao and not extrato.cartao:
         avisos.append("A conta escolhida é um cartão de crédito, mas o ficheiro parece um extrato de conta à ordem.")
+    if extrato.refeicao and conta.tipo != "CARTAO_REFEICAO":
+        erros.append("Este ficheiro é um extrato de cartão refeição: escolhe a conta do cartão "
+                     "(cria-a em Contas, com o tipo «Cartão refeição», se ainda não existir).")
+    elif conta.tipo == "CARTAO_REFEICAO" and not extrato.refeicao:
+        avisos.append("A conta escolhida é um cartão refeição, mas o ficheiro parece um extrato de outro tipo.")
     sem_saldo = extrato.movimentos and all(m.saldo is None for m in extrato.movimentos)
     if sem_saldo and conta.saldo_inicial == 0 and not servicos.saldo_conta(db, conta).n_movimentos:
         avisos.append("Este extrato não traz saldo. Confirma o saldo inicial da conta (para um cartão: o valor em "

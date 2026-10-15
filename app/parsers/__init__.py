@@ -40,6 +40,7 @@ class Extrato:
     avisos: list[str] = field(default_factory=list)
     cartao: bool = False              # extrato de cartão de crédito (não de conta à ordem)
     emprestimo: bool = False          # extrato de empréstimo (movimentos da conta do empréstimo)
+    refeicao: bool = False            # extrato de cartão refeição
     # Extratos com várias subcontas (Revolut: (produto, moeda) → movimentos). `movimentos` é a principal.
     subcontas: dict | None = None
 
@@ -134,7 +135,9 @@ def ler_linhas(nome: str, conteudo: bytes) -> list[list]:
 def todos() -> list:
     """Todos os parsers, pela ordem de deteção (o 1.º que reconhecer o ficheiro ganha)."""
     from . import activobank, big, creditoagricola, revolut, santander, santander_cartao, santander_emprestimo
-    return [santander.Parser, santander_cartao.Parser, santander_emprestimo.Parser, activobank.Parser,
+    from . import santander_refeicao
+    return [santander.Parser, santander_cartao.Parser, santander_emprestimo.Parser,
+            santander_refeicao.Parser, activobank.Parser,
             creditoagricola.Parser, big.Parser, revolut.Parser]
 
 
@@ -152,4 +155,4 @@ def ler_extrato(nome: str, conteudo: bytes) -> Extrato:
                 extrato.movimentos = para_cronologico(extrato.movimentos)
                 extrato.avisos += verificar_saldos(extrato.movimentos)
             return extrato
-    raise FormatoDesconhecido("Formato de extrato não reconhecido. Bancos suportados: Santander (conta, cartão e empréstimo), ActivoBank, Crédito Agrícola, Banco BiG, Revolut. Vê os formatos em Administração › Importadores.")
+    raise FormatoDesconhecido("Formato de extrato não reconhecido. Bancos suportados: Santander (conta, cartão de crédito, cartão refeição e empréstimo), ActivoBank, Crédito Agrícola, Banco BiG, Revolut. Vê os formatos em Administração › Importadores.")
