@@ -1,6 +1,8 @@
 """Lista de movimentos (global por entidade ou de uma conta) e qualificação:
 categoria, etiquetas, transferência, excluir — um a um ou em massa."""
-from datetime import date
+import re
+import uuid
+from datetime import date, timedelta
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -10,9 +12,10 @@ from sqlalchemy.orm import Session, selectinload
 
 from ..deps import (IntOpcional, auditar, entidade_escolhida, exigir_papel, flash, get_db, papel_em, render,
                     utilizador_atual)
-from ..formatos import parse_data
+from ..formatos import parse_data, parse_montante
 from ..models import PAPEIS, Categoria, Conta, Etiqueta, Movimento, Utilizador
 from ..qualificacao import aplicar_regras, arvore_categorias, qualificar_manual, repor
+from ..servicos import normalizar_descricao
 from ..seguranca import ler_form
 from .. import servicos
 from ..servicos import resumo_cartao, saldo_conta
@@ -24,7 +27,39 @@ TIPOS_FILTRO = {"": "Todos", "saidas": "Saídas", "entradas": "Entradas", "sem":
                 "manual": "Qualificados à mão", "regra": "Qualificados por regra"}
 
 
-def _filtrar(q, *, conta_id, categoria, etiqueta, tipo, texto, d_de, d_ate):
+_PARECE_VALOR = re.compile(r"^[-+]?\d[\d.,]*\s*€?$")
+
+
+def _valor_procurado(texto: str) -> int | None:
+    """«40,05», «-40.05», «1.000» ou «40,05 €» na caixa de procura → valor absoluto em cêntimos."""
+    t = texto.strip()
+    if not _PARECE_VALOR.match(t):
+        return None
+    try:
+        return abs(parse_montante(t))
+    except ValueError:
+        return None
+
+
+ORDENS = {  # coluna → expressões de ordenação (ascendente)
+    "data": (Movimento.data_mov, Movimento.ordem, Movimento.id),
+    "conta": (Conta.nome, Movimento.data_mov, Movimento.id),
+    "descricao": (func.lower(Movimento.descricao_original), Movimento.data_mov, Movimento.id),
+    "categoria": (Categoria.nome, Movimento.data_mov, Movimento.id),
+    "montante": (Movimento.montante, Movimento.data_mov, Movimento.id),
+}
+
+
+def _ordenar(q, ordem: str):
+    col, desc = ordem.lstrip("-"), ordem.startswith("-")
+    if col not in ORDENS:
+        col, desc = "data", True
+    if col == "categoria":
+        q = q.outerjoin(Categoria, Movimento.categoria_id == Categoria.id)
+    return q.order_by(*[e.desc().nulls_last() if desc else e.asc().nulls_last() for e in ORDENS[col]])
+
+
+def _filtrar(q, *, conta_id, categoria, etiqueta, tipo, texto, d_de, d_ate, vmin=None, vmax=None):
     if conta_id:
         q = q.where(Movimento.conta_id == conta_id)
     if categoria:
@@ -50,14 +85,23 @@ def _filtrar(q, *, conta_id, categoria, etiqueta, tipo, texto, d_de, d_ate):
         q = q.where(Movimento.data_mov >= d_de)
     if d_ate:
         q = q.where(Movimento.data_mov <= d_ate)
+    if vmin is not None:
+        q = q.where(func.abs(Movimento.montante) >= vmin)
+    if vmax is not None:
+        q = q.where(func.abs(Movimento.montante) <= vmax)
     if texto.strip():
         termo = f"%{texto.strip()}%"
-        q = q.where(or_(Movimento.descricao_original.ilike(termo), Movimento.notas.ilike(termo)))
+        cond = [Movimento.descricao_original.ilike(termo), Movimento.notas.ilike(termo)]
+        valor = _valor_procurado(texto)
+        if valor is not None:  # procura também pelo montante (entrada ou saída)
+            cond.append(func.abs(Movimento.montante) == valor)
+        q = q.where(or_(*cond))
     return q
 
 
 def _listar(request: Request, db: Session, u: Utilizador, *, entidade: int | None, conta: Conta | None,
-            categoria: int, etiqueta: int, tipo: str, q: str, de: str, ate: str, pagina: int):
+            categoria: int, etiqueta: int, tipo: str, q: str, de: str, ate: str, pagina: int,
+            vmin: str = "", vmax: str = "", ordem: str = "-data"):
     if conta:
         papel = exigir_papel(db, u, conta.entidade_id, "ver")
         visiveis, ent, _ = entidade_escolhida(request, db, u, conta.entidade_id)
@@ -71,23 +115,42 @@ def _listar(request: Request, db: Session, u: Utilizador, *, entidade: int | Non
     except ValueError as e:
         d_de = d_ate = None
         erro = str(e)
+    try:
+        v_min = abs(parse_montante(vmin)) if vmin.strip() else None
+        v_max = abs(parse_montante(vmax)) if vmax.strip() else None
+    except ValueError as e:
+        v_min = v_max = None
+        erro = str(e)
     base = select(Movimento).join(Conta).where(Conta.entidade_id == ent.id)
     filtro = _filtrar(base, conta_id=conta.id if conta else None, categoria=categoria, etiqueta=etiqueta,
-                      tipo=tipo, texto=q, d_de=d_de, d_ate=d_ate)
+                      tipo=tipo, texto=q, d_de=d_de, d_ate=d_ate, vmin=v_min, vmax=v_max)
     sub = filtro.with_only_columns(Movimento.montante).subquery()
     total, entradas, saidas = db.execute(select(
         func.count(), func.coalesce(func.sum(func.max(sub.c.montante, 0)), 0),
         func.coalesce(func.sum(func.min(sub.c.montante, 0)), 0)).select_from(sub)).one()
     pagina = max(1, pagina or 1)
-    lista = db.scalars(filtro.options(selectinload(Movimento.conta), selectinload(Movimento.etiquetas),
-                                      selectinload(Movimento.categoria).selectinload(Categoria.pai))
-                       .order_by(Movimento.data_mov.desc(), Movimento.ordem.desc(), Movimento.id.desc())
-                       .offset((pagina - 1) * POR_PAGINA).limit(POR_PAGINA)).all()
+    ordem = ordem if ordem.lstrip("-") in ORDENS else "-data"
+    lista = db.scalars(_ordenar(filtro, ordem).options(
+        selectinload(Movimento.conta), selectinload(Movimento.etiquetas),
+        selectinload(Movimento.categoria).selectinload(Categoria.pai))
+        .offset((pagina - 1) * POR_PAGINA).limit(POR_PAGINA)).all()
     n_sem = db.scalar(_filtrar(base.with_only_columns(func.count()), conta_id=conta.id if conta else None,
                                categoria=0, etiqueta=0, tipo="sem", texto="", d_de=None, d_ate=None))
-    filtros = {"categoria": categoria or "", "etiqueta": etiqueta or "", "tipo": tipo, "q": q, "de": de, "ate": ate}
+    filtros = {"categoria": categoria or "", "etiqueta": etiqueta or "", "tipo": tipo, "q": q, "de": de, "ate": ate,
+               "vmin": vmin, "vmax": vmax}
     if not conta:
         filtros["entidade"] = ent.id
+    # Títulos das colunas: clicar ordena por essa coluna; clicar outra vez inverte.
+    base_q = {k: v for k, v in filtros.items() if v}
+    ordens = {}
+    for col in ORDENS:
+        atual = ordem.lstrip("-") == col
+        if atual:
+            nova = col if ordem.startswith("-") else f"-{col}"
+        else:
+            nova = f"-{col}" if col in ("data", "montante") else col
+        seta = ("▼" if ordem.startswith("-") else "▲") if atual else ""
+        ordens[col] = {"href": "?" + urlencode({**base_q, "ordem": nova}), "seta": seta}
     return render(
         request, "movimentos/lista.html", visiveis=visiveis, entidade=ent, conta=conta,
         saldo=saldo_conta(db, conta) if conta else None,
@@ -96,31 +159,37 @@ def _listar(request: Request, db: Session, u: Utilizador, *, entidade: int | Non
         categorias=arvore_categorias(db), etiquetas=db.scalars(select(Etiqueta).order_by(Etiqueta.nome)).all(),
         tipos=TIPOS_FILTRO, movimentos=lista, total=total, entradas=entradas, saidas=saidas, n_sem=n_sem,
         pagina=pagina, paginas=max(1, -(-total // POR_PAGINA)), erro=erro, f=filtros,
-        query=urlencode({k: v for k, v in filtros.items() if v}),
+        query=urlencode({**{k: v for k, v in filtros.items() if v}, **({"ordem": ordem} if ordem != "-data" else {})}),
+        ordem=ordem, ordens=ordens,
         pode_editar=PAPEIS[papel] >= PAPEIS["editar"])
 
 
 @router.get("/movimentos")
 def movimentos(request: Request, entidade: IntOpcional = None, conta: IntOpcional = None, categoria: IntOpcional = None,
                etiqueta: IntOpcional = None, tipo: str = "", q: str = "", de: str = "", ate: str = "", pagina: IntOpcional = 1,
+               vmin: str = "", vmax: str = "", ordem: str = "-data",
                u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
     if conta:
         return RedirectResponse(f"/contas/{conta}/movimentos?" + urlencode(
             {k: v for k, v in {"categoria": categoria or "", "etiqueta": etiqueta or "", "tipo": tipo, "q": q, "de": de,
-                               "ate": ate}.items() if v}), status_code=303)
+                               "ate": ate, "vmin": vmin, "vmax": vmax, "ordem": ordem if ordem != "-data" else ""}.items()
+             if v}), status_code=303)
     return _listar(request, db, u, entidade=entidade, conta=None, categoria=categoria, etiqueta=etiqueta,
-                   tipo=tipo if tipo in TIPOS_FILTRO else "", q=q, de=de, ate=ate, pagina=pagina)
+                   tipo=tipo if tipo in TIPOS_FILTRO else "", q=q, de=de, ate=ate, pagina=pagina,
+                   vmin=vmin, vmax=vmax, ordem=ordem)
 
 
 @router.get("/contas/{conta_id}/movimentos")
 def movimentos_conta(request: Request, conta_id: int, categoria: IntOpcional = None, etiqueta: IntOpcional = None, tipo: str = "",
                      q: str = "", de: str = "", ate: str = "", pagina: IntOpcional = 1,
+                     vmin: str = "", vmax: str = "", ordem: str = "-data",
                      u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
     c = db.get(Conta, conta_id)
     if not c:
         raise HTTPException(status_code=404, detail="Não encontrado.")
     return _listar(request, db, u, entidade=None, conta=c, categoria=categoria, etiqueta=etiqueta,
-                   tipo=tipo if tipo in TIPOS_FILTRO else "", q=q, de=de, ate=ate, pagina=pagina)
+                   tipo=tipo if tipo in TIPOS_FILTRO else "", q=q, de=de, ate=ate, pagina=pagina,
+                   vmin=vmin, vmax=vmax, ordem=ordem)
 
 
 def _movimento_editavel(db: Session, u: Utilizador, mov_id: int) -> Movimento:
@@ -146,6 +215,115 @@ async def mudar_categoria(request: Request, mov_id: int, u: Utilizador = Depends
     return JSONResponse({"ok": True, "categoria": m.categoria.nome_completo if m.categoria else None})
 
 
+MANUAL = "manual:"  # prefixo do hash_dedup dos movimentos inseridos à mão
+JANELA_CANDIDATOS = timedelta(days=10)
+
+
+def e_manual(m: Movimento) -> bool:
+    return (m.hash_dedup or "").startswith(MANUAL)
+
+
+def _ler_movimento_manual(form, conta: Conta) -> tuple[dict, list[str]]:
+    erros = []
+    data, valor = None, 0
+    try:
+        data = parse_data(str(form.get("data", "")))
+    except ValueError as e:
+        erros.append(str(e))
+    if not data and not erros:
+        erros.append("Indica a data.")
+    descricao = " ".join(str(form.get("descricao", "")).split())[:500]
+    if not descricao:
+        erros.append("Indica a descrição.")
+    try:
+        valor = abs(parse_montante(str(form.get("valor", ""))))
+    except ValueError as e:
+        erros.append(str(e))
+    if not valor:
+        erros.append("Indica um valor diferente de zero.")
+    montante = valor if form.get("sentido") == "entrada" else -valor
+    return {"data_mov": data, "descricao_original": descricao, "descricao_norm": normalizar_descricao(descricao),
+            "montante": montante}, erros
+
+
+def _candidatos(db: Session, m: Movimento) -> list[Movimento]:
+    """Movimentos que podem ser o outro lado desta transferência: noutra conta da mesma
+    entidade, valor simétrico, até 10 dias de diferença, ainda sem par."""
+    if m.par_id or not m.montante:
+        return []
+    return db.scalars(select(Movimento).join(Conta).where(
+        Conta.entidade_id == m.conta.entidade_id, Movimento.conta_id != m.conta_id,
+        Movimento.montante == -m.montante, Movimento.par_id.is_(None),
+        Movimento.data_mov.between(m.data_mov - JANELA_CANDIDATOS, m.data_mov + JANELA_CANDIDATOS))
+        .options(selectinload(Movimento.conta)).order_by(Movimento.data_mov).limit(10)).all()
+
+
+@router.get("/contas/{conta_id}/movimentos/novo")
+def novo_manual_form(request: Request, conta_id: int, u: Utilizador = Depends(utilizador_atual),
+                     db: Session = Depends(get_db)):
+    c = db.get(Conta, conta_id)
+    if not c:
+        raise HTTPException(status_code=404, detail="Não encontrado.")
+    exigir_papel(db, u, c.entidade_id, "editar")
+    return render(request, "movimentos/manual.html", conta=c, v={"data": date.today().isoformat(), "sentido": "saida"},
+                  categorias=arvore_categorias(db), tem_extrato=_tem_extrato(db, c))
+
+
+def _tem_extrato(db: Session, c: Conta) -> bool:
+    return bool(db.scalar(select(func.count()).select_from(Movimento).where(
+        Movimento.conta_id == c.id, Movimento.importacao_id.is_not(None))))
+
+
+@router.post("/contas/{conta_id}/movimentos/novo")
+async def novo_manual(request: Request, conta_id: int, u: Utilizador = Depends(utilizador_atual),
+                      db: Session = Depends(get_db)):
+    """Movimento inserido à mão (ex.: contas de depósitos e fundos, que não têm extrato para importar)."""
+    c = db.get(Conta, conta_id)
+    if not c:
+        raise HTTPException(status_code=404, detail="Não encontrado.")
+    exigir_papel(db, u, c.entidade_id, "editar")
+    form = await ler_form(request)
+    dados, erros = _ler_movimento_manual(form, c)
+    if erros:
+        v = {k: str(form.get(k, "")) for k in form.keys()}
+        return render(request, "movimentos/manual.html", status_code=400, conta=c, v=v, erros=erros,
+                      categorias=arvore_categorias(db), tem_extrato=_tem_extrato(db, c))
+    ordem = (db.scalar(select(func.max(Movimento.ordem)).where(Movimento.conta_id == c.id,
+                                                                Movimento.data_mov == dados["data_mov"])) or 0) + 1
+    m = Movimento(conta_id=c.id, moeda=c.moeda, ordem=ordem, hash_dedup=f"{MANUAL}{uuid.uuid4().hex}",
+                  notas=str(form.get("notas", "")).strip()[:2000] or None, **dados)
+    db.add(m)
+    categoria_id = _int(form.get("categoria_id"))
+    if categoria_id or form.get("transferencia") == "1":
+        db.flush()
+        qualificar_manual(db, m, categoria_id=categoria_id, transferencia=form.get("transferencia") == "1")
+    else:
+        aplicar_regras(db, [m])
+    db.flush()
+    auditar(db, u, "movimento_manual", f"{m.id}: {c.nome} {dados['data_mov']} {dados['montante']}")
+    db.commit()
+    flash(request, "Movimento criado." + (" Se for o outro lado de uma transferência, liga-o abaixo." if m.transferencia else ""))
+    return RedirectResponse(f"/movimentos/{m.id}?voltar=/contas/{c.id}/movimentos", status_code=303)
+
+
+@router.post("/movimentos/{mov_id}/apagar")
+async def apagar_manual(request: Request, mov_id: int, u: Utilizador = Depends(utilizador_atual),
+                        db: Session = Depends(get_db)):
+    m = _movimento_editavel(db, u, mov_id)
+    form = await ler_form(request)
+    if not e_manual(m):
+        raise HTTPException(status_code=400, detail="Só se apagam movimentos inseridos à mão; os importados anulam-se pela importação.")
+    if m.par_id:
+        servicos.desligar(db, m)
+    conta_id = m.conta_id
+    auditar(db, u, "movimento_manual_apagado", f"{m.id}: {m.descricao_original} {m.montante}")
+    db.delete(m)
+    db.commit()
+    flash(request, "Movimento apagado.")
+    return RedirectResponse(_voltar_seguro(str(form.get("voltar", ""))) if form.get("voltar") else f"/contas/{conta_id}/movimentos",
+                            status_code=303)
+
+
 @router.get("/movimentos/{mov_id}")
 def editar_form(request: Request, mov_id: int, voltar: str = "", u: Utilizador = Depends(utilizador_atual),
                 db: Session = Depends(get_db)):
@@ -157,6 +335,7 @@ def editar_form(request: Request, mov_id: int, voltar: str = "", u: Utilizador =
     if par and not papel_em(db, u, par.conta.entidade_id):
         par = None  # o outro lado está numa entidade que este utilizador não vê
     return render(request, "movimentos/editar.html", m=m, par=par, categorias=arvore_categorias(db),
+                  manual=e_manual(m), candidatos=_candidatos(db, m) if not par and PAPEIS[papel] >= PAPEIS["editar"] else [],
                   etiquetas=db.scalars(select(Etiqueta).order_by(Etiqueta.nome)).all(),
                   pode_editar=PAPEIS[papel] >= PAPEIS["editar"], voltar=_voltar_seguro(voltar))
 
@@ -170,6 +349,13 @@ async def editar(request: Request, mov_id: int, u: Utilizador = Depends(utilizad
                  db: Session = Depends(get_db)):
     m = _movimento_editavel(db, u, mov_id)
     form = await ler_form(request)
+    if e_manual(m) and form.get("data"):
+        dados, erros = _ler_movimento_manual(form, m.conta)
+        if erros:
+            flash(request, " ".join(erros), "erro")
+            return RedirectResponse(f"/movimentos/{m.id}", status_code=303)
+        for k, v in dados.items():
+            setattr(m, k, v)
     nova_etiqueta = str(form.get("nova_etiqueta", "")).strip()[:50]
     ids = [int(x) for x in form.getlist("etiquetas") if str(x).isdigit()]
     if nova_etiqueta:
@@ -202,7 +388,16 @@ def _ids_do_filtro(db: Session, u: Utilizador, form) -> list[int]:
     base = select(Movimento.id).join(Conta).where(Conta.entidade_id == entidade_id)
     return list(db.scalars(_filtrar(base, conta_id=conta.id if conta else None, categoria=_int(form.get("f_categoria")),
                                     etiqueta=_int(form.get("f_etiqueta")), tipo=tipo if tipo in TIPOS_FILTRO else "",
-                                    texto=str(form.get("f_q", "")), d_de=d_de, d_ate=d_ate)))
+                                    texto=str(form.get("f_q", "")), d_de=d_de, d_ate=d_ate,
+                                    vmin=_valor_ou_none(form.get("f_vmin")), vmax=_valor_ou_none(form.get("f_vmax")))))
+
+
+def _valor_ou_none(texto) -> int | None:
+    t = str(texto or "").strip()
+    try:
+        return abs(parse_montante(t)) if t else None
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Valor do filtro inválido.")
 
 
 @router.post("/movimentos-lote")

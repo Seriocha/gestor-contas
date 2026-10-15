@@ -29,6 +29,18 @@
   </div>
 </section>
 
+<section class="cartao" id="preferencias">
+  <h2>Preferências</h2>
+  <form method="post" action="/admin/preferencias" class="formulario">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <label class="opcao"><input type="checkbox" name="mostrar_iban_completo" value="1" {% if prefs.mostrar_iban_completo == '1' %}checked{% endif %}>
+      Mostrar o NIB/IBAN completo das contas</label>
+    <p class="nota sem-margem">Desligado, aparece só o país e os últimos 4 dígitos (PT50 •••• 1234). Vale para todos os utilizadores.
+      Os NIB gravados antes da v0.11 foram guardados já truncados: volta a escrevê-los em Contas › Editar para os veres completos.</p>
+    <div class="acoes-form"><button class="primario">Guardar preferências</button></div>
+  </form>
+</section>
+
 <section class="cartao">
   <div class="cartao-cabecalho">
     <h2>Backups</h2>

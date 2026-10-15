@@ -4,7 +4,7 @@ Gestor financeiro doméstico, multiutilizador e self-hosted, para a NAS QNAP. Es
 importa movimentos de bancos portugueses e gere contas à ordem, cartões, investimentos e
 Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIGN.md).
 
-## Estado: v0.10.0
+## Estado: v0.11.0
 
 - Login com várias pessoas: passwords em argon2, bloqueio ao fim de 5 tentativas falhadas,
   proteção CSRF e invalidação das sessões quando a password muda.
@@ -37,6 +37,14 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.11.0:** os ativos e passivos do painel podem ser agrupados por tipo, por banco ou sem
+  grupos, e ordenados por nome, saldo ou banco; a escolha fica memorizada. Nos movimentos há
+  pesquisa por valor (escrever «40,05» encontra entradas e saídas desse montante), intervalo de
+  valor e ordenação clicando no título de cada coluna. Administração › Preferências tem a opção
+  «Mostrar NIB/IBAN completo»; o NIB passa a ser guardado tal como é escrito. Movimentos manuais:
+  «+ Movimento» em qualquer conta, a pensar nos depósitos e fundos que não se importam. Podem ser
+  editados e apagados, e mostram os candidatos de ligação (valor simétrico noutra conta, até 10
+  dias de diferença).
 - **Novo visual e telemóvel** (v0.10.0), inspirado no [votoavoto.pt](https://votoavoto.pt):
   tipografia Bricolage Grotesque e Geist (incluídas na app, sem CDN), fundo cinza-claro,
   cartões brancos de cantos largos e amarelo #FFD23F nas ações, com modo escuro. No computador

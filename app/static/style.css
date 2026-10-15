@@ -253,6 +253,10 @@ button.perigo { color: var(--neg); border-color: var(--neg); background: transpa
 button:disabled { opacity: .5; cursor: not-allowed; }
 
 /* ------------------------------------------------------------------ peças específicas */
+.organizar { display: flex; gap: .75rem; flex-wrap: wrap; justify-content: flex-end; margin: 0 0 .75rem; }
+.organizar label { display: flex; align-items: center; gap: .5rem; font-size: .85rem; font-weight: 600; color: var(--suave); }
+.organizar select { width: auto; min-height: 38px; padding: .35rem .6rem; font-size: .9rem; }
+.total-lado { font-family: var(--fonte-titulo); font-size: 1.15rem; font-variant-numeric: tabular-nums; }
 .grafico { position: relative; width: 100%; }
 .grafico-medio { height: 280px; }
 .grafico-alto { height: 400px; }
@@ -261,6 +265,8 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .tabela-movimentos select { max-width: 17rem; min-height: 36px; padding: .3rem .5rem; font-size: .9rem; border-radius: 9px; }
 .tabela-movimentos .descricao { color: var(--texto); text-decoration: none; font-weight: 550; }
 .tabela-movimentos .c-conta { white-space: nowrap; }
+.tabela th a.ordenar { color: inherit; text-decoration: none; white-space: nowrap; }
+.tabela th a.ordenar:hover, .tabela th[aria-sort] a.ordenar { color: var(--texto); }
 .tabela-movimentos .descricao:hover { text-decoration: underline; }
 select.gravado { box-shadow: 0 0 0 3px var(--ok-fundo); border-color: var(--pos); }
 
@@ -333,6 +339,9 @@ select.gravado { box-shadow: 0 0 0 3px var(--ok-fundo); border-color: var(--pos)
   .acoes-form > .botao, .acoes-form > button { flex: 1 1 auto; }
   .filtros label { flex: 1 1 calc(50% - .4rem); }
   .filtros > button { flex: 1 1 100%; }
+  .organizar { justify-content: stretch; }
+  .organizar label { flex: 1 1 140px; flex-direction: column; align-items: stretch; gap: .2rem; }
+  .organizar select { width: 100%; }
 
   /* Movimentos: cada linha vira um cartão compacto. */
   .tabela-movimentos thead { display: none; }

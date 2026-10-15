@@ -61,6 +61,16 @@ def fmt_data(d: date | None) -> str:
     return d.strftime("%d-%m-%Y") if d else ""
 
 
+def normalizar_iban(texto: str | None) -> str | None:
+    """'pt50 0018000312345678901 23' -> 'PT50 0018 0003 1234 5678 9012 3' (grupos de 4)."""
+    t = re.sub(r"\s+", "", texto or "").upper()
+    if not t:
+        return None
+    if "•" in t:
+        return (texto or "").strip()  # já vem truncado (registos antigos)
+    return " ".join(t[i:i + 4] for i in range(0, len(t), 4))[:40]
+
+
 def mascarar_iban(texto: str | None) -> str | None:
     """Guarda só o país e os últimos 4 dígitos: 'PT50 •••• 1234'."""
     t = re.sub(r"\s+", "", texto or "").upper()

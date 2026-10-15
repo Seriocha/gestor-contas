@@ -22,7 +22,7 @@
     </label>
     <label>Moeda <input name="moeda" value="{{ v.moeda or 'EUR' }}" maxlength="3"></label>
   </div>
-  <label>IBAN / n.º de conta <input name="iban" value="{{ v.iban or '' }}" placeholder="Só se guarda o país e os últimos 4 dígitos"></label>
+  <label>IBAN / n.º de conta <input name="iban" value="{{ v.iban or '' }}" placeholder="PT50 0000 0000 0000 0000 0000 0"></label>
   <div class="linha">
     <label><span class="so-tipo" data-tipos="EMPRESTIMO">Capital em dívida</span><span class="so-tipo" data-tipos="!EMPRESTIMO">Saldo inicial</span>
       <input name="saldo_inicial" value="{{ v.saldo_inicial or '' }}" inputmode="decimal" placeholder="0,00"></label>

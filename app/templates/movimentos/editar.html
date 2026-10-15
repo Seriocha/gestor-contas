@@ -37,9 +37,30 @@
   {% elif m.par_id %}
   <p class="nota">Ligado a um movimento de uma entidade a que não tens acesso.</p>
   {% else %}
-  <p class="vazio">Não está ligado a nenhum outro movimento.
-    {% if m.conta.tipo == 'CARTAO_CREDITO' or m.transferencia %}
-    Vê os candidatos em <a href="/relatorios/cartoes?entidade={{ m.conta.entidade_id }}">Pagamentos de cartão</a>.{% endif %}</p>
+  <p class="vazio">Não está ligado a nenhum outro movimento.</p>
+  {% if candidatos %}
+  <p class="nota">Possíveis outros lados (valor simétrico noutra conta, até 10 dias de diferença):</p>
+  <div class="rolar"><table class="tabela compacta">
+    {% for c in candidatos %}
+    <tr>
+      <td class="sem-quebra">{{ c.data_mov | data }}</td>
+      <td>{{ c.conta.nome }}</td>
+      <td><a href="/movimentos/{{ c.id }}">{{ c.descricao_original }}</a></td>
+      <td class="num {{ 'neg' if c.montante < 0 else 'pos' }}">{{ c.montante | eur(c.moeda) }}</td>
+      <td class="acoes">
+        <form method="post" action="/movimentos/{{ m.id }}/ligar">
+          <input type="hidden" name="csrf" value="{{ csrf_token }}">
+          <input type="hidden" name="par_id" value="{{ c.id }}">
+          <input type="hidden" name="voltar" value="/movimentos/{{ m.id }}">
+          <button class="ligacao">Ligar</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% elif m.conta.tipo == 'CARTAO_CREDITO' %}
+  <p class="nota">Vê os pagamentos em <a href="/relatorios/cartoes?entidade={{ m.conta.entidade_id }}">Pagamentos de cartão</a>.</p>
+  {% endif %}
   {% endif %}
 </section>
 
@@ -50,6 +71,19 @@
   <form method="post" class="formulario">
     <input type="hidden" name="csrf" value="{{ csrf_token }}">
     <input type="hidden" name="voltar" value="{{ voltar }}">
+    {% if manual %}
+    <fieldset>
+      <legend>Movimento inserido à mão</legend>
+      <div class="linha">
+        <label>Data <input type="date" name="data" value="{{ m.data_mov.isoformat() }}" required></label>
+        <label>Sentido
+          <select name="sentido"><option value="entrada" {% if m.montante > 0 %}selected{% endif %}>Entrada</option>
+            <option value="saida" {% if m.montante < 0 %}selected{% endif %}>Saída</option></select></label>
+        <label>Valor <input name="valor" value="{{ '%.2f' | format((m.montante | abs) / 100) | replace('.', ',') }}" inputmode="decimal" required></label>
+      </div>
+      <label>Descrição <input name="descricao" value="{{ m.descricao_original }}" maxlength="500" required></label>
+    </fieldset>
+    {% endif %}
     <label>Categoria
       <select name="categoria_id">
         <option value="">— sem categoria —</option>
@@ -84,6 +118,12 @@
       <a href="/regras/nova?mov={{ m.id }}">Criar regra a partir deste movimento</a>
     </div>
   </form>
+  {% if manual %}
+  <form method="post" action="/movimentos/{{ m.id }}/apagar" class="separado" onsubmit="return confirm('Apagar este movimento?')">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <button class="perigo">Apagar movimento</button>
+  </form>
+  {% endif %}
   {% else %}
   <p>Categoria: {{ m.categoria.nome_completo if m.categoria else '—' }}</p>
   <p><a href="{{ voltar }}">Voltar</a></p>

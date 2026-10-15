@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from ..deps import IntOpcional, auditar, entidades_visiveis, exigir_papel, flash, get_db, render, utilizador_atual
-from ..formatos import montante_para_input, mascarar_iban, parse_data, parse_montante
+from ..formatos import montante_para_input, normalizar_iban, parse_data, parse_montante
 from ..seguranca import ler_form
 from ..emprestimos import PADRAO_OMISSAO, parse_taxa, taxa_para_input
 from ..models import (PAPEIS, TIPOS_CONTA, TIPOS_TAXA, Conta, Emprestimo, Entidade, Instituicao, Permissao,
@@ -43,7 +43,7 @@ def _ler_campos(form, db: Session, entidade_id: int, conta_id: int | None) -> tu
         "nome", "tipo", "moeda", "iban", "instituicao_id", "saldo_inicial", "data_saldo_inicial",
         "conta_pagamento_id", "dia_fecho", "dia_pagamento", "notas")}
     dados: dict = {"nome": v["nome"], "tipo": v["tipo"], "moeda": (v["moeda"] or "EUR").upper(),
-                   "iban_mascarado": mascarar_iban(v["iban"]), "notas": v["notas"] or None}
+                   "iban": normalizar_iban(v["iban"]), "notas": v["notas"] or None}
     if not dados["nome"]:
         erros.append("O nome é obrigatório.")
     if dados["tipo"] not in TIPOS_CONTA:
@@ -160,7 +160,7 @@ def _valores_form(c: Conta) -> dict:
         "emp_montante": montante_para_input(e.montante_contratado),
         "emp_data_contrato": e.data_contrato.isoformat() if e.data_contrato else ""}
     return {**emp,
-        "nome": c.nome, "tipo": c.tipo, "moeda": c.moeda, "iban": c.iban_mascarado or "",
+        "nome": c.nome, "tipo": c.tipo, "moeda": c.moeda, "iban": c.iban or "",
         "instituicao_id": c.instituicao_id, "saldo_inicial": montante_para_input(c.saldo_inicial),
         "data_saldo_inicial": c.data_saldo_inicial.isoformat() if c.data_saldo_inicial else "",
         "conta_pagamento_id": c.conta_pagamento_id, "dia_fecho": c.dia_fecho or "",

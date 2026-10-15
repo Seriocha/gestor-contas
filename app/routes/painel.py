@@ -14,11 +14,47 @@ from ..models import TIPOS_CONTA, Conta, Movimento, Utilizador
 from .relatorios import data_referencia
 
 router = APIRouter()
+AGRUPAR = {"tipo": "Tipo de conta", "banco": "Banco", "nenhum": "Sem grupos"}
+ORDENAR = {"nome": "Nome", "saldo": "Saldo (maior primeiro)", "banco": "Banco"}
+
+
+def _organizar(contas, agrupar: str, ordenar: str) -> tuple[list, list]:
+    """[(título do grupo, total, [(conta, saldo)])] para ativos e passivos."""
+    chave_ordem = {
+        "nome": lambda cs: cs[0].nome.lower(),
+        "saldo": lambda cs: -abs(cs[1]),
+        "banco": lambda cs: (cs[0].instituicao.nome.lower(), cs[0].nome.lower()),
+    }[ordenar]
+
+    def grupo(c):
+        if agrupar == "banco":
+            return c.instituicao.nome
+        if agrupar == "tipo":
+            return TIPOS_CONTA[c.tipo]
+        return ""
+    lados = []
+    for passivo in (False, True):
+        grupos = defaultdict(list)
+        for c, s in contas:
+            if (c.tipo in rel.PASSIVOS) == passivo:
+                grupos[grupo(c)].append((c, s))
+        lista = [(titulo, sum(s for _, s in itens), sorted(itens, key=chave_ordem)) for titulo, itens in grupos.items()]
+        if agrupar == "tipo":   # ordem natural dos tipos
+            ordem_tipos = list(TIPOS_CONTA.values())
+            lista.sort(key=lambda g: ordem_tipos.index(g[0]))
+        elif ordenar == "saldo":
+            lista.sort(key=lambda g: -abs(g[1]))
+        else:
+            lista.sort(key=lambda g: g[0].lower())
+        lados.append(lista)
+    return lados[0], lados[1]
+
+
 PERIODOS_PAINEL = {"mes": "Este mês", "trimestre": "Trimestre", "6meses": "6 meses", "ano": "12 meses"}
 
 
 @router.get("/")
-def painel(request: Request, entidade: IntOpcional = None, periodo: str = "mes",
+def painel(request: Request, entidade: IntOpcional = None, periodo: str = "mes", agrupar: str = "", ordenar: str = "",
            u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
     visiveis, ent, papel = entidade_escolhida(request, db, u, entidade)
     backup = ultimo_backup(request.app.state.defs) if u.is_admin else None
@@ -31,9 +67,11 @@ def painel(request: Request, entidade: IntOpcional = None, periodo: str = "mes",
     meses = [rel.fim_do_mes(rel.somar_meses(ref.replace(day=1), -i)) for i in range(12, 0, -1)] + [ref]
     pat = rel.patrimonio(db, ent.id, meses)
     atual, ha_30 = pat["serie"][-1], rel.patrimonio(db, ent.id, [ref - timedelta(days=30)])["serie"][0]
-    grupos_ativos, grupos_passivos = defaultdict(list), defaultdict(list)
-    for c, s in pat["contas"]:
-        (grupos_passivos if c.tipo in rel.PASSIVOS else grupos_ativos)[TIPOS_CONTA[c.tipo]].append((c, s))
+    # Organização das contas (escolha memorizada na sessão).
+    agrupar = agrupar if agrupar in AGRUPAR else request.session.get("painel_agrupar", "tipo")
+    ordenar = ordenar if ordenar in ORDENAR else request.session.get("painel_ordenar", "nome")
+    request.session["painel_agrupar"], request.session["painel_ordenar"] = agrupar, ordenar
+    grupos_ativos, grupos_passivos = _organizar(pat["contas"], agrupar, ordenar)
 
     movs = rel.movimentos_reportaveis(db, ent.id, p.ini, p.fim)
     r = rel.resumir(movs)
@@ -48,5 +86,6 @@ def painel(request: Request, entidade: IntOpcional = None, periodo: str = "mes",
         "despesas": [{"nome": l.nome, "valor": l.total / 100, "cor": l.cor} for l in despesas],
     }
     return render(request, "painel.html", visiveis=visiveis, entidade=ent, p=p, periodos=PERIODOS_PAINEL, ref=ref,
-                  atual=atual, ha_30=ha_30, grupos_ativos=dict(grupos_ativos), grupos_passivos=dict(grupos_passivos),
+                  atual=atual, ha_30=ha_30, grupos_ativos=grupos_ativos, grupos_passivos=grupos_passivos,
+                  agrupar=agrupar, ordenar=ordenar, opcoes_agrupar=AGRUPAR, opcoes_ordenar=ORDENAR,
                   r=r, despesas=despesas, n_sem=n_sem, graficos=graficos, ultimo_backup=backup)

@@ -104,7 +104,7 @@ class Conta(Base):
     nome: Mapped[str] = mapped_column(String(100))
     tipo: Mapped[str] = mapped_column(String(20))
     moeda: Mapped[str] = mapped_column(String(3), default="EUR")
-    iban_mascarado: Mapped[str | None] = mapped_column(String(40))
+    iban: Mapped[str | None] = mapped_column(String(40))  # como foi escrito; a apresentação depende das preferências
     # Cartões de crédito: conta à ordem que paga o cartão + ciclo do extrato.
     conta_pagamento_id: Mapped[int | None] = mapped_column(ForeignKey("conta.id"))
     dia_fecho: Mapped[int | None] = mapped_column(Integer)
@@ -288,6 +288,14 @@ class Regra(Base):
     conta: Mapped[Conta | None] = relationship()
     categoria: Mapped[Categoria | None] = relationship()
     etiqueta: Mapped[Etiqueta | None] = relationship()
+
+
+class Definicao(Base):
+    """Preferências da app (chave → valor em texto), editáveis em Administração."""
+    __tablename__ = "definicao"
+
+    chave: Mapped[str] = mapped_column(String(50), primary_key=True)
+    valor: Mapped[str] = mapped_column(String(500))
 
 
 class Auditoria(Base):

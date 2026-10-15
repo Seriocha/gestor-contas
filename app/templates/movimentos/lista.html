@@ -10,7 +10,10 @@
 <div class="titulo-acoes">
   <h1>{{ conta.nome }} <span class="nota">· {{ conta.instituicao.nome }} · {{ conta.entidade.nome }}</span></h1>
   {% if conta.tipo == 'EMPRESTIMO' %}<a class="botao primario" href="/contas/{{ conta.id }}/emprestimo">Ver empréstimo</a>
-  {% elif pode_editar %}<a class="botao primario" href="/importar?conta={{ conta.id }}">Importar extrato</a>{% endif %}
+  {% elif pode_editar %}<div class="acoes-form">
+    <a class="botao {{ 'primario' if conta.tipo in ('POUPANCA', 'INVESTIMENTO', 'AFORRO') else '' }}" href="/contas/{{ conta.id }}/movimentos/novo">+ Movimento</a>
+    <a class="botao {{ '' if conta.tipo in ('POUPANCA', 'INVESTIMENTO', 'AFORRO') else 'primario' }}" href="/importar?conta={{ conta.id }}">Importar extrato</a>
+  </div>{% endif %}
 </div>
 {% if saldo.diferenca %}
 <div class="aviso aviso-alerta">
@@ -48,7 +51,7 @@
       {% if n_sem %}<a href="{{ request.url.path }}?{% if not conta %}entidade={{ entidade.id }}&{% endif %}tipo=sem">{{ n_sem }}</a>{% else %}0{% endif %}</strong></div>
   </div>
 
-  {% set n_filtros = [f.categoria, f.etiqueta, f.tipo, f.q, f.de, f.ate] | select | list | length %}
+  {% set n_filtros = [f.categoria, f.etiqueta, f.tipo, f.q, f.de, f.ate, f.vmin, f.vmax] | select | list | length %}
   <details class="caixa-filtros" data-ativos="{{ '1' if n_filtros else '0' }}">
   <summary>Filtros{% if n_filtros %} <span class="etiqueta etiqueta-cor">{{ n_filtros }} ativo{{ 's' if n_filtros > 1 }}</span>{% endif %}
     <span class="nota"><span class="ver">Mostrar</span><span class="esconder">Esconder</span></span></summary>
@@ -82,7 +85,10 @@
         {% for k, rotulo in tipos.items() %}<option value="{{ k }}" {% if f.tipo == k %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}
       </select>
     </label>
-    <label>Procurar <input name="q" value="{{ f.q }}" placeholder="descrição ou nota"></label>
+    <label>Procurar <input name="q" value="{{ f.q }}" placeholder="descrição, nota ou valor"></label>
+    <label>Valor de <input name="vmin" value="{{ f.vmin }}" inputmode="decimal" placeholder="0,00"></label>
+    <label>até <input name="vmax" value="{{ f.vmax }}" inputmode="decimal" placeholder="0,00"></label>
+    {% if ordem != '-data' %}<input type="hidden" name="ordem" value="{{ ordem }}">{% endif %}
     <label>De <input type="date" name="de" value="{{ f.de }}"></label>
     <label>Até <input type="date" name="ate" value="{{ f.ate }}"></label>
     <button>Filtrar</button>
@@ -100,7 +106,7 @@
     {# Filtro atual, para as ações aplicadas a todos os movimentos do filtro (todas as páginas). #}
     <input type="hidden" name="f_entidade" value="{{ entidade.id }}">
     <input type="hidden" name="f_conta" value="{{ conta.id if conta else '' }}">
-    {% for k in ['categoria', 'etiqueta', 'tipo', 'q', 'de', 'ate'] %}<input type="hidden" name="f_{{ k }}" value="{{ f[k] }}">{% endfor %}
+    {% for k in ['categoria', 'etiqueta', 'tipo', 'q', 'de', 'ate', 'vmin', 'vmax'] %}<input type="hidden" name="f_{{ k }}" value="{{ f[k] }}">{% endfor %}
     <button type="button" class="abrir-lote" id="abrir-lote">Ações em massa…</button>
     <div class="barra-lote" id="barra-lote">
       <fieldset class="ambito">
@@ -140,7 +146,11 @@
     <table class="tabela compacta tabela-movimentos">
       <thead><tr>
         {% if pode_editar %}<th><input type="checkbox" id="selecionar-todos" aria-label="Selecionar todos"></th>{% endif %}
-        <th>Data</th>{% if not conta %}<th>Conta</th>{% endif %}<th>Descrição</th><th>Categoria</th><th class="num">Montante</th>{% if conta %}<th class="num">Saldo</th>{% endif %}
+        {% macro th(col, rotulo, classe='') -%}
+        <th class="{{ classe }}"{% if ordens[col].seta %} aria-sort="{{ 'descending' if ordem.startswith('-') else 'ascending' }}"{% endif %}>
+          <a class="ordenar" href="{{ ordens[col].href }}">{{ rotulo }}{% if ordens[col].seta %} <span aria-hidden="true">{{ ordens[col].seta }}</span>{% endif %}</a></th>
+        {%- endmacro %}
+        {{ th('data', 'Data') }}{% if not conta %}{{ th('conta', 'Conta') }}{% endif %}{{ th('descricao', 'Descrição') }}{{ th('categoria', 'Categoria') }}{{ th('montante', 'Montante', 'num') }}{% if conta %}<th class="num">Saldo</th>{% endif %}
       </tr></thead>
       <tbody>
       {% for m in movimentos %}
@@ -152,6 +162,7 @@
           <a href="/movimentos/{{ m.id }}?voltar={{ aqui | urlencode }}" class="descricao">{{ m.descricao_original }}</a>
           {% if m.transferencia %}<span class="etiqueta">transferência{% if m.par_id %} ↔{% endif %}</span>{% endif %}
           {% if m.excluido %}<span class="etiqueta">excluído</span>{% endif %}
+          {% if (m.hash_dedup or '').startswith('manual:') %}<span class="etiqueta">à mão</span>{% endif %}
           {% for e in m.etiquetas %}<span class="etiqueta etiqueta-cor">#{{ e.nome }}</span>{% endfor %}
           {% if m.notas %}<br><span class="nota">{{ m.notas }}</span>{% endif %}
         </td>

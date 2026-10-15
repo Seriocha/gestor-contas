@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block titulo %}Novo movimento{% endblock %}
+{% block conteudo %}
+<h1>Novo movimento <span class="nota">· {{ conta.nome }}</span></h1>
+{% if erros %}<div class="aviso aviso-erro"><ul>{% for e in erros %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
+{% if tem_extrato %}
+<div class="aviso aviso-alerta">Esta conta tem extratos importados. Um movimento à mão pode duplicar um que venha
+  no próximo extrato — prefere importar, e usa isto só para o que o banco não exporta.</div>
+{% endif %}
+<section class="cartao">
+  <form method="post" class="formulario">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <fieldset>
+      <legend>Sentido</legend>
+      <div class="opcoes-linha">
+        <label class="opcao"><input type="radio" name="sentido" value="entrada" {% if v.sentido == 'entrada' %}checked{% endif %}>
+          Entrada <span class="nota">(depósito, reforço, juros, valorização)</span></label>
+        <label class="opcao"><input type="radio" name="sentido" value="saida" {% if v.sentido != 'entrada' %}checked{% endif %}>
+          Saída <span class="nota">(resgate, levantamento, comissão)</span></label>
+      </div>
+    </fieldset>
+    <div class="linha">
+      <label>Data <input type="date" name="data" value="{{ v.data or '' }}" required></label>
+      <label>Valor ({{ conta.moeda }}) <input name="valor" value="{{ v.valor or '' }}" inputmode="decimal" placeholder="0,00" required></label>
+    </div>
+    <label>Descrição <input name="descricao" value="{{ v.descricao or '' }}" maxlength="500" required
+      placeholder="ex.: Reforço do depósito a prazo · Juros do trimestre · Resgate parcial"></label>
+    <label>Categoria
+      <select name="categoria_id">
+        <option value="">— automática (regras) —</option>
+        {% for raiz in categorias %}
+          <option value="{{ raiz.id }}" {% if v.categoria_id|string == raiz.id|string %}selected{% endif %}>{{ raiz.nome }}</option>
+          {% for c in raiz.filhas %}<option value="{{ c.id }}" {% if v.categoria_id|string == c.id|string %}selected{% endif %}>&nbsp;&nbsp;{{ raiz.nome }} › {{ c.nome }}</option>{% endfor %}
+        {% endfor %}
+      </select>
+    </label>
+    <label class="opcao"><input type="checkbox" name="transferencia" value="1" {% if v.transferencia %}checked{% endif %}>
+      Transferência de/para outra conta minha (ex.: reforço vindo da conta à ordem) — não conta como receita nem despesa</label>
+    <label>Notas <textarea name="notas" rows="2">{{ v.notas or '' }}</textarea></label>
+    <div class="acoes-form">
+      <button class="primario">Criar movimento</button>
+      <a href="/contas/{{ conta.id }}/movimentos">Cancelar</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

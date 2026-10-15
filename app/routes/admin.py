@@ -4,6 +4,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
+from .. import preferencias
 from ..backup import fazer_backup, ultimo_backup
 from ..deps import auditar, exigir_admin, flash, get_db, render
 from ..models import PAPEIS, PAPEIS_ROTULO, Auditoria, Entidade, Permissao, Utilizador
@@ -53,7 +54,7 @@ def utilizadores(request: Request, admin: Utilizador = Depends(exigir_admin), db
     eventos = db.execute(select(Auditoria, Utilizador.nome).outerjoin(Utilizador)
                          .order_by(Auditoria.id.desc()).limit(30)).all()
     return render(request, "admin/utilizadores.html", lista=lista, entidades=_entidades(db),
-                  rotulos=PAPEIS_ROTULO, eventos=eventos,
+                  rotulos=PAPEIS_ROTULO, eventos=eventos, prefs=request.app.state.prefs,
                   ultimo_backup=ultimo_backup(request.app.state.defs))
 
 
@@ -168,6 +169,19 @@ async def nova_entidade(request: Request, admin: Utilizador = Depends(exigir_adm
     db.commit()
     flash(request, f"Entidade «{e.nome}» criada.")
     return RedirectResponse("/admin/entidades", status_code=303)
+
+
+@router.post("/preferencias")
+async def gravar_preferencias(request: Request, admin: Utilizador = Depends(exigir_admin),
+                              db: Session = Depends(get_db)):
+    form = await ler_form(request)
+    mostrar = "1" if form.get("mostrar_iban_completo") == "1" else "0"
+    preferencias.gravar(db, "mostrar_iban_completo", mostrar)
+    auditar(db, admin, "preferencias", f"mostrar_iban_completo={mostrar}")
+    db.commit()
+    request.app.state.prefs = preferencias.carregar(db)
+    flash(request, "Preferências guardadas.")
+    return RedirectResponse("/admin/utilizadores#preferencias", status_code=303)
 
 
 @router.post("/backup")

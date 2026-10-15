@@ -32,32 +32,42 @@
   <div class="grafico grafico-medio"><canvas data-grafico="patrimonio" aria-label="Evolução do património líquido nos últimos 12 meses" role="img"></canvas></div>
 </section>
 
+<form method="get" class="organizar" aria-label="Organização das contas">
+  <input type="hidden" name="entidade" value="{{ entidade.id }}">
+  <input type="hidden" name="periodo" value="{{ p.chave }}">
+  <label>Agrupar por
+    <select name="agrupar" onchange="this.form.submit()">
+      {% for k, r in opcoes_agrupar.items() %}<option value="{{ k }}" {% if agrupar == k %}selected{% endif %}>{{ r }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Ordenar por
+    <select name="ordenar" onchange="this.form.submit()">
+      {% for k, r in opcoes_ordenar.items() %}<option value="{{ k }}" {% if ordenar == k %}selected{% endif %}>{{ r }}</option>{% endfor %}
+    </select>
+  </label>
+  <noscript><button>Aplicar</button></noscript>
+</form>
+
 <div class="grelha-2">
+{% for titulo_lado, grupos, passivo in [("Ativos", grupos_ativos, false), ("Passivos", grupos_passivos, true)] %}
   <section class="cartao">
-    <h2>Ativos</h2>
-    {% if not grupos_ativos %}<p class="vazio">Sem contas. <a href="/contas">Criar contas</a></p>{% endif %}
+    <div class="cartao-cabecalho">
+      <h2>{{ titulo_lado }}</h2>
+      <strong class="total-lado">{{ (grupos | sum(attribute=1)) | abs | eur }}</strong>
+    </div>
+    {% if not grupos %}<p class="vazio">{{ 'Sem dívidas registadas.' if passivo else 'Sem contas.' }}{% if not passivo %} <a href="/contas">Criar contas</a>{% endif %}</p>{% endif %}
     <table class="tabela compacta">
-      {% for grupo, contas in grupos_ativos.items() %}
-        <tr class="grupo"><th>{{ grupo }}</th><th class="num">{{ contas | sum(attribute=1) | eur }}</th></tr>
+      {% for titulo, total, contas in grupos %}
+        {% if titulo %}<tr class="grupo"><th>{{ titulo }}</th><th class="num">{{ total | abs | eur }}</th></tr>{% endif %}
         {% for c, s in contas %}
-        <tr><td><a href="/contas/{{ c.id }}/movimentos">{{ c.nome }}</a> <span class="nota">{{ c.instituicao.nome }}</span></td>
-            <td class="num">{{ s | eur }}</td></tr>
+        <tr><td><a href="/contas/{{ c.id }}/{{ 'emprestimo' if c.tipo == 'EMPRESTIMO' else 'movimentos' }}">{{ c.nome }}</a>
+              <span class="nota">{{ c.tipo_rotulo if agrupar == 'banco' else c.instituicao.nome }}</span></td>
+            <td class="num">{{ ((s | abs) if passivo else s) | eur }}</td></tr>
         {% endfor %}
       {% endfor %}
     </table>
   </section>
-  <section class="cartao">
-    <h2>Passivos</h2>
-    {% if not grupos_passivos %}<p class="vazio">Sem dívidas registadas.</p>{% endif %}
-    <table class="tabela compacta">
-      {% for grupo, contas in grupos_passivos.items() %}
-        <tr class="grupo"><th>{{ grupo }}</th><th class="num">{{ (contas | sum(attribute=1)) | abs | eur }}</th></tr>
-        {% for c, s in contas %}
-        <tr><td><a href="/contas/{{ c.id }}/movimentos">{{ c.nome }}</a></td><td class="num">{{ s | abs | eur }}</td></tr>
-        {% endfor %}
-      {% endfor %}
-    </table>
-  </section>
+{% endfor %}
 </div>
 
 <section class="cartao">

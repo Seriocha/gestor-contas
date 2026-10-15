@@ -12,7 +12,7 @@ from sqlalchemy.orm import sessionmaker
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import backup, formatos
+from . import backup, formatos, preferencias
 from .config import BASE_DIR, carregar_definicoes
 from .db import criar_engine, url_sqlite
 from .deps import NaoAutenticado, render
@@ -21,7 +21,7 @@ from .routes import (admin, auth, categorias, contas, emprestimos, importar, mov
 from .seed import semear
 
 APP_DIR = Path(__file__).resolve().parent
-VERSAO = "0.10.0"
+VERSAO = "0.11.0"
 
 
 def aplicar_migracoes(db_path: Path) -> None:
@@ -38,6 +38,7 @@ def create_app(data_dir: Path | None = None, backups_automaticos: bool = True) -
     SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
     with SessionLocal() as db:
         semear(db)
+        prefs = preferencias.carregar(db)
 
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -50,11 +51,13 @@ def create_app(data_dir: Path | None = None, backups_automaticos: bool = True) -
     app.state.defs = defs
     app.state.SessionLocal = SessionLocal
     app.state.bloqueios = auth.Bloqueios()
+    app.state.prefs = prefs
 
     templates = Jinja2Templates(directory=str(APP_DIR / "templates"))
     templates.env.filters["eur"] = formatos.fmt_montante
     templates.env.filters["data"] = formatos.fmt_data
     templates.env.globals["versao"] = VERSAO
+    templates.env.filters["iban"] = lambda v: v if preferencias.ligada(app.state.prefs, "mostrar_iban_completo")         else formatos.mascarar_iban(v)
     templates.env.filters["pct"] = lambda v: "—" if v is None else f"{v:+.1f}%".replace(".", ",")
     app.state.templates = templates
 
