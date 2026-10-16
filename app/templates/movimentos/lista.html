@@ -220,6 +220,21 @@
         </optgroup>
       </select>
       <button class="primario">Aplicar</button>
+      <div class="ligar-dois" id="ligar-dois" hidden>
+        <label>Ligar estes 2 como
+          <select name="ligar_como">
+            <option value="T">↔ Transferência entre contas minhas</option>
+            <optgroup label="Mesma categoria (ex.: compra e reembolso)">
+            {% for raiz in categorias %}
+              <option value="{{ raiz.id }}">{{ raiz.nome }}</option>
+              {% for c in raiz.filhas %}<option value="{{ c.id }}">&nbsp;&nbsp;{{ raiz.nome }} › {{ c.nome }}</option>{% endfor %}
+            {% endfor %}
+            </optgroup>
+            <option value="X">⊘ Excluir ambos dos relatórios</option>
+          </select>
+        </label>
+        <button name="acao" value="ligar" formnovalidate>Ligar e classificar</button>
+      </div>
     </div>
     {% endif %}
     <div class="rolar">
@@ -236,7 +251,7 @@
       {% for m in movimentos %}
       {% set par = pares.get(m.id) %}
       <tr id="mov-{{ m.id }}" class="{{ 'arquivada' if m.excluido else '' }}{{ ' com-par' if par }}"{% if par %} style="--cor-par: {{ par.cor }}" data-par="{{ par.par_id }}"{% endif %}>
-        {% if pode_editar %}<td class="c-sel"><input type="checkbox" name="ids" value="{{ m.id }}" aria-label="Selecionar"></td>{% endif %}
+        {% if pode_editar %}<td class="c-sel"><input type="checkbox" name="ids" value="{{ m.id }}" data-montante="{{ m.montante }}" aria-label="Selecionar"></td>{% endif %}
         <td class="c-data sem-quebra">{{ m.data_mov | data }}</td>
         {% if not conta %}<td class="c-conta nota">{{ m.conta.nome }}</td>{% endif %}
         <td class="c-desc">
@@ -341,6 +356,13 @@
     // No telemóvel a barra só aparece com seleção (ou a pedido).
     const barra = document.getElementById('barra-lote');
     if (barra && n > 0) barra.classList.add('ativa');
+    // Com exatamente 2 selecionados (uma entrada e uma saída), oferece ligá-los.
+    const dois = document.getElementById('ligar-dois');
+    if (dois) {
+      const sel = caixas.filter(c => c.checked);
+      const sinais = sel.map(c => Number(c.dataset.montante) > 0);
+      dois.hidden = !(sel.length === 2 && sinais[0] !== sinais[1]);
+    }
   };
   caixas.forEach(c => c.addEventListener('change', atualizar));
   document.getElementById('abrir-lote')?.addEventListener('click', e => {
@@ -348,6 +370,7 @@
   });
   // Confirmação antes de aplicar a todo o filtro ou de repor qualificações.
   document.getElementById('form-lote')?.addEventListener('submit', e => {
+    if (e.submitter && e.submitter.value === 'ligar') return;
     const f = e.target, acao = f.acao.selectedOptions[0];
     const todos = f.ambito.value === 'filtro';
     const n = todos ? {{ total }} : caixas.filter(c => c.checked).length;

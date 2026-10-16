@@ -311,6 +311,11 @@ select.gravado { box-shadow: 0 0 0 3px var(--ok-fundo); border-color: var(--pos)
 .abrir-lote { display: none; }
 .barra-lote .ambito { border: 0; padding: 0; margin: 0; display: flex; gap: .3rem 1rem; flex-wrap: wrap; }
 .barra-lote .opcao { display: inline-flex; align-items: center; gap: .4rem; font-size: .9rem; }
+.ligar-dois { flex: 1 1 100%; display: flex; gap: .6rem; align-items: flex-end; flex-wrap: wrap;
+  border-top: 1px dashed var(--linha-forte); padding-top: .6rem; }
+.ligar-dois[hidden] { display: none; }
+.ligar-dois label { flex: 1 1 260px; display: grid; gap: .2rem; font-size: .85rem; font-weight: 600; color: var(--suave); }
+.ligar-dois select { width: 100%; }
 
 .candidato { display: flex; gap: .5rem; align-items: baseline; flex-wrap: wrap; }
 .candidato form { display: inline; }

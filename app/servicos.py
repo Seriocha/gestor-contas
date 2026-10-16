@@ -307,14 +307,16 @@ def relatorio_pagamentos_cartao(db: Session, entidade_id: int) -> list[Pagamento
     return out
 
 
-def ligar_manual(db: Session, a: Movimento, b: Movimento) -> None:
-    """Liga à mão dois movimentos (ex.: pagamento fora da janela de 7 dias)."""
+def ligar_manual(db: Session, a: Movimento, b: Movimento, transferencia: bool = True) -> None:
+    """Liga à mão dois movimentos (ex.: pagamento fora da janela de 7 dias). Por omissão ficam
+    transferência; com transferencia=False só se ligam (ex.: compra e reembolso, que depois
+    recebem a mesma categoria e se anulam nos relatórios)."""
     for m in (a, b):
         if m.par_id:
             desligar(db, m)
     a.par_id, b.par_id = b.id, a.id
     for m in (a, b):
-        m.transferencia = True
+        m.transferencia = transferencia
         m.qualificado_por = "manual"
         m.regra_id = None
 

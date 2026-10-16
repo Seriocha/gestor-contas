@@ -472,6 +472,31 @@ async def lote(request: Request, u: Utilizador = Depends(utilizador_atual), db: 
             raise HTTPException(status_code=403, detail="Sem permissão para esta operação.")
     tipo, _, valor = acao.partition(":")
     extra = ""
+    if tipo == "ligar":
+        # Exatamente 2 selecionados: liga-os e classifica o par de uma vez.
+        if todo_filtro or len(movs) != 2:
+            flash(request, "Para ligar, seleciona exatamente 2 movimentos.", "erro")
+            return RedirectResponse(voltar, status_code=303)
+        a, b = movs
+        if a.conta.entidade_id != b.conta.entidade_id or (a.montante > 0) == (b.montante > 0):
+            flash(request, "Só se ligam uma entrada e uma saída da mesma entidade.", "erro")
+            return RedirectResponse(voltar, status_code=303)
+        como = str(form.get("ligar_como", "T"))
+        cat = db.get(Categoria, int(como)) if como.isdigit() else None
+        if not (cat or como in ("T", "X")):
+            flash(request, "Escolhe como classificar o par.", "erro")
+            return RedirectResponse(voltar, status_code=303)
+        servicos.ligar_manual(db, a, b, transferencia=como == "T")
+        for m in (a, b):
+            if cat:
+                qualificar_manual(db, m, categoria_id=cat.id)
+            elif como == "X":
+                qualificar_manual(db, m, excluido=True)
+        oque = "transferência" if como == "T" else cat.nome_completo if cat else "excluídos dos relatórios"
+        auditar(db, u, "movimentos_ligados", f"{a.id} ↔ {b.id} ({oque})")
+        db.commit()
+        flash(request, f"Movimentos ligados e classificados: {oque}.")
+        return RedirectResponse(voltar, status_code=303)
     if tipo in ("repor_regras", "repor_limpar"):
         n = repor(db, movs, reaplicar_regras=tipo == "repor_regras")
         extra = f" Qualificação reposta; {n} voltaram a ser categorizados pelas regras." if tipo == "repor_regras"             else " Qualificação reposta: ficaram sem categoria."
