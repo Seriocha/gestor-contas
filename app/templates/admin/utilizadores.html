@@ -20,7 +20,7 @@
         {% set p = u.permissoes | selectattr('entidade_id', 'equalto', e.id) | first %}
         <td>{{ rotulos[p.papel] if p else '—' }}</td>
       {% endfor %}
-      <td>{{ u.ultimo_login.strftime('%d-%m-%Y %H:%M') if u.ultimo_login else '—' }}</td>
+      <td>{{ u.ultimo_login.strftime('%d/%m/%Y %H:%M') if u.ultimo_login else '—' }}</td>
       <td><a href="/admin/utilizadores/{{ u.id }}">Editar</a></td>
     </tr>
     {% endfor %}
@@ -61,7 +61,7 @@
       <button>Fazer backup agora</button>
     </form>
   </div>
-  <p>Último backup: {{ ultimo_backup.strftime('%d-%m-%Y %H:%M') if ultimo_backup else 'nenhum ainda' }}. Automático a cada 24 h, guardados 30 dias.</p>
+  <p>Último backup: {{ ultimo_backup.strftime('%d/%m/%Y %H:%M') if ultimo_backup else 'nenhum ainda' }}. Automático a cada 24 h, guardados 30 dias.</p>
 </section>
 
 <section class="cartao">
@@ -69,7 +69,7 @@
   <div class="rolar">
   <table class="tabela compacta">
     {% for ev, nome in eventos %}
-    <tr><td class="nota">{{ ev.quando.strftime('%d-%m-%Y %H:%M') }}</td><td>{{ nome or '—' }}</td><td>{{ ev.acao }}</td><td class="nota">{{ ev.detalhe or '' }}</td></tr>
+    <tr><td class="nota">{{ ev.quando.strftime('%d/%m/%Y %H:%M') }}</td><td>{{ nome or '—' }}</td><td>{{ ev.acao }}</td><td class="nota">{{ ev.detalhe or '' }}</td></tr>
     {% endfor %}
   </table>
   </div>

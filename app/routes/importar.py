@@ -117,7 +117,7 @@ async def previa(request: Request, u: Utilizador = Depends(utilizador_atual), db
     ja = db.scalar(select(Importacao).where(Importacao.conta_id == conta.id, Importacao.sha256 == sha,
                                             Importacao.estado == "confirmada"))
     if ja:
-        avisos.append(f"Este mesmo ficheiro já foi importado em {ja.criado_em:%d-%m-%Y %H:%M}.")
+        avisos.append(f"Este mesmo ficheiro já foi importado em {ja.criado_em:%d/%m/%Y %H:%M}.")
     if extrato.conta_ref:
         avisos.append(f"N.º de conta indicado no ficheiro: {extrato.conta_ref}.")
     linhas = servicos.preparar(db, conta, extrato)

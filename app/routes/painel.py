@@ -95,7 +95,7 @@ def painel(request: Request, entidade: IntOpcional = None, periodo: str = "mes",
         Conta.entidade_id == ent.id, Movimento.categoria_id.is_(None), ~Movimento.transferencia,
         ~Movimento.excluido))
     graficos = {
-        "patrimonio": {"rotulos": [d.strftime("%d-%m-%Y") if d == ref else rel.rotulo_mes(d) for d in meses],
+        "patrimonio": {"rotulos": [d.strftime("%d/%m/%Y") if d == ref else rel.rotulo_mes(d) for d in meses],
                        "liquido": [x["liquido"] / 100 for x in pat["serie"]],
                        "datas": [d.isoformat() for d in meses]},
         "sankey": rel.sankey(r, previstas=[(e.prev.descricao, e.valor) for e in pendentes]),

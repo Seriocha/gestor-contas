@@ -24,7 +24,7 @@
       <td class="nota">{{ p.FICHA.colunas }}</td>
       <td>{{ p.FICHA.ordem }}<br>{% if p.FICHA.saldo %}<span class="etiqueta etiqueta-cor">com saldo</span>{% else %}<span class="etiqueta">sem saldo</span>{% endif %}</td>
       <td class="nota">{{ p.FICHA.notas }}</td>
-      <td class="num">{% if u %}<strong>{{ u.n }}</strong><br><span class="nota">última {{ u.ultima.strftime('%d-%m-%Y') }}</span>{% else %}<span class="nota">—</span>{% endif %}</td>
+      <td class="num">{% if u %}<strong>{{ u.n }}</strong><br><span class="nota">última {{ u.ultima.strftime('%d/%m/%Y') }}</span>{% else %}<span class="nota">—</span>{% endif %}</td>
     </tr>
     {% endfor %}
     </tbody>

@@ -32,7 +32,7 @@
       <div class="tarefa-topo">
         <span class="estado" aria-hidden="true">{{ '✓' if t.feita else '○' }}</span>
         <strong>{{ t.conta.nome }}</strong> <span class="nota">· {{ t.conta.tipo_rotulo }}</span>
-        <span class="nota tarefa-ultima">{% if t.ultima %}atualizada {{ t.ultima.strftime('%d-%m-%Y') }}{% else %}nunca atualizada{% endif %}</span>
+        <span class="nota tarefa-ultima">{% if t.ultima %}atualizada {{ t.ultima.strftime('%d/%m/%Y') }}{% else %}nunca atualizada{% endif %}</span>
       </div>
       {% if t.ficha %}
       <p class="sem-margem">Exportar: <strong>{{ t.ficha.onde }}</strong> <span class="nota">({{ t.ficha.ficheiro }})</span></p>

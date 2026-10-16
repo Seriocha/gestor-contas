@@ -58,7 +58,7 @@ def parse_data(texto: str | None) -> date | None:
 
 
 def fmt_data(d: date | None) -> str:
-    return d.strftime("%d-%m-%Y") if d else ""
+    return d.strftime("%d/%m/%Y") if d else ""
 
 
 def normalizar_iban(texto: str | None) -> str | None:

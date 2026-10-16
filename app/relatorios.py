@@ -78,7 +78,7 @@ def rotulo_mes(d: date) -> str:
 def periodo(chave: str, ref: date, de: date | None = None, ate: date | None = None) -> Periodo:
     """`ref` é o dia de referência (hoje, ou a data do último movimento)."""
     if chave == "personalizado" and de and ate and de <= ate:
-        return Periodo(chave, de, ate, f"{de:%d-%m-%Y} a {ate:%d-%m-%Y}")
+        return Periodo(chave, de, ate, f"{de:%d/%m/%Y} a {ate:%d/%m/%Y}")
     if chave == "trimestre":
         ini = date(ref.year, 3 * ((ref.month - 1) // 3) + 1, 1)
         return Periodo(chave, ini, fim_do_mes(somar_meses(ini, 2)), f"{(ini.month - 1) // 3 + 1}.º trimestre {ini.year}")
@@ -89,7 +89,7 @@ def periodo(chave: str, ref: date, de: date | None = None, ate: date | None = No
         ini = somar_meses(ref.replace(day=1), -11)
         return Periodo(chave, ini, fim_do_mes(ref), f"{rotulo_mes(ini)} a {rotulo_mes(ref)}")
     if chave == "ytd":
-        return Periodo(chave, date(ref.year, 1, 1), ref, f"1 jan a {ref:%d-%m-%Y}")
+        return Periodo(chave, date(ref.year, 1, 1), ref, f"1 jan a {ref:%d/%m/%Y}")
     ini = ref.replace(day=1)
     return Periodo("mes", ini, fim_do_mes(ref), f"{MESES_PT[ini.month - 1].capitalize()} {ini.year}")
 

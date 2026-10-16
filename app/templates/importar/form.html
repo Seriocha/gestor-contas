@@ -37,7 +37,7 @@
     <tbody>
     {% for i in historico %}
     <tr class="{{ '' if i.estado == 'confirmada' else 'arquivada' }}">
-      <td>{{ i.criado_em.strftime('%d-%m-%Y %H:%M') }}</td>
+      <td>{{ i.criado_em.strftime('%d/%m/%Y %H:%M') }}</td>
       <td><a href="/contas/{{ i.conta_id }}/movimentos">{{ i.conta.nome }}</a></td>
       <td class="nota">{{ i.ficheiro_nome }}</td>
       <td>{{ i.data_ini | data }} a {{ i.data_fim | data }}</td>

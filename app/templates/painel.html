@@ -153,7 +153,7 @@
 {% endif %}
 
 {% if utilizador.is_admin %}
-<p class="nota">Último backup: {{ ultimo_backup.strftime('%d-%m-%Y %H:%M') if ultimo_backup else 'nenhum ainda' }}</p>
+<p class="nota">Último backup: {{ ultimo_backup.strftime('%d/%m/%Y %H:%M') if ultimo_backup else 'nenhum ainda' }}</p>
 {% endif %}
 {% endblock %}
 

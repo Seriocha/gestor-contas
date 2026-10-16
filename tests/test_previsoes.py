@@ -80,7 +80,7 @@ def test_fluxo_do_mes_soma_previstas(com_previsoes):
     assert "4.438,39 €" in p                                  # 2.190,39 real + 2.050 + 198 previstos
     fluxos = _sankey(p)
     assert fluxos["Ordenado Santander (previsto)"] == 2050 and fluxos["Cartão refeição (previsto)"] == 198
-    assert "em atraso" in p and "recebida a 25-09-2026" in p
+    assert "em atraso" in p and "recebida a 25/09/2026" in p
 
     real = com_previsoes.get("/?entidade=1&periodo=mes&previstas=0").text
     assert "previstos" not in real.split("Taxa de poupança")[0].split("Fluxo de caixa")[1]
@@ -92,7 +92,7 @@ def test_fluxo_do_mes_soma_previstas(com_previsoes):
 
 def test_pagina_e_edicao(com_previsoes, app):
     lista = com_previsoes.get("/previsoes?entidade=1").text
-    assert "Ordenado Santander" in lista and "≈ 2.050,00 €" in lista and "✓ recebida 25-09-2026" in lista
+    assert "Ordenado Santander" in lista and "≈ 2.050,00 €" in lista and "✓ recebida 25/09/2026" in lista
     with app.state.SessionLocal() as db:
         pid = db.query(ReceitaPrevista).filter_by(descricao="Cartão refeição").one().id
     r = _post(com_previsoes, f"/previsoes/{pid}", descricao="Cartão refeição", conta_id="3", dia="23",

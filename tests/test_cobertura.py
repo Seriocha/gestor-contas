@@ -48,7 +48,7 @@ def test_calculo_e_sugestao(admin, app):
 
 def test_pagina_e_corte(admin, app):
     p = admin.get("/contas/cobertura?entidade=1").text
-    assert "Sugestão: <strong>01-04-2026</strong>" in p and "cron-barra" in p and 'value="2026-04-01"' in p
+    assert "Sugestão: <strong>01/04/2026</strong>" in p and "cron-barra" in p and 'value="2026-04-01"' in p
     assert "Cobertura dos dados" in admin.get("/contas").text
 
     antes = admin.get("/relatorios?entidade=1&periodo=personalizado&de=2026-01-01&ate=2026-06-30").text
@@ -59,7 +59,7 @@ def test_pagina_e_corte(admin, app):
         assert db.get(Entidade, 1).data_inicio == date(2026, 4, 1)
 
     depois = admin.get("/relatorios?entidade=1&periodo=personalizado&de=2026-01-01&ate=2026-06-30").text
-    assert "Receitas</span><strong>500,00" in depois and "anteriores a 01-04-2026 ignorados" in depois
+    assert "Receitas</span><strong>500,00" in depois and "anteriores a 01/04/2026 ignorados" in depois
     meses = re.findall(r'<option value="(\d{4}-\d{2})"', admin.get("/relatorios?entidade=1&periodo=mes").text)
     assert meses and min(meses) == "2026-04"
     painel = admin.get("/?entidade=1").text

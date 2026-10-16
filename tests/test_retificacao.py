@@ -53,7 +53,7 @@ def test_retificar_avisa_e_encolhe_com_movimentos(admin, app):
     assert "Diferença por explicar com movimentos: 50,00 €" in r.text
     assert _estado(app) == (15000, [5000])                       # saldo = valor real; acerto de 50
     assert "Saldo retificado." in r.text and "50,00 € por explicar" in r.text
-    assert "⚠ saldo retificado em 31-03-2026" in admin.get("/contas").text
+    assert "⚠ saldo retificado em 31/03/2026" in admin.get("/contas").text
     assert 'class="aviso-conta"' in admin.get("/?entidade=1").text
     # o acerto fica fora dos relatórios
     rel = admin.get("/relatorios?periodo=personalizado&de=2026-01-01&ate=2026-03-31").text

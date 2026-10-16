@@ -553,7 +553,7 @@ async def retificar(request: Request, conta_id: int, u: Utilizador = Depends(uti
     auditar(db, u, "saldo_retificado", f"{c.id}: {data} → {saldo} (diferença {estado.diferenca})")
     db.commit()
     from ..formatos import fmt_montante
-    flash(request, f"Saldo retificado para {fmt_montante(saldo, c.moeda)} em {data:%d-%m-%Y}. " + (
+    flash(request, f"Saldo retificado para {fmt_montante(saldo, c.moeda)} em {data:%d/%m/%Y}. " + (
         f"Diferença por explicar com movimentos: {fmt_montante(estado.diferenca, c.moeda)}." if estado.diferenca
         else "Os movimentos já explicam este saldo."))
     return RedirectResponse(f"/contas/{c.id}/movimentos", status_code=303)

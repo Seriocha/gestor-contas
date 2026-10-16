@@ -255,7 +255,7 @@ async def gravar_inicio(request: Request, u: Utilizador = Depends(utilizador_atu
     auditar(db, u, "inicio_analise", f"{ent.nome}: {nova.isoformat() if nova else 'sem limite'}")
     db.commit()
     if nova:
-        flash(request, f"Análise de «{ent.nome}» a partir de {nova:%d-%m-%Y}: os movimentos anteriores são "
+        flash(request, f"Análise de «{ent.nome}» a partir de {nova:%d/%m/%Y}: os movimentos anteriores são "
                        "ignorados nos relatórios, fluxo de caixa e gráficos.")
     else:
         flash(request, f"«{ent.nome}»: todos os movimentos voltam a contar nas análises.")
