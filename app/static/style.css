@@ -478,3 +478,11 @@ select.gravado { box-shadow: 0 0 0 3px var(--ok-fundo); border-color: var(--pos)
   .cron-eixo .cron-nome, .cron-eixo .cron-datas { display: none; }
   .cron-eixo .cron-pista { grid-column: 1 / 3; grid-row: 1; }
 }
+
+/* Pasta _Entrada (Importar) */
+.lista-entrada { list-style: none; margin: 0; padding: 0; }
+.lista-entrada li + li { border-top: 1px solid var(--linha); }
+.linha-entrada { display: grid; grid-template-columns: 1fr minmax(180px, 260px) auto; gap: .5rem .75rem; align-items: center; padding: .6rem 0; }
+.entrada-info { display: grid; min-width: 0; }
+.entrada-info strong { overflow-wrap: anywhere; }
+@media (max-width: 640px) { .linha-entrada { grid-template-columns: 1fr; } }

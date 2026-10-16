@@ -2,6 +2,10 @@
 
 Todo o estado persistente vive em GESTOR_DATA_DIR (no container: /data):
 a base SQLite, a chave das sessões e, por omissão, os backups.
+GESTOR_ARQUIVO_DIR (no container: /arquivo, montado de uma pasta partilhada
+da NAS) recebe as cópias organizadas dos extratos importados e tem a pasta
+_Entrada de onde se podem importar ficheiros sem upload. Sem ela, o arquivo
+fica em <data>/arquivo.
 """
 import os
 import secrets
@@ -23,6 +27,8 @@ class Definicoes:
     cookie_secure: bool
     backup_intervalo_horas: int
     backup_retencao_dias: int
+    arquivo_dir: Path = Path()
+    arquivo_partilhado: bool = False   # True quando GESTOR_ARQUIVO_DIR aponta para uma pasta montada
 
     @property
     def db_path(self) -> Path:
@@ -47,6 +53,7 @@ def carregar_definicoes(data_dir: Path | None = None) -> Definicoes:
     data_dir = Path(data_dir) if data_dir else data_dir_omissao()
     data_dir.mkdir(parents=True, exist_ok=True)
     backup_dir = Path(os.environ.get("GESTOR_BACKUP_DIR") or data_dir / "backup")
+    arquivo_env = os.environ.get("GESTOR_ARQUIVO_DIR")
     return Definicoes(
         data_dir=data_dir,
         backup_dir=backup_dir,
@@ -54,4 +61,6 @@ def carregar_definicoes(data_dir: Path | None = None) -> Definicoes:
         cookie_secure=os.environ.get("GESTOR_COOKIE_SECURE", "0") == "1",
         backup_intervalo_horas=int(os.environ.get("GESTOR_BACKUP_INTERVALO_HORAS", "24")),
         backup_retencao_dias=int(os.environ.get("GESTOR_BACKUP_RETENCAO_DIAS", "30")),
+        arquivo_dir=Path(arquivo_env) if arquivo_env else data_dir / "arquivo",
+        arquivo_partilhado=bool(arquivo_env),
     )

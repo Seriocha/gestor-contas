@@ -4,7 +4,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from .. import preferencias
+from .. import arquivo, preferencias
 from ..backup import fazer_backup, ultimo_backup
 from ..deps import auditar, exigir_admin, flash, get_db, render
 from ..models import PAPEIS, PAPEIS_ROTULO, Auditoria, Entidade, Permissao, Utilizador
@@ -180,7 +180,11 @@ def importadores(request: Request, admin: Utilizador = Depends(exigir_admin), db
     for parser, n, ultima in db.execute(select(Importacao.parser, func.count(), func.max(Importacao.criado_em))
                                         .where(Importacao.estado == "confirmada").group_by(Importacao.parser)):
         uso[parser] = {"n": n, "ultima": ultima}
-    return render(request, "admin/importadores.html", importadores=todos(), uso=uso)
+    defs = request.app.state.defs
+    por_arquivar = db.scalar(select(func.count()).select_from(Importacao).where(
+        Importacao.estado == "confirmada", Importacao.arquivo.is_(None)))
+    return render(request, "admin/importadores.html", importadores=todos(), uso=uso,
+                  arq=arquivo.estado(defs.arquivo_dir, defs.arquivo_partilhado), por_arquivar=por_arquivar)
 
 
 @router.post("/preferencias")

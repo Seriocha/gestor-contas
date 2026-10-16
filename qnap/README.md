@@ -10,6 +10,7 @@ desta app.
 | Porta | **8200** (interna 8000) |
 | Dados | `/share/Container/gestor-contas/data` → `/data` (`gestor.db`, `secret.key`) |
 | Backups | `/share/Container/gestor-contas/backup` → `/backup` |
+| Arquivo de extratos (opcional) | pasta partilhada indicada em `arquivo.conf` → `/arquivo` |
 
 ## Primeira instalação
 
@@ -27,6 +28,27 @@ ssh snunes_adm@192.168.1.232
 sh /share/Container/gestor-contas/update.sh
 ```
 (copiar `qnap/update.sh` para essa pasta na 1.ª vez.)
+
+## Arquivo de extratos numa pasta partilhada
+
+Cada importação guarda uma cópia do extrato em
+`<arquivo>/<Entidade>/<Banco>/<Conta>/<Ano>/AAAA-MM-DD_a_AAAA-MM-DD_<Conta>.xls`.
+Com uma pasta partilhada montada, essa árvore fica visível na rede (SMB) e entra
+nos backups da NAS; a subpasta `_Entrada` funciona como caixa de entrada: os
+extratos lá gravados aparecem em **Importar** com a conta sugerida e, depois de
+importados, passam para a árvore.
+
+```bash
+echo /share/Documentos/Gestor-Contas > /share/Container/gestor-contas/arquivo.conf
+sh /share/Container/gestor-contas/update.sh
+```
+
+O caminho não pode ter espaços. Copiar também a versão nova de `qnap/update.sh` para a NAS (é ela que lê o
+`arquivo.conf`). Verificar em **Administração › Importadores › Arquivo de
+extratos** («Pasta da NAS montada», «acessível») e carregar em «Arquivar as
+importações anteriores». O contentor corre como root: os ficheiros e pastas que
+cria ficam com permissões abertas (666/777) para se poderem mover e apagar por
+SMB — o acesso fica controlado pelas permissões da partilha no QTS.
 
 ## Segurança
 

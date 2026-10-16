@@ -20,8 +20,13 @@ services:
       - GESTOR_COOKIE_SECURE=0
       - GESTOR_BACKUP_INTERVALO_HORAS=24
       - GESTOR_BACKUP_RETENCAO_DIAS=30
+      # - GESTOR_ARQUIVO_DIR=/arquivo
     volumes:
       # Base de dados (gestor.db) e chave das sessões (secret.key).
       - /share/Container/gestor-contas/data:/data:rw
       # Backups diários da base de dados. Incluir esta pasta num job HBS3.
       - /share/Container/gestor-contas/backup:/backup:rw
+      # (Opcional) Arquivo organizado dos extratos numa pasta partilhada da NAS,
+      # com a subpasta _Entrada para importar sem upload. Descomentar as duas
+      # linhas e a variável GESTOR_ARQUIVO_DIR acima.
+      # - /share/Documentos/Gestor-Contas:/arquivo:rw
