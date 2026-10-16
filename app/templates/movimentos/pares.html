@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block titulo %}Movimentos pareáveis{% endblock %}
+{% block conteudo %}
+<div class="titulo-acoes">
+  <h1>Movimentos pareáveis</h1>
+  <a href="/movimentos{% if entidade %}?entidade={{ entidade.id }}{% endif %}">‹ Movimentos</a>
+</div>
+{% set destino = '/movimentos-pares' %}{% include "_entidades.html" %}
+{% if entidade %}
+<section class="cartao">
+  <p class="sem-margem nota">Débitos numa conta e créditos noutra da {{ entidade.nome }}, com o mesmo valor, no mesmo dia ou em dias
+    próximos, ainda sem ligação. Liga os que são o mesmo dinheiro (transferência entre contas tuas, ou outra classificação)
+    e ignora os que não são — os ignorados não voltam a aparecer. A ligação automática ao importar continua igual.</p>
+  <form method="get" class="filtros filtros-pares">
+    <input type="hidden" name="entidade" value="{{ entidade.id }}">
+    <label>Diferença de datas
+      <select name="dias" onchange="this.form.submit()">
+        {% for k, r in opcoes_dias.items() %}<option value="{{ k }}" {% if f.dias == k %}selected{% endif %}>{{ r }}</option>{% endfor %}
+      </select></label>
+    <label>Conta
+      <select name="conta" onchange="this.form.submit()">
+        <option value="">Todas</option>
+        {% for c in contas %}<option value="{{ c.id }}" {% if f.conta == c.id %}selected{% endif %}>{{ c.nome }}</option>{% endfor %}
+      </select></label>
+    <label>Valor mínimo <input name="vmin" value="{{ f.vmin }}" inputmode="decimal" placeholder="0,00"></label>
+    {% if f.anteriores %}<input type="hidden" name="anteriores" value="1">{% endif %}
+    <button>Filtrar</button>
+  </form>
+  {% if corte %}<p class="nota sem-margem">{% if f.anteriores %}Inclui movimentos anteriores ao início da análise ({{ corte | data }}).
+    <a href="{{ request.url.include_query_params(anteriores=0) }}">Só desde {{ corte | data }}</a>
+    {% else %}Só movimentos desde {{ corte | data }} (início da análise). <a href="{{ request.url.include_query_params(anteriores=1) }}">Incluir anteriores</a>{% endif %}</p>{% endif %}
+</section>
+
+{% if not pares %}
+<p class="vazio">Sem sugestões com estes filtros. 🎉</p>
+{% else %}
+<form method="post" action="/movimentos-pares/ligar" id="form-pares">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  <input type="hidden" name="voltar" value="{{ voltar }}">
+  {% if pode_editar %}
+  <div class="barra-lote ativa barra-pares">
+    <label class="opcao"><input type="checkbox" id="marcar-todos"> <span id="n-pares">{{ pares | length }} sugest{{ 'ão' if pares | length == 1 else 'ões' }}{% if total > pares | length %} (de {{ total }}){% endif %}</span></label>
+    <label class="como">Ligar como
+      <select name="como">
+        <option value="T">↔ Transferência entre contas minhas</option>
+        <optgroup label="Mesma categoria nos dois">
+        {% for raiz in categorias %}
+          <option value="{{ raiz.id }}">{{ raiz.nome }}</option>
+          {% for c in raiz.filhas %}<option value="{{ c.id }}">&nbsp;&nbsp;{{ raiz.nome }} › {{ c.nome }}</option>{% endfor %}
+        {% endfor %}
+        </optgroup>
+        <option value="X">⊘ Excluir ambos dos relatórios</option>
+      </select></label>
+    <button class="primario">Ligar selecionados</button>
+    <button formaction="/movimentos-pares/ignorar">Ignorar selecionados</button>
+  </div>
+  {% endif %}
+  <ul class="lista-pares">
+    {% for p in pares %}
+    <li class="cartao par par-{{ 'alta' if p.confianca == 'alta' else 'media' if p.confianca == 'média' else 'baixa' }}">
+      {% if pode_editar %}<input type="checkbox" name="pares" value="{{ p.chave }}" aria-label="Selecionar este par" class="sel-par">{% endif %}
+      <div class="lado debito">
+        <span class="nota">{{ p.debito.data_mov | data }} · <a href="/contas/{{ p.debito.conta_id }}/movimentos">{{ p.debito.conta.nome }}</a></span>
+        <a class="desc" href="/movimentos/{{ p.debito.id }}">{{ p.debito.descricao_original }}</a>
+        <strong class="neg">{{ p.debito.montante | eur }}</strong>
+        {% if p.debito.transferencia %}<span class="etiqueta">transferência</span>{% elif p.debito.categoria %}<span class="etiqueta">{{ p.debito.categoria.nome_completo }}</span>{% endif %}
+      </div>
+      <div class="seta" aria-hidden="true">→<span class="nota">{% if p.dias %}{{ p.dias }} dia{{ 's' if p.dias != 1 }}{% else %}mesmo dia{% endif %}</span></div>
+      <div class="lado credito">
+        <span class="nota">{{ p.credito.data_mov | data }} · <a href="/contas/{{ p.credito.conta_id }}/movimentos">{{ p.credito.conta.nome }}</a></span>
+        <a class="desc" href="/movimentos/{{ p.credito.id }}">{{ p.credito.descricao_original }}</a>
+        <strong class="pos">+{{ p.credito.montante | eur }}</strong>
+        {% if p.credito.transferencia %}<span class="etiqueta">transferência</span>{% elif p.credito.categoria %}<span class="etiqueta">{{ p.credito.categoria.nome_completo }}</span>{% endif %}
+      </div>
+      <div class="par-acoes">
+        <span class="etiqueta confianca">confiança {{ p.confianca }}</span>
+        {% if p.concorrentes %}<span class="etiqueta" title="Um destes movimentos aparece noutras sugestões: liga a certa e as outras desaparecem">{{ p.concorrentes }} alternativa{{ 's' if p.concorrentes != 1 }}</span>{% endif %}
+        {% if pode_editar %}
+        <button name="so" value="{{ p.chave }}" class="pequeno">Ligar</button>
+        <button name="so" value="{{ p.chave }}" formaction="/movimentos-pares/ignorar" class="ligacao">Ignorar</button>
+        {% endif %}
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+</form>
+{% endif %}
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const todos = document.getElementById('marcar-todos');
+  const caixas = [...document.querySelectorAll('.sel-par')];
+  todos?.addEventListener('change', () => caixas.forEach(c => { c.checked = todos.checked; }));
+})();
+</script>
+{% endblock %}

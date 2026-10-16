@@ -23,7 +23,8 @@
 </div>
 {% endif %}
 {% else %}
-<div class="titulo-acoes"><h1>Movimentos</h1></div>
+<div class="titulo-acoes"><h1>Movimentos</h1>
+  {% if entidade %}<a class="botao" href="/movimentos-pares?entidade={{ entidade.id }}">Pareáveis ↔</a>{% endif %}</div>
 {% set destino = "/movimentos" %}{% include "_entidades.html" %}
 {% endif %}
 {% if erro %}<div class="aviso aviso-erro">{{ erro }}</div>{% endif %}

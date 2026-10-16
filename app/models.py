@@ -336,6 +336,17 @@ class ReceitaPrevista(Base):
     categoria: Mapped["Categoria | None"] = relationship()
 
 
+class ParIgnorado(Base):
+    """Sugestão de ligação (débito ↔ crédito) que o utilizador disse não ser o mesmo dinheiro."""
+    __tablename__ = "par_ignorado"
+    __table_args__ = (UniqueConstraint("debito_id", "credito_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    debito_id: Mapped[int] = mapped_column(ForeignKey("movimento.id", ondelete="CASCADE"))
+    credito_id: Mapped[int] = mapped_column(ForeignKey("movimento.id", ondelete="CASCADE"))
+    criado_em: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, server_default=func.now())
+
+
 class SugestaoIA(Base):
     """Resposta da IA para um padrão de descrição (cache: cada padrão só é perguntado uma vez)."""
     __tablename__ = "sugestao_ia"
