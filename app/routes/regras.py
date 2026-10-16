@@ -9,7 +9,10 @@ from sqlalchemy.orm import Session, selectinload
 from ..deps import IntOpcional, auditar, entidades_visiveis, exigir_editor, flash, get_db, render
 from ..formatos import montante_para_input, parse_montante
 from ..models import MODOS_REGRA, PAPEIS, SENTIDOS, Categoria, Conta, Etiqueta, Movimento, Regra, Utilizador
-from ..qualificacao import aplicar_regras, arvore_categorias, compilar, corresponde, validar_padrao
+from .. import ia
+from ..qualificacao import (aplicar_regras, arvore_categorias, compilar, corresponde, qualificar_manual,
+                            validar_padrao)
+from ..sugestoes import agrupar, padrao_de
 from ..seguranca import ler_form
 
 router = APIRouter(prefix="/regras")
@@ -49,6 +52,87 @@ def lista(request: Request, u: Utilizador = Depends(exigir_editor), db: Session 
     sem = sum(1 for m in movs if m.categoria_id is None and not m.transferencia and not m.excluido)
     return render(request, "regras/lista.html", regras=regras, usos=usos, sem_categoria=sem,
                   modos=MODOS_REGRA, sentidos=SENTIDOS)
+
+
+def _grupos(db: Session, u: Utilizador) -> list:
+    movs = (select(Movimento).join(Conta).where(Conta.entidade_id.in_(_entidades_editaveis(db, u)),
+                                                ~Movimento.transferencia, ~Movimento.excluido)
+            .options(selectinload(Movimento.conta)))
+    sem = db.scalars(movs.where(Movimento.categoria_id.is_(None))).all()
+    com = db.scalars(movs.where(Movimento.categoria_id.is_not(None))).all()
+    grupos = agrupar(sem, com)
+    ia.aplicar_cache(db, grupos)
+    return grupos
+
+
+@router.get("/por-classificar")
+def por_classificar(request: Request, todos: int = 0, u: Utilizador = Depends(exigir_editor),
+                    db: Session = Depends(get_db)):
+    """Movimentos sem categoria agrupados pelo padrão da descrição, com sugestão e regra num clique."""
+    grupos = _grupos(db, u)
+    n_mov = sum(g.n for g in grupos)
+    mostrar = grupos if todos else grupos[:40]
+    cobertos = sum(g.n for g in mostrar)
+    return render(request, "regras/por_classificar.html", grupos=mostrar, n_grupos=len(grupos), n_mov=n_mov,
+                  cobertos=cobertos, todos=todos, categorias=arvore_categorias(db),
+                  ia_disponivel=ia.disponivel(), ia_modelo=ia.modelo(),
+                  por_perguntar=sum(1 for g in grupos if not g.pessoal and g.comerciante is None and not g.origem))
+
+
+@router.post("/por-classificar/ia")
+async def pedir_sugestoes_ia(request: Request, u: Utilizador = Depends(exigir_editor), db: Session = Depends(get_db)):
+    await ler_form(request)
+    try:
+        n = ia.sugerir(db, [g for g in _grupos(db, u) if g.origem != "histórico"])
+    except ia.ErroIA as e:
+        db.rollback()
+        flash(request, f"Sugestões da IA indisponíveis: {e}", "erro")
+        return RedirectResponse("/regras/por-classificar", status_code=303)
+    auditar(db, u, "sugestoes_ia", f"{n} padrões ({ia.modelo()})")
+    db.commit()
+    flash(request, f"A IA sugeriu categoria para {n} padrão(ões). Confirma cada uma antes de aplicar."
+          if n else "Não havia padrões novos para perguntar à IA.")
+    return RedirectResponse("/regras/por-classificar", status_code=303)
+
+
+@router.post("/por-classificar/aplicar")
+async def aplicar_grupo(request: Request, u: Utilizador = Depends(exigir_editor), db: Session = Depends(get_db)):
+    """Classifica os movimentos de um grupo e, se pedido, cria a regra para os futuros."""
+    form = await ler_form(request)
+    padrao = str(form.get("padrao", "")).strip().upper()[:200]
+    original = str(form.get("original", "")).strip()
+    sentido = str(form.get("sentido", "")) if form.get("sentido") in ("SAIDA", "ENTRADA") else None
+    acao = str(form.get("categoria_id", ""))
+    erro = validar_padrao(padrao, "contem")
+    cat = db.get(Categoria, int(acao)) if acao.isdigit() else None
+    if erro or not (cat or acao in ("T", "X")):
+        flash(request, erro or "Escolhe a categoria (ou transferência / excluir).", "erro")
+        return RedirectResponse("/regras/por-classificar", status_code=303)
+    # Todos os movimentos sem categoria (no mesmo sentido) cujo texto contém o padrão — não só os do
+    # grupo de onde veio: «ROYAL VERSAILLES» apanha também «PASTELARIA ROYAL VERSAILLES».
+    rx = compilar(padrao, "contem")
+    movs = [m for g in _grupos(db, u) if g.sentido == sentido for m in g.movimentos
+            if rx.search((m.descricao_norm or m.descricao_original or "").upper())]
+    if not movs:
+        flash(request, f"Nenhum movimento sem categoria contém «{padrao}» ({original}).", "erro")
+        return RedirectResponse("/regras/por-classificar", status_code=303)
+    regra = None
+    if form.get("criar_regra") == "1":
+        regra = Regra(padrao=padrao, modo="contem", sentido=sentido, categoria_id=cat.id if cat else None,
+                      marcar_transferencia=acao == "T", excluir=acao == "X", ativa=True, prioridade=100)
+        db.add(regra)
+        db.flush()
+        aplicar_regras(db, movs, [regra])
+    else:
+        for m in movs:
+            qualificar_manual(db, m, categoria_id=cat.id if cat else ..., transferencia=True if acao == "T" else ...,
+                              excluido=True if acao == "X" else ...)
+    oque = cat.nome_completo if cat else ("transferência" if acao == "T" else "excluído")
+    auditar(db, u, "classificar_grupo", f"{padrao} → {oque}: {len(movs)} movimentos" + (" + regra" if regra else ""))
+    db.commit()
+    flash(request, f"«{padrao}»: {len(movs)} movimento(s) → {oque}." +
+          (" Regra criada para os próximos." if regra else ""))
+    return RedirectResponse("/regras/por-classificar", status_code=303)
 
 
 @router.post("/aplicar")

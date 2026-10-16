@@ -6,7 +6,7 @@ modelo completo; as tabelas das fases seguintes entram por migração Alembic.
 from datetime import date, datetime
 
 from sqlalchemy import (
-    BigInteger, Boolean, Column, Date, DateTime, ForeignKey, Integer, String, Table, Text,
+    BigInteger, Boolean, Column, Date, DateTime, Float, ForeignKey, Integer, String, Table, Text,
     UniqueConstraint, func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -333,6 +333,22 @@ class ReceitaPrevista(Base):
     criado_em: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, server_default=func.now())
 
     conta: Mapped["Conta"] = relationship()
+    categoria: Mapped["Categoria | None"] = relationship()
+
+
+class SugestaoIA(Base):
+    """Resposta da IA para um padrão de descrição (cache: cada padrão só é perguntado uma vez)."""
+    __tablename__ = "sugestao_ia"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    chave: Mapped[str] = mapped_column(String(200), unique=True)   # padrão + sentido, ex.: "ROYAL VERSAILLES|SAIDA"
+    comerciante: Mapped[str | None] = mapped_column(String(120))
+    atividade: Mapped[str | None] = mapped_column(String(200))
+    categoria_id: Mapped[int | None] = mapped_column(ForeignKey("categoria.id", ondelete="SET NULL"))
+    confianca: Mapped[float | None] = mapped_column(Float)
+    modelo: Mapped[str | None] = mapped_column(String(60))
+    criado_em: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, server_default=func.now())
+
     categoria: Mapped["Categoria | None"] = relationship()
 
 

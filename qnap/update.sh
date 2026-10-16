@@ -14,6 +14,14 @@ BASE="/share/Container/gestor-contas"
 
 mkdir -p "$BASE/data" "$BASE/backup"
 
+# Sugestões por IA (opcional): chave da Claude API num ficheiro só legível pelo admin, ex.:
+#   printf 'ANTHROPIC_API_KEY=sk-ant-...\n' > $BASE/ia.env && chmod 600 $BASE/ia.env
+IA_OPTS=""
+if [ -f "$BASE/ia.env" ]; then
+  IA_OPTS="--env-file $BASE/ia.env"
+  echo "Sugestões por IA: chave lida de $BASE/ia.env"
+fi
+
 echo "A obter a imagem mais recente ($IMAGE)..."
 docker pull "$IMAGE"
 
@@ -29,6 +37,7 @@ docker run -d \
   -e GESTOR_BACKUP_RETENCAO_DIAS=30 \
   -v "$BASE/data:/data:rw" \
   -v "$BASE/backup:/backup:rw" \
+  $IA_OPTS \
   "$IMAGE"
 
 echo "A limpar imagens antigas..."

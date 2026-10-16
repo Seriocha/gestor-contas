@@ -478,3 +478,19 @@ select.gravado { box-shadow: 0 0 0 3px var(--ok-fundo); border-color: var(--pos)
   .cron-eixo .cron-nome, .cron-eixo .cron-datas { display: none; }
   .cron-eixo .cron-pista { grid-column: 1 / 3; grid-row: 1; }
 }
+
+/* Por classificar: grupos de movimentos sem categoria */
+.lista-grupos { list-style: none; margin: 0; padding: 0; display: grid; gap: .75rem; }
+.grupo-classificar { padding-top: .9rem; padding-bottom: .9rem; }
+.grupo-topo { display: flex; justify-content: space-between; align-items: flex-start; gap: .75rem; }
+.grupo-info { display: grid; gap: .15rem; min-width: 0; }
+.grupo-padrao { font-family: var(--fonte-titulo); font-size: 1.05rem; overflow-wrap: anywhere; }
+.grupo-exemplos { overflow-wrap: anywhere; }
+.grupo-ia { color: var(--previsto); font-size: .92rem; }
+.etiqueta-ia { background: transparent; color: var(--previsto); border-color: var(--previsto); }
+.grupo-acoes { display: grid; grid-template-columns: minmax(140px, 1fr) minmax(200px, 1.3fr) auto auto; gap: .6rem; align-items: end; margin-top: .6rem; }
+.grupo-acoes .opcao { margin: 0 0 .55rem; white-space: nowrap; }
+@media (max-width: 760px) {
+  .grupo-acoes { grid-template-columns: 1fr; }
+  .grupo-topo { flex-direction: column; }
+}

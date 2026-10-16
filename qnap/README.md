@@ -28,6 +28,26 @@ sh /share/Container/gestor-contas/update.sh
 ```
 (copiar `qnap/update.sh` para essa pasta na 1.ª vez.)
 
+## Sugestões por IA (Claude API) — opcional
+
+Em **Categorias e regras › Por classificar**, o botão «Pedir sugestões à IA»
+pergunta à Claude API que comerciante/serviço está por trás de cada padrão de
+descrição sem categoria. Só vai o texto do padrão e se é entrada ou saída (sem
+valores, datas, contas nem transferências/MB WAY); cada padrão é perguntado uma
+vez e a resposta fica guardada.
+
+Criar a chave em console.anthropic.com e, na NAS (SSH, como admin):
+
+```bash
+vi /share/Container/gestor-contas/ia.env      # uma linha: ANTHROPIC_API_KEY=sk-ant-...
+chmod 600 /share/Container/gestor-contas/ia.env
+sh /share/Container/gestor-contas/update.sh
+```
+
+Opcional, no mesmo ficheiro: `GESTOR_IA_MODELO=claude-haiku-5-5` (o modelo por
+omissão). Copiar a versão nova de `qnap/update.sh` para a NAS (é ela que lê o
+`ia.env`). A chave nunca vai para o repositório nem para o chat.
+
 ## Segurança
 
 - **Não abrir a porta 8200 no router.** Acesso de fora só por VPN (QVPN/Tailscale).

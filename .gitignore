@@ -7,3 +7,7 @@ data/
 *.db-wal
 *.db-shm
 secret.key
+
+# Chaves (ex.: ia.env com ANTHROPIC_API_KEY) nunca no repositório
+*.env
+.env*

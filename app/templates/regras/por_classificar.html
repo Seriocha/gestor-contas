@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block titulo %}Por classificar{% endblock %}
+{% macro opcoes(sugestao_id) -%}
+  <option value="">— escolher —</option>
+  {% for raiz in categorias %}
+    <option value="{{ raiz.id }}" {% if sugestao_id == raiz.id %}selected{% endif %}>{{ raiz.nome }}</option>
+    {% for c in raiz.filhas %}<option value="{{ c.id }}" {% if sugestao_id == c.id %}selected{% endif %}>&nbsp;&nbsp;{{ raiz.nome }} › {{ c.nome }}</option>{% endfor %}
+  {% endfor %}
+  <option value="T">↔ Transferência entre contas minhas</option>
+  <option value="X">⊘ Excluir dos relatórios</option>
+{%- endmacro %}
+{% block conteudo %}
+<h1>Categorias e regras</h1>
+<nav class="separadores">
+  <a href="/categorias">Categorias e etiquetas</a>
+  <a href="/regras">Regras automáticas</a>
+  <a href="/regras/por-classificar" class="ativo">Por classificar</a>
+</nav>
+
+<section class="cartao">
+  <div class="cartao-cabecalho">
+    <p class="sem-margem"><strong>{{ n_mov }} movimentos sem categoria</strong> em {{ n_grupos }} padrões de descrição
+      {% if not todos and n_grupos > grupos | length %}<span class="nota">· os {{ grupos | length }} maiores cobrem {{ cobertos }} movimentos</span>{% endif %}</p>
+    {% if ia_disponivel %}
+    <form method="post" action="/regras/por-classificar/ia">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
+      <button class="primario" {% if not por_perguntar %}disabled{% endif %}>✦ Pedir sugestões à IA{% if por_perguntar %} ({{ por_perguntar }}){% endif %}</button>
+    </form>
+    {% endif %}
+  </div>
+  <p class="nota sem-margem">
+    Cada padrão é o texto comum das descrições (sem números nem prefixos do banco). Escolhe a categoria e aplica:
+    com «criar regra», os movimentos futuros com o mesmo texto ficam classificados sozinhos.
+    {% if ia_disponivel %}A IA ({{ ia_modelo }}) recebe só o texto do padrão e se é entrada ou saída — sem valores, datas,
+      contas, nem transferências/MB WAY (que têm nomes de pessoas); cada padrão é perguntado uma vez.
+    {% else %}Sugestões por IA desligadas: falta a chave da Claude API (ANTHROPIC_API_KEY) — ver o README da NAS.{% endif %}
+  </p>
+</section>
+
+{% if not grupos %}<p class="vazio">Não há movimentos por classificar. 🎉</p>{% endif %}
+<ul class="lista-grupos">
+{% for g in grupos %}
+  <li class="cartao grupo-classificar">
+    <form method="post" action="/regras/por-classificar/aplicar">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
+      <input type="hidden" name="original" value="{{ g.padrao }}">
+      <input type="hidden" name="sentido" value="{{ g.sentido }}">
+      <div class="grupo-topo">
+        <div class="grupo-info">
+          <strong class="grupo-padrao">{{ g.padrao }}</strong>
+          <span class="nota">{{ g.n }} mov. · {{ g.total | eur }} · {{ 'entradas' if g.sentido == 'ENTRADA' else 'saídas' }}
+            · último {{ g.ultima | data }} · {{ g.contas | join(', ') }}</span>
+          {% if g.comerciante or g.atividade %}
+          <span class="grupo-ia">✦ {{ g.comerciante or '' }}{% if g.atividade %} — {{ g.atividade }}{% endif %}
+            {% if g.confianca is not none %}<span class="nota">({{ '%.0f' % (g.confianca * 100) }}%)</span>{% endif %}</span>
+          {% endif %}
+          <span class="nota grupo-exemplos">{{ g.exemplos | join(' · ') }}</span>
+        </div>
+        {% if g.origem %}<span class="etiqueta {{ 'etiqueta-ok' if g.origem == 'histórico' else 'etiqueta-ia' }}">sugestão: {{ g.origem }}</span>
+        {% elif g.pessoal %}<span class="etiqueta" title="Transferências e MB WAY não são enviadas à IA">pessoal</span>{% endif %}
+      </div>
+      <div class="grupo-acoes">
+        <label>Texto da regra <input name="padrao" value="{{ g.padrao }}" maxlength="200"></label>
+        <label>Classificar como <select name="categoria_id" required>{{ opcoes(g.sugestao_id) }}</select></label>
+        <label class="opcao"><input type="checkbox" name="criar_regra" value="1" {% if not g.pessoal %}checked{% endif %}> criar regra</label>
+        <button>Aplicar a {{ g.n }}</button>
+      </div>
+    </form>
+  </li>
+{% endfor %}
+</ul>
+{% if not todos and n_grupos > grupos | length %}
+<p><a href="/regras/por-classificar?todos=1">Mostrar todos os {{ n_grupos }} padrões</a></p>
+{% endif %}
+{% endblock %}

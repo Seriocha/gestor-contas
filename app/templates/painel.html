@@ -20,7 +20,8 @@
 {% if n_sem %}
 <div class="aviso aviso-alerta">
   Há {{ n_sem }} movimentos sem categoria — os relatórios ficam mais úteis depois de os qualificares.
-  <a href="/movimentos?entidade={{ entidade.id }}&tipo=sem">Qualificar agora</a>
+  <a href="/regras/por-classificar">Classificar por descrição</a> ·
+  <a href="/movimentos?entidade={{ entidade.id }}&tipo=sem">ver a lista</a>
 </div>
 {% endif %}
 
