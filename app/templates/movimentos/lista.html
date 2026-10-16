@@ -152,6 +152,30 @@
       {% if n_sem %}<a href="{{ request.url.path }}?{% if not conta %}entidade={{ entidade.id }}&{% endif %}tipo=sem{% if anteriores %}&anteriores=1{% endif %}">{{ n_sem }}</a>{% else %}0{% endif %}</strong></div>
   </div>
 
+  {% set cal = calendario %}
+  <div class="calendario" aria-label="Calendário de {{ cal.rotulo }}">
+    <div class="cal-topo">
+      <a class="cal-nav" href="{{ cal.anterior }}" aria-label="Mês anterior">‹</a>
+      <strong>{{ cal.rotulo }}</strong>
+      <a class="cal-nav" href="{{ cal.seguinte }}" aria-label="Mês seguinte">›</a>
+      <span class="nota cal-resumo">{{ cal.n }} mov. · {{ cal.soma | eur }}</span>
+      <a class="cal-mes {{ 'ativo' if cal.mes_inteiro_ativo }}" href="{{ cal.mes_inteiro }}">{{ 'limpar' if cal.mes_inteiro_ativo else 'mês inteiro' }}</a>
+      {% if cal.dia_escolhido %}<span class="etiqueta etiqueta-cor">dia {{ cal.dia_escolhido | data }}</span>{% endif %}
+    </div>
+    <div class="cal-grelha">
+      {% for d in cal.dias %}<span class="cal-semana">{{ d }}</span>{% endfor %}
+      {% for semana in cal.semanas %}{% for c in semana %}
+        {% if c %}
+        <a class="cal-dia{{ ' com-mov' if c.n }}{{ ' escolhido' if c.escolhido }}{{ ' hoje' if c.hoje }}" href="{{ c.href }}"
+           title="{{ c.dia | data }}{% if c.n %}: {{ c.n }} movimento{{ 's' if c.n != 1 }}, {{ c.soma | eur }}{% endif %}{% if c.escolhido %} (clica para limpar){% endif %}">
+          <span class="cal-num">{{ c.dia.day }}</span>
+          {% if c.n %}<span class="cal-n">{{ c.n }}</span><span class="cal-soma {{ 'pos' if c.soma > 0 else 'neg' if c.soma < 0 }}">{{ (c.soma / 100) | round | int }}</span>{% endif %}
+        </a>
+        {% else %}<span class="cal-vazio"></span>{% endif %}
+      {% endfor %}{% endfor %}
+    </div>
+  </div>
+
   {% set n_filtros = [f.categoria, f.etiqueta, f.tipo, f.q, f.de, f.ate, f.vmin, f.vmax] | select | list | length %}
   <details class="caixa-filtros" data-ativos="{{ '1' if n_filtros else '0' }}">
   <summary>Filtros{% if n_filtros %} <span class="etiqueta etiqueta-cor">{{ n_filtros }} ativo{{ 's' if n_filtros > 1 }}</span>{% endif %}

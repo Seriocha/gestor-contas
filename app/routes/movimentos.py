@@ -18,6 +18,7 @@ from ..qualificacao import aplicar_regras, arvore_categorias, qualificar_manual,
 from ..servicos import normalizar_descricao
 from ..seguranca import ler_form
 from .. import investimentos, retificacoes, servicos
+from .. import relatorios as rel
 from ..servicos import resumo_cartao, saldo_conta
 
 router = APIRouter()
@@ -128,9 +129,60 @@ def _pares_da_pagina(db: Session, movimentos: list[Movimento]) -> dict[int, dict
     return pares
 
 
+DIAS_SEMANA = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"]
+
+
+def _calendario(db: Session, base, *, conta_id, categoria, etiqueta, tipo, q, vmin, vmax, mes: str,
+                d_de: date | None, d_ate: date | None, base_q: dict) -> dict:
+    """Calendário do mês para o topo dos filtros: movimentos e saldo de cada dia (com os outros filtros);
+    clicar num dia filtra esse dia."""
+    m = re.fullmatch(r"(\d{4})-(\d{2})", mes or "")
+    if m and 1 <= int(m.group(2)) <= 12:
+        ini = date(int(m.group(1)), int(m.group(2)), 1)
+    elif d_de:
+        ini = d_de.replace(day=1)
+    else:
+        ultimo = db.scalar(_filtrar(base.with_only_columns(func.max(Movimento.data_mov)), conta_id=conta_id,
+                                    categoria=categoria, etiqueta=etiqueta, tipo=tipo, texto=q, d_de=None, d_ate=None,
+                                    vmin=vmin, vmax=vmax))
+        ini = (ultimo or date.today()).replace(day=1)
+    fim = rel.fim_do_mes(ini)
+    por_dia = {d: (n, s) for d, n, s in db.execute(_filtrar(
+        base.with_only_columns(Movimento.data_mov, func.count(), func.sum(Movimento.montante)), conta_id=conta_id,
+        categoria=categoria, etiqueta=etiqueta, tipo=tipo, texto=q, d_de=ini, d_ate=fim, vmin=vmin, vmax=vmax)
+        .group_by(Movimento.data_mov))}
+    sem_datas = {k: v for k, v in base_q.items() if k not in ("de", "ate", "pagina")}
+    dia_escolhido = d_de if d_de and d_de == d_ate else None
+    semanas, semana = [], [None] * ini.weekday()
+    for n in range(1, fim.day + 1):
+        d = ini.replace(day=n)
+        qtd, soma = por_dia.get(d, (0, 0))
+        escolhido = d == dia_escolhido
+        href = "?" + urlencode({**sem_datas, "mes": f"{ini:%Y-%m}"} if escolhido
+                               else {**sem_datas, "de": d.isoformat(), "ate": d.isoformat()})
+        semana.append({"dia": d, "n": qtd, "soma": soma or 0, "escolhido": escolhido, "href": href,
+                       "hoje": d == date.today()})
+        if len(semana) == 7:
+            semanas.append(semana)
+            semana = []
+    if semana:
+        semanas.append(semana + [None] * (7 - len(semana)))
+    anterior, seguinte = rel.somar_meses(ini, -1), rel.somar_meses(ini, 1)
+    mes_inteiro = d_de == ini and d_ate == fim
+    return {
+        "rotulo": f"{rel.MESES_PT[ini.month - 1].capitalize()} {ini.year}", "semanas": semanas, "dias": DIAS_SEMANA,
+        "anterior": "?" + urlencode({**sem_datas, "mes": f"{anterior:%Y-%m}"}),
+        "seguinte": "?" + urlencode({**sem_datas, "mes": f"{seguinte:%Y-%m}"}),
+        "mes_inteiro": "?" + urlencode({**sem_datas, "mes": f"{ini:%Y-%m}"} if mes_inteiro
+                                       else {**sem_datas, "de": ini.isoformat(), "ate": fim.isoformat()}),
+        "mes_inteiro_ativo": mes_inteiro, "dia_escolhido": dia_escolhido,
+        "n": sum(v[0] for v in por_dia.values()), "soma": sum(v[1] or 0 for v in por_dia.values()),
+    }
+
+
 def _listar(request: Request, db: Session, u: Utilizador, *, entidade: int | None, conta: Conta | None,
             categoria: int, etiqueta: int, tipo: str, q: str, de: str, ate: str, pagina: int,
-            vmin: str = "", vmax: str = "", ordem: str = "-data", anteriores: int = 0):
+            vmin: str = "", vmax: str = "", ordem: str = "-data", anteriores: int = 0, mes: str = ""):
     if conta:
         papel = exigir_papel(db, u, conta.entidade_id, "ver")
         visiveis, ent, _ = entidade_escolhida(request, db, u, conta.entidade_id)
@@ -191,6 +243,9 @@ def _listar(request: Request, db: Session, u: Utilizador, *, entidade: int | Non
             nova = f"-{col}" if col in ("data", "montante") else col
         seta = ("▼" if ordem.startswith("-") else "▲") if atual else ""
         ordens[col] = {"href": "?" + urlencode({**base_q, "ordem": nova}), "seta": seta}
+    calendario = _calendario(db, base, conta_id=conta.id if conta else None, categoria=categoria, etiqueta=etiqueta,
+                             tipo=tipo, q=q, vmin=v_min, vmax=v_max, mes=mes, d_de=d_de, d_ate=d_ate,
+                             base_q={**base_q, **({"ordem": ordem} if ordem != "-data" else {})})
     return render(
         request, "movimentos/lista.html", visiveis=visiveis, entidade=ent, conta=conta,
         saldo=saldo_conta(db, conta) if conta else None,
@@ -206,7 +261,7 @@ def _listar(request: Request, db: Session, u: Utilizador, *, entidade: int | Non
         tipos=TIPOS_FILTRO, movimentos=lista, total=total, entradas=entradas, saidas=saidas, n_sem=n_sem,
         pagina=pagina, paginas=max(1, -(-total // POR_PAGINA)), erro=erro, f=filtros,
         query=urlencode({**{k: v for k, v in filtros.items() if v}, **({"ordem": ordem} if ordem != "-data" else {})}),
-        ordem=ordem, ordens=ordens, pares=_pares_da_pagina(db, lista), corte=corte, ocultos=ocultos,
+        ordem=ordem, ordens=ordens, pares=_pares_da_pagina(db, lista), corte=corte, ocultos=ocultos, calendario=calendario,
         anteriores=bool(anteriores and corte),
         pode_editar=PAPEIS[papel] >= PAPEIS["editar"], pode_gerir=PAPEIS[papel] >= PAPEIS["admin"])
 
@@ -214,30 +269,30 @@ def _listar(request: Request, db: Session, u: Utilizador, *, entidade: int | Non
 @router.get("/movimentos")
 def movimentos(request: Request, entidade: IntOpcional = None, conta: IntOpcional = None, categoria: IntOpcional = None,
                etiqueta: IntOpcional = None, tipo: str = "", q: str = "", de: str = "", ate: str = "", pagina: IntOpcional = 1,
-               vmin: str = "", vmax: str = "", ordem: str = "-data", anteriores: IntOpcional = 0,
+               vmin: str = "", vmax: str = "", ordem: str = "-data", anteriores: IntOpcional = 0, mes: str = "",
                u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
     if conta:
         return RedirectResponse(f"/contas/{conta}/movimentos?" + urlencode(
             {k: v for k, v in {"categoria": categoria or "", "etiqueta": etiqueta or "", "tipo": tipo, "q": q, "de": de,
                                "ate": ate, "vmin": vmin, "vmax": vmax, "ordem": ordem if ordem != "-data" else "",
-                               "anteriores": anteriores or ""}.items()
+                               "anteriores": anteriores or "", "mes": mes}.items()
              if v}), status_code=303)
     return _listar(request, db, u, entidade=entidade, conta=None, categoria=categoria, etiqueta=etiqueta,
                    tipo=tipo if tipo in TIPOS_FILTRO else "", q=q, de=de, ate=ate, pagina=pagina,
-                   vmin=vmin, vmax=vmax, ordem=ordem, anteriores=anteriores or 0)
+                   vmin=vmin, vmax=vmax, ordem=ordem, anteriores=anteriores or 0, mes=mes)
 
 
 @router.get("/contas/{conta_id}/movimentos")
 def movimentos_conta(request: Request, conta_id: int, categoria: IntOpcional = None, etiqueta: IntOpcional = None, tipo: str = "",
                      q: str = "", de: str = "", ate: str = "", pagina: IntOpcional = 1,
-                     vmin: str = "", vmax: str = "", ordem: str = "-data", anteriores: IntOpcional = 0,
+                     vmin: str = "", vmax: str = "", ordem: str = "-data", anteriores: IntOpcional = 0, mes: str = "",
                      u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
     c = db.get(Conta, conta_id)
     if not c:
         raise HTTPException(status_code=404, detail="Não encontrado.")
     return _listar(request, db, u, entidade=None, conta=c, categoria=categoria, etiqueta=etiqueta,
                    tipo=tipo if tipo in TIPOS_FILTRO else "", q=q, de=de, ate=ate, pagina=pagina,
-                   vmin=vmin, vmax=vmax, ordem=ordem, anteriores=anteriores or 0)
+                   vmin=vmin, vmax=vmax, ordem=ordem, anteriores=anteriores or 0, mes=mes)
 
 
 def _movimento_editavel(db: Session, u: Utilizador, mov_id: int) -> Movimento:
