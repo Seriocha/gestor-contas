@@ -499,3 +499,7 @@ select.gravado { box-shadow: 0 0 0 3px var(--ok-fundo); border-color: var(--pos)
   .grupo-acoes { grid-template-columns: 1fr; }
   .grupo-topo { flex-direction: column; }
 }
+
+/* Movimentos anteriores ao início da análise (Cobertura dos dados) */
+.aviso-corte { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: .4rem 1rem; }
+.tabela-movimentos tr.fora-analise > td { opacity: .5; }

@@ -75,3 +75,29 @@ def test_pagina_e_corte(admin, app):
         assert db.get(Entidade, 1).data_inicio is None
     assert "Receitas</span><strong>1.700,00" in admin.get(
         "/relatorios?entidade=1&periodo=personalizado&de=2026-01-01&ate=2026-06-30").text
+
+
+def test_movimentos_visiveis_so_desde_o_inicio_da_analise(admin, app):
+    from tests.test_app import _csrf
+    _post(admin, "/contas/cobertura?entidade=1", "/contas/cobertura", entidade="1", data_inicio="2026-04-01")
+    lista = admin.get("/movimentos?entidade=1").text
+    assert "RECEITA MAIO" in lista and "RECEITA JANEIRO" not in lista and "GANHO" not in lista
+    assert "A mostrar só os movimentos desde <strong>01/04/2026</strong>" in lista
+    assert "<strong>3</strong> anteriores ocultos" in lista and "anteriores=1" in lista
+    # a pedido, aparecem esbatidos
+    todos = admin.get("/movimentos?entidade=1&anteriores=1").text
+    assert "RECEITA JANEIRO" in todos and "fora-analise" in todos and "Esconder os anteriores" in todos
+    # página da conta: o mesmo corte (e o saldo continua a contar tudo)
+    conta = admin.get("/contas/1/movimentos").text
+    assert "RECEITA JANEIRO" not in conta and "<strong>1</strong> anterior oculto" in conta and "1.500,00 €" in conta
+    # ações em massa sobre «todo o filtro» não tocam nos ocultos
+    p = admin.get("/movimentos?entidade=1")
+    admin.post("/movimentos-lote", data={"csrf": _csrf(p), "voltar": "/movimentos?entidade=1", "ambito": "filtro",
+                                         "acao": "excluir", "f_entidade": "1"})
+    with app.state.SessionLocal() as db:
+        from app.models import Movimento
+        exc = {m.descricao_original: m.excluido for m in db.query(Movimento)}
+    assert exc["RECEITA MAIO"] and not exc["RECEITA JANEIRO"] and not exc["GANHO"]
+    # sem data de início não há aviso
+    _post(admin, "/contas/cobertura?entidade=1", "/contas/cobertura", entidade="1", acao="remover")
+    assert "anteriores ocultos" not in admin.get("/movimentos?entidade=1").text

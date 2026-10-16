@@ -27,6 +27,20 @@
 {% set destino = "/movimentos" %}{% include "_entidades.html" %}
 {% endif %}
 {% if erro %}<div class="aviso aviso-erro">{{ erro }}</div>{% endif %}
+{% if entidade and corte and ocultos %}
+<div class="aviso aviso-alerta aviso-corte">
+  {% if anteriores %}
+  <span>A mostrar também <strong>{{ ocultos }} movimento{{ 's' if ocultos != 1 }} anterior{{ 'es' if ocultos != 1 }}</strong> a {{ corte | data }},
+    o início da análise — aparecem esbatidos e não contam nos relatórios.</span>
+  <a href="{{ request.url.include_query_params(anteriores=0) }}">Esconder os anteriores</a>
+  {% else %}
+  <span>A mostrar só os movimentos desde <strong>{{ corte | data }}</strong> (início da análise):
+    <strong>{{ ocultos }}</strong> anterior{{ 'es' if ocultos != 1 }} oculto{{ 's' if ocultos != 1 }}.</span>
+  <span><a href="{{ request.url.include_query_params(anteriores=1) }}">Mostrar também</a> ·
+    <a href="/contas/cobertura?entidade={{ entidade.id }}">alterar a data</a></span>
+  {% endif %}
+</div>
+{% endif %}
 
 {% if conta and retificaveis %}
 {% set pendentes = retificacoes | selectattr('diferenca') | list %}
@@ -128,7 +142,7 @@
     <div><span class="nota">Entradas (filtro)</span><strong class="pos">{{ entradas | eur }}</strong></div>
     <div><span class="nota">Saídas (filtro)</span><strong class="neg">{{ saidas | eur }}</strong></div>
     <div><span class="nota">Sem categoria</span><strong>
-      {% if n_sem %}<a href="{{ request.url.path }}?{% if not conta %}entidade={{ entidade.id }}&{% endif %}tipo=sem">{{ n_sem }}</a>{% else %}0{% endif %}</strong></div>
+      {% if n_sem %}<a href="{{ request.url.path }}?{% if not conta %}entidade={{ entidade.id }}&{% endif %}tipo=sem{% if anteriores %}&anteriores=1{% endif %}">{{ n_sem }}</a>{% else %}0{% endif %}</strong></div>
   </div>
 
   {% set n_filtros = [f.categoria, f.etiqueta, f.tipo, f.q, f.de, f.ate, f.vmin, f.vmax] | select | list | length %}
@@ -169,6 +183,7 @@
     <label>Valor de <input name="vmin" value="{{ f.vmin }}" inputmode="decimal" placeholder="0,00"></label>
     <label>até <input name="vmax" value="{{ f.vmax }}" inputmode="decimal" placeholder="0,00"></label>
     {% if ordem != '-data' %}<input type="hidden" name="ordem" value="{{ ordem }}">{% endif %}
+    {% if anteriores %}<input type="hidden" name="anteriores" value="1">{% endif %}
     <label>De <input type="date" name="de" value="{{ f.de }}"></label>
     <label>Até <input type="date" name="ate" value="{{ f.ate }}"></label>
     <button>Filtrar</button>
@@ -186,7 +201,7 @@
     {# Filtro atual, para as ações aplicadas a todos os movimentos do filtro (todas as páginas). #}
     <input type="hidden" name="f_entidade" value="{{ entidade.id }}">
     <input type="hidden" name="f_conta" value="{{ conta.id if conta else '' }}">
-    {% for k in ['categoria', 'etiqueta', 'tipo', 'q', 'de', 'ate', 'vmin', 'vmax'] %}<input type="hidden" name="f_{{ k }}" value="{{ f[k] }}">{% endfor %}
+    {% for k in ['categoria', 'etiqueta', 'tipo', 'q', 'de', 'ate', 'vmin', 'vmax', 'anteriores'] %}<input type="hidden" name="f_{{ k }}" value="{{ f[k] }}">{% endfor %}
     <button type="button" class="abrir-lote" id="abrir-lote">Ações em massa…</button>
     <div class="barra-lote" id="barra-lote">
       <fieldset class="ambito">
@@ -250,7 +265,7 @@
       <tbody>
       {% for m in movimentos %}
       {% set par = pares.get(m.id) %}
-      <tr id="mov-{{ m.id }}" class="{{ 'arquivada' if m.excluido else '' }}{{ ' com-par' if par }}"{% if par %} style="--cor-par: {{ par.cor }}" data-par="{{ par.par_id }}"{% endif %}>
+      <tr id="mov-{{ m.id }}" class="{{ 'arquivada' if m.excluido else '' }}{{ ' com-par' if par }}{{ ' fora-analise' if corte and m.data_mov < corte }}"{% if par %} style="--cor-par: {{ par.cor }}" data-par="{{ par.par_id }}"{% endif %}>
         {% if pode_editar %}<td class="c-sel"><input type="checkbox" name="ids" value="{{ m.id }}" data-montante="{{ m.montante }}" aria-label="Selecionar"></td>{% endif %}
         <td class="c-data sem-quebra">{{ m.data_mov | data }}</td>
         {% if not conta %}<td class="c-conta nota">{{ m.conta.nome }}</td>{% endif %}

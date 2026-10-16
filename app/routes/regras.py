@@ -3,12 +3,12 @@ import re
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from ..deps import IntOpcional, auditar, entidades_visiveis, exigir_editor, flash, get_db, render
 from ..formatos import montante_para_input, parse_montante
-from ..models import MODOS_REGRA, PAPEIS, SENTIDOS, Categoria, Conta, Etiqueta, Movimento, Regra, Utilizador
+from ..models import MODOS_REGRA, PAPEIS, SENTIDOS, Categoria, Conta, Entidade, Etiqueta, Movimento, Regra, Utilizador
 from .. import ia
 from ..qualificacao import (aplicar_regras, arvore_categorias, compilar, corresponde, qualificar_manual,
                             validar_padrao)
@@ -55,8 +55,10 @@ def lista(request: Request, u: Utilizador = Depends(exigir_editor), db: Session 
 
 
 def _grupos(db: Session, u: Utilizador) -> list:
-    movs = (select(Movimento).join(Conta).where(Conta.entidade_id.in_(_entidades_editaveis(db, u)),
-                                                ~Movimento.transferencia, ~Movimento.excluido)
+    # Só o que está dentro da cobertura dos dados (desde o início da análise de cada entidade).
+    movs = (select(Movimento).join(Conta).join(Entidade, Entidade.id == Conta.entidade_id)
+            .where(Conta.entidade_id.in_(_entidades_editaveis(db, u)), ~Movimento.transferencia, ~Movimento.excluido,
+                   or_(Entidade.data_inicio.is_(None), Movimento.data_mov >= Entidade.data_inicio))
             .options(selectinload(Movimento.conta)))
     sem = db.scalars(movs.where(Movimento.categoria_id.is_(None))).all()
     com = db.scalars(movs.where(Movimento.categoria_id.is_not(None))).all()

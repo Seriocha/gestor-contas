@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session, selectinload
 from ..deps import (IntOpcional, auditar, entidade_escolhida, exigir_papel, flash, get_db, papel_em, render,
                     utilizador_atual)
 from ..formatos import parse_data, parse_montante
-from ..models import CORES, PAPEIS, Categoria, Conta, Etiqueta, Movimento, Utilizador
+from ..models import CORES, PAPEIS, Categoria, Conta, Entidade, Etiqueta, Movimento, Utilizador
 from ..qualificacao import aplicar_regras, arvore_categorias, qualificar_manual, repor
 from ..servicos import normalizar_descricao
 from ..seguranca import ler_form
@@ -130,7 +130,7 @@ def _pares_da_pagina(db: Session, movimentos: list[Movimento]) -> dict[int, dict
 
 def _listar(request: Request, db: Session, u: Utilizador, *, entidade: int | None, conta: Conta | None,
             categoria: int, etiqueta: int, tipo: str, q: str, de: str, ate: str, pagina: int,
-            vmin: str = "", vmax: str = "", ordem: str = "-data"):
+            vmin: str = "", vmax: str = "", ordem: str = "-data", anteriores: int = 0):
     if conta:
         papel = exigir_papel(db, u, conta.entidade_id, "ver")
         visiveis, ent, _ = entidade_escolhida(request, db, u, conta.entidade_id)
@@ -151,6 +151,17 @@ def _listar(request: Request, db: Session, u: Utilizador, *, entidade: int | Non
         v_min = v_max = None
         erro = str(e)
     base = select(Movimento).join(Conta).where(Conta.entidade_id == ent.id)
+    # Cobertura dos dados: por omissão só se veem os movimentos desde o início da análise.
+    corte = ent.data_inicio
+    ocultos = 0
+    if corte:
+        q_antes = select(func.count()).select_from(Movimento).join(Conta).where(
+            Conta.entidade_id == ent.id, Movimento.data_mov < corte)
+        if conta:
+            q_antes = q_antes.where(Movimento.conta_id == conta.id)
+        ocultos = db.scalar(q_antes)
+        if not anteriores:
+            base = base.where(Movimento.data_mov >= corte)
     filtro = _filtrar(base, conta_id=conta.id if conta else None, categoria=categoria, etiqueta=etiqueta,
                       tipo=tipo, texto=q, d_de=d_de, d_ate=d_ate, vmin=v_min, vmax=v_max)
     sub = filtro.with_only_columns(Movimento.montante).subquery()
@@ -166,7 +177,7 @@ def _listar(request: Request, db: Session, u: Utilizador, *, entidade: int | Non
     n_sem = db.scalar(_filtrar(base.with_only_columns(func.count()), conta_id=conta.id if conta else None,
                                categoria=0, etiqueta=0, tipo="sem", texto="", d_de=None, d_ate=None))
     filtros = {"categoria": categoria or "", "etiqueta": etiqueta or "", "tipo": tipo, "q": q, "de": de, "ate": ate,
-               "vmin": vmin, "vmax": vmax}
+               "vmin": vmin, "vmax": vmax, "anteriores": 1 if anteriores and corte else ""}
     if not conta:
         filtros["entidade"] = ent.id
     # Títulos das colunas: clicar ordena por essa coluna; clicar outra vez inverte.
@@ -193,36 +204,38 @@ def _listar(request: Request, db: Session, u: Utilizador, *, entidade: int | Non
         tipos=TIPOS_FILTRO, movimentos=lista, total=total, entradas=entradas, saidas=saidas, n_sem=n_sem,
         pagina=pagina, paginas=max(1, -(-total // POR_PAGINA)), erro=erro, f=filtros,
         query=urlencode({**{k: v for k, v in filtros.items() if v}, **({"ordem": ordem} if ordem != "-data" else {})}),
-        ordem=ordem, ordens=ordens, pares=_pares_da_pagina(db, lista),
+        ordem=ordem, ordens=ordens, pares=_pares_da_pagina(db, lista), corte=corte, ocultos=ocultos,
+        anteriores=bool(anteriores and corte),
         pode_editar=PAPEIS[papel] >= PAPEIS["editar"])
 
 
 @router.get("/movimentos")
 def movimentos(request: Request, entidade: IntOpcional = None, conta: IntOpcional = None, categoria: IntOpcional = None,
                etiqueta: IntOpcional = None, tipo: str = "", q: str = "", de: str = "", ate: str = "", pagina: IntOpcional = 1,
-               vmin: str = "", vmax: str = "", ordem: str = "-data",
+               vmin: str = "", vmax: str = "", ordem: str = "-data", anteriores: IntOpcional = 0,
                u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
     if conta:
         return RedirectResponse(f"/contas/{conta}/movimentos?" + urlencode(
             {k: v for k, v in {"categoria": categoria or "", "etiqueta": etiqueta or "", "tipo": tipo, "q": q, "de": de,
-                               "ate": ate, "vmin": vmin, "vmax": vmax, "ordem": ordem if ordem != "-data" else ""}.items()
+                               "ate": ate, "vmin": vmin, "vmax": vmax, "ordem": ordem if ordem != "-data" else "",
+                               "anteriores": anteriores or ""}.items()
              if v}), status_code=303)
     return _listar(request, db, u, entidade=entidade, conta=None, categoria=categoria, etiqueta=etiqueta,
                    tipo=tipo if tipo in TIPOS_FILTRO else "", q=q, de=de, ate=ate, pagina=pagina,
-                   vmin=vmin, vmax=vmax, ordem=ordem)
+                   vmin=vmin, vmax=vmax, ordem=ordem, anteriores=anteriores or 0)
 
 
 @router.get("/contas/{conta_id}/movimentos")
 def movimentos_conta(request: Request, conta_id: int, categoria: IntOpcional = None, etiqueta: IntOpcional = None, tipo: str = "",
                      q: str = "", de: str = "", ate: str = "", pagina: IntOpcional = 1,
-                     vmin: str = "", vmax: str = "", ordem: str = "-data",
+                     vmin: str = "", vmax: str = "", ordem: str = "-data", anteriores: IntOpcional = 0,
                      u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
     c = db.get(Conta, conta_id)
     if not c:
         raise HTTPException(status_code=404, detail="Não encontrado.")
     return _listar(request, db, u, entidade=None, conta=c, categoria=categoria, etiqueta=etiqueta,
                    tipo=tipo if tipo in TIPOS_FILTRO else "", q=q, de=de, ate=ate, pagina=pagina,
-                   vmin=vmin, vmax=vmax, ordem=ordem)
+                   vmin=vmin, vmax=vmax, ordem=ordem, anteriores=anteriores or 0)
 
 
 def _movimento_editavel(db: Session, u: Utilizador, mov_id: int) -> Movimento:
@@ -436,6 +449,9 @@ def _ids_do_filtro(db: Session, u: Utilizador, form) -> list[int]:
         raise HTTPException(status_code=400, detail="Datas do filtro inválidas.")
     tipo = str(form.get("f_tipo", ""))
     base = select(Movimento.id).join(Conta).where(Conta.entidade_id == entidade_id)
+    corte = db.get(Entidade, entidade_id).data_inicio
+    if corte and form.get("f_anteriores") != "1":
+        base = base.where(Movimento.data_mov >= corte)
     return list(db.scalars(_filtrar(base, conta_id=conta.id if conta else None, categoria=_int(form.get("f_categoria")),
                                     etiqueta=_int(form.get("f_etiqueta")), tipo=tipo if tipo in TIPOS_FILTRO else "",
                                     texto=str(form.get("f_q", "")), d_de=d_de, d_ate=d_ate,

@@ -93,7 +93,7 @@ def painel(request: Request, entidade: IntOpcional = None, periodo: str = "mes",
     despesas = [l for l in rel.linhas_ordenadas(r.por_categoria["DESPESA"]) if l.total > 0]
     n_sem = db.scalar(select(func.count()).select_from(Movimento).join(Conta).where(
         Conta.entidade_id == ent.id, Movimento.categoria_id.is_(None), ~Movimento.transferencia,
-        ~Movimento.excluido))
+        ~Movimento.excluido, Movimento.data_mov >= (corte or date.min)))
     graficos = {
         "patrimonio": {"rotulos": [d.strftime("%d/%m/%Y") if d == ref else rel.rotulo_mes(d) for d in meses],
                        "liquido": [x["liquido"] / 100 for x in pat["serie"]],
