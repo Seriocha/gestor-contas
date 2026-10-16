@@ -32,7 +32,8 @@ SANTANDER_POR_TIPO = {"CARTAO_CREDITO": "santander_cartao", "EMPRESTIMO": "santa
                       "CARTAO_REFEICAO": "santander_refeicao"}
 TIPOS_CONTA_CORRENTE = {"ORDEM", "POUPANCA", "CARTEIRA_DIGITAL"}
 MANUAL = {
-    "INVESTIMENTO": "Sem extrato para importar: insere aplicações/resgates com «+ Movimento» e acerta o valor da carteira com «Retificar saldo».",
+    "INVESTIMENTO": "Importa o extrato da conta de liquidez da carteira (BiG: movimentos da «FA …» em CSV) ou insere "
+                    "aplicações/resgates com «+ Movimento»; depois acerta o valor total da carteira com «Retificar saldo».",
     "AFORRO": "Consulta o valor no AforroNet e acerta com «Retificar saldo» (juros entram como ganho).",
     "CARTAO_REFEICAO": "Sem exportação de movimentos: consulta o saldo na app do banco e acerta com «Retificar saldo».",
 }

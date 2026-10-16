@@ -20,6 +20,7 @@ from .formatos import fmt_montante
 from .models import TIPOS_RETIFICAVEIS, Conta, Movimento, RetificacaoSaldo
 
 PREFIXO = "retif:"  # hash_dedup do movimento de acerto: retif:<id da retificação>
+PARTIDA = "VALOR DE PARTIDA"  # descricao_norm do acerto de uma retificação «valor de partida»
 ORDEM_ACERTO = 999  # último movimento do dia
 
 
@@ -59,8 +60,13 @@ def recalcular(db: Session, conta: Conta) -> list[EstadoRetificacao]:
                 db.add(m)
             m.data_mov = r.data
             m.montante = diferenca
-            m.descricao_original = f"Retificação de saldo para {fmt_montante(r.saldo, conta.moeda)} (valor real)"
-            m.descricao_norm = "RETIFICACAO DE SALDO"
+            if r.partida:
+                m.descricao_original = (f"Valor de partida: {fmt_montante(r.saldo, conta.moeda)} "
+                                        "(capital investido até esta data)")
+                m.descricao_norm = PARTIDA
+            else:
+                m.descricao_original = f"Retificação de saldo para {fmt_montante(r.saldo, conta.moeda)} (valor real)"
+                m.descricao_norm = "RETIFICACAO DE SALDO"
             m.notas = r.nota
         elif m is not None:
             db.delete(m)
@@ -81,14 +87,17 @@ def recalcular_contas(db: Session, contas) -> None:
 def avisos(db: Session, conta_ids=None) -> dict[int, dict]:
     """{conta_id: {"data": última data com diferença, "diferenca": soma das diferenças por explicar}}."""
     q = select(Movimento.conta_id, func.max(Movimento.data_mov), func.sum(Movimento.montante)).where(
-        Movimento.hash_dedup.like(f"{PREFIXO}%"), Movimento.montante != 0).group_by(Movimento.conta_id)
+        Movimento.hash_dedup.like(f"{PREFIXO}%"), Movimento.montante != 0,
+        Movimento.descricao_norm != PARTIDA).group_by(Movimento.conta_id)
     if conta_ids is not None:
         q = q.where(Movimento.conta_id.in_(list(conta_ids)))
     return {cid: {"data": d, "diferenca": soma} for cid, d, soma in db.execute(q)}
 
 
-def criar(db: Session, conta: Conta, data: date, saldo: int, nota: str | None, utilizador_id: int | None) -> EstadoRetificacao:
-    r = RetificacaoSaldo(conta_id=conta.id, data=data, saldo=saldo, nota=nota, criado_por=utilizador_id)
+def criar(db: Session, conta: Conta, data: date, saldo: int, nota: str | None, utilizador_id: int | None,
+          partida: bool = False) -> EstadoRetificacao:
+    r = RetificacaoSaldo(conta_id=conta.id, data=data, saldo=saldo, nota=nota, criado_por=utilizador_id,
+                         partida=partida)
     db.add(r)
     db.flush()
     return next(e for e in recalcular(db, conta) if e.retificacao.id == r.id)

@@ -264,7 +264,7 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .organizar select { width: auto; min-height: 38px; padding: .35rem .6rem; font-size: .9rem; }
 .dica-grafico { margin-top: .5rem; }
 .etiqueta.natureza { margin-left: .35rem; }
-.natureza-aplicacao, .natureza-resgate { background: var(--superficie-2); color: var(--suave); }
+.natureza-aplicacao, .natureza-resgate, .natureza-partida { background: var(--superficie-2); color: var(--suave); }
 .natureza-ganho { background: var(--ok-fundo); color: var(--ok-texto); border-color: transparent; }
 .natureza-perda { background: var(--erro-fundo); color: var(--erro-texto); border-color: transparent; }
 .caixa-retificacao > summary { margin: 0; list-style: none; cursor: pointer; }
@@ -527,3 +527,7 @@ button.pequeno { min-height: 32px; padding: .3rem .8rem; font-size: .85rem; }
   .par .lado, .par-acoes { grid-column: 2; }
   .par-acoes { justify-content: flex-start; }
 }
+
+/* Zona de perigo (limpar conta) */
+.zona-perigo { border-color: var(--neg); }
+.zona-perigo > summary { cursor: pointer; font-weight: 650; color: var(--neg); }

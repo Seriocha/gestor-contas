@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from datetime import date
 
-from .. import servicos, tarefas
+from .. import investimentos, servicos, tarefas
 from ..deps import IntOpcional, auditar, entidade_escolhida, entidades_visiveis, exigir_papel, flash, get_db, render, utilizador_atual
 from ..models import PAPEIS, Conta, Importacao, Utilizador
 from ..parsers import FormatoDesconhecido, ler_extrato
@@ -81,6 +81,8 @@ async def previa(request: Request, u: Utilizador = Depends(utilizador_atual), db
     except Exception as e:  # ficheiro corrompido / colunas com valores inesperados
         return _pagina(request, db, u, 400, erro=f"Não foi possível ler o ficheiro: {e}", conta_id=conta.id)
 
+    if investimentos.e_investimento(conta):
+        extrato.avisos = list(extrato.avisos) + investimentos.adaptar_extrato(extrato)
     sha = servicos.guardar_upload(request.app.state.defs.data_dir, ficheiro.filename, conteudo)
     erro_sub, avisos_sub = servicos.escolher_subconta(extrato, conta)
     avisos = list(extrato.avisos) + avisos_sub
@@ -143,6 +145,8 @@ async def confirmar(request: Request, u: Utilizador = Depends(utilizador_atual),
         flash(request, "O ficheiro da pré-visualização já não está disponível. Volta a carregá-lo.", "erro")
         return RedirectResponse("/importar", status_code=303)
     erro_sub, _ = servicos.escolher_subconta(extrato, conta)
+    if investimentos.e_investimento(conta):
+        investimentos.adaptar_extrato(extrato)
     if erro_sub or extrato.moeda != conta.moeda:
         raise HTTPException(status_code=400, detail=erro_sub or "Moeda do extrato diferente da da conta.")
     imp, msg = servicos.confirmar(db, conta, extrato, nome, sha, u)

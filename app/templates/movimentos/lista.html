@@ -44,7 +44,7 @@
 {% endif %}
 
 {% if conta and retificaveis %}
-{% set pendentes = retificacoes | selectattr('diferenca') | list %}
+{% set pendentes = retificacoes | selectattr('diferenca') | rejectattr('retificacao.partida') | list %}
 {% if pendentes %}
 <div class="aviso aviso-alerta aviso-retificacao">
   <strong>Saldo retificado.</strong>
@@ -62,7 +62,7 @@
   <div class="kpi-linha">
     <div class="kpi kpi-grande"><span class="nota">Valor atual</span><strong>{{ d.valor | eur(conta.moeda) }}</strong></div>
     <div class="kpi"><span class="nota">Capital investido</span><strong>{{ d.capital | eur(conta.moeda) }}</strong>
-      <span class="nota">aplicado {{ d.aplicado_total | eur(conta.moeda) }} · resgatado {{ d.resgatado_total | eur(conta.moeda) }}</span></div>
+      <span class="nota">{% if d.partida %}partida {{ d.partida | eur(conta.moeda) }} ({{ d.data_partida | data }}) · {% endif %}aplicado {{ d.aplicado_total | eur(conta.moeda) }} · resgatado {{ d.resgatado_total | eur(conta.moeda) }}</span></div>
     <div class="kpi"><span class="nota">Ganho / perda acumulado</span>
       <strong class="{{ 'pos' if d.resultado > 0 else 'neg' if d.resultado < 0 else '' }}">{{ '+' if d.resultado > 0 }}{{ d.resultado | eur(conta.moeda) }}</strong>
       <span class="nota">{% if d.rentabilidade is not none %}{{ ('%+.2f' % d.rentabilidade).replace('.', ',') }}% sobre o capital{% endif %}</span></div>
@@ -98,6 +98,11 @@
       <label>Saldo real ({{ conta.moeda }}) <input name="saldo" inputmode="decimal" required placeholder="valor da carteira / dos certificados"></label>
     </div>
     <label>Nota <input name="nota" maxlength="500" placeholder="ex.: valor do AforroNet a 30-09"></label>
+    {% if conta.tipo in ('INVESTIMENTO', 'AFORRO') and not tem_partida %}
+    <label class="opcao"><input type="checkbox" name="partida" value="1">
+      É o <strong>valor de partida</strong>: não sei quanto foi investido antes — a diferença conta como capital investido
+      e o ganho/perda passa a contar a partir desta data</label>
+    {% endif %}
     <p class="nota sem-margem">A diferença para o saldo dos movimentos vira um acerto fora dos relatórios (não é receita nem despesa).
       Fica um aviso na conta até os movimentos explicarem o saldo.</p>
     <div class="acoes-form"><button class="primario">Retificar saldo</button></div>
@@ -110,8 +115,9 @@
     <tr>
       <td class="sem-quebra">{{ e.retificacao.data | data }}</td>
       <td class="num">{{ e.retificacao.saldo | eur(conta.moeda) }}</td>
-      <td class="num">{% if e.diferenca %}<span class="etiqueta etiqueta-cor">{{ e.diferenca | eur(conta.moeda) }}</span>{% else %}<span class="etiqueta">explicado</span>{% endif %}</td>
-      <td class="nota">{{ e.retificacao.nota or '' }}</td>
+      <td class="num">{% if e.retificacao.partida %}<span class="etiqueta" title="Capital sem histórico">capital {{ e.diferenca | eur(conta.moeda) }}</span>
+        {% elif e.diferenca %}<span class="etiqueta etiqueta-cor">{{ e.diferenca | eur(conta.moeda) }}</span>{% else %}<span class="etiqueta">explicado</span>{% endif %}</td>
+      <td class="nota">{% if e.retificacao.partida %}<span class="etiqueta etiqueta-ok">valor de partida</span> {% endif %}{{ e.retificacao.nota or '' }}</td>
       <td class="acoes">{% if pode_editar %}
         <form method="post" action="/contas/{{ conta.id }}/retificacoes/{{ e.retificacao.id }}/apagar" onsubmit="return confirm('Apagar esta retificação?')">
           <input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="ligacao">Apagar</button>
@@ -283,7 +289,7 @@
           {% if m.excluido %}<span class="etiqueta">excluído</span>{% endif %}
           {% if (m.hash_dedup or '').startswith('manual:') %}<span class="etiqueta">à mão</span>{% endif %}
           {% if (m.hash_dedup or '').startswith('retif:') %}<span class="etiqueta etiqueta-cor">retificação</span>{% endif %}
-          {% if naturezas_inv.get(m.id) %}{% set n = naturezas_inv[m.id] %}<span class="etiqueta natureza natureza-{{ n }}">{{ {'aplicacao': 'aplicação', 'resgate': 'resgate', 'ganho': 'ganho', 'perda': 'perda'}[n] }}</span>{% endif %}
+          {% if naturezas_inv.get(m.id) %}{% set n = naturezas_inv[m.id] %}<span class="etiqueta natureza natureza-{{ n }}">{{ {'aplicacao': 'aplicação', 'resgate': 'resgate', 'ganho': 'ganho', 'perda': 'perda', 'partida': 'valor de partida'}[n] }}</span>{% endif %}
           {% for e in m.etiquetas %}<span class="etiqueta etiqueta-cor">#{{ e.nome }}</span>{% endfor %}
           {% if m.notas %}<br><span class="nota">{{ m.notas }}</span>{% endif %}
         </td>
@@ -319,6 +325,20 @@
   {% endif %}
   {% endif %}
 </section>
+{% endif %}
+{% if conta and pode_gerir %}
+<details class="cartao zona-perigo">
+  <summary>Limpar a conta (para reimportar)</summary>
+  <p>Apaga <strong>todos</strong> os movimentos, importações e retificações de «{{ conta.nome }}». A conta, as regras e as categorias
+    ficam; os movimentos ligados noutras contas perdem a ligação. Antes é feito um backup da base de dados.
+    {% if conta.tipo in ('INVESTIMENTO', 'AFORRO') %}Depois reimporta o extrato (subscrições e resgates de fundos são ignorados) e usa
+    «Retificar saldo» com o valor total da carteira.{% endif %}</p>
+  <form method="post" action="/contas/{{ conta.id }}/limpar" class="formulario-linha">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <label>Escreve o nome da conta para confirmar <input name="confirmar" autocomplete="off" placeholder="{{ conta.nome }}"></label>
+    <button class="perigo">Limpar conta</button>
+  </form>
+</details>
 {% endif %}
 {% endblock %}
 

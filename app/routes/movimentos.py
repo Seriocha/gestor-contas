@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session, selectinload
 from ..deps import (IntOpcional, auditar, entidade_escolhida, exigir_papel, flash, get_db, papel_em, render,
                     utilizador_atual)
 from ..formatos import parse_data, parse_montante
-from ..models import CORES, PAPEIS, Categoria, Conta, Entidade, Etiqueta, Movimento, Utilizador
+from ..models import CORES, PAPEIS, Categoria, Conta, Entidade, Etiqueta, Movimento, RetificacaoSaldo, Utilizador
 from ..qualificacao import aplicar_regras, arvore_categorias, qualificar_manual, repor
 from ..servicos import normalizar_descricao
 from ..seguranca import ler_form
@@ -199,6 +199,8 @@ def _listar(request: Request, db: Session, u: Utilizador, *, entidade: int | Non
         desempenho=investimentos.desempenho(db, conta, date.today()) if investimentos.e_investimento(conta) else None,
         naturezas_inv={m.id: investimentos.natureza(m) for m in lista} if investimentos.e_investimento(conta) else {},
         retificacoes=retificacoes.estados(db, conta) if conta and retificacoes.retificavel(conta) else [],
+        tem_partida=bool(conta and db.scalar(select(RetificacaoSaldo.id).where(
+            RetificacaoSaldo.conta_id == conta.id, RetificacaoSaldo.partida))),
         contas=db.scalars(select(Conta).where(Conta.entidade_id == ent.id).order_by(Conta.nome)).all(),
         categorias=arvore_categorias(db), etiquetas=db.scalars(select(Etiqueta).order_by(Etiqueta.nome)).all(),
         tipos=TIPOS_FILTRO, movimentos=lista, total=total, entradas=entradas, saidas=saidas, n_sem=n_sem,
@@ -206,7 +208,7 @@ def _listar(request: Request, db: Session, u: Utilizador, *, entidade: int | Non
         query=urlencode({**{k: v for k, v in filtros.items() if v}, **({"ordem": ordem} if ordem != "-data" else {})}),
         ordem=ordem, ordens=ordens, pares=_pares_da_pagina(db, lista), corte=corte, ocultos=ocultos,
         anteriores=bool(anteriores and corte),
-        pode_editar=PAPEIS[papel] >= PAPEIS["editar"])
+        pode_editar=PAPEIS[papel] >= PAPEIS["editar"], pode_gerir=PAPEIS[papel] >= PAPEIS["admin"])
 
 
 @router.get("/movimentos")
@@ -590,13 +592,24 @@ async def retificar(request: Request, conta_id: int, u: Utilizador = Depends(uti
     if not data or not str(form.get("saldo", "")).strip():
         flash(request, "Indica a data e o saldo real.", "erro")
         return RedirectResponse(f"/contas/{c.id}/movimentos", status_code=303)
-    estado = retificacoes.criar(db, c, data, saldo, str(form.get("nota", "")).strip()[:500] or None, u.id)
+    partida = form.get("partida") == "1" and investimentos.e_investimento(c)
+    if partida and db.scalar(select(RetificacaoSaldo.id).where(RetificacaoSaldo.conta_id == c.id,
+                                                              RetificacaoSaldo.partida)):
+        flash(request, "Esta conta já tem um valor de partida (apaga-o primeiro para o mudar).", "erro")
+        return RedirectResponse(f"/contas/{c.id}/movimentos", status_code=303)
+    estado = retificacoes.criar(db, c, data, saldo, str(form.get("nota", "")).strip()[:500] or None, u.id,
+                                partida=partida)
     auditar(db, u, "saldo_retificado", f"{c.id}: {data} → {saldo} (diferença {estado.diferenca})")
     db.commit()
     from ..formatos import fmt_montante
-    flash(request, f"Saldo retificado para {fmt_montante(saldo, c.moeda)} em {data:%d/%m/%Y}. " + (
-        f"Diferença por explicar com movimentos: {fmt_montante(estado.diferenca, c.moeda)}." if estado.diferenca
-        else "Os movimentos já explicam este saldo."))
+    if partida:
+        flash(request, f"Valor de partida: {fmt_montante(saldo, c.moeda)} em {data:%d/%m/%Y}. "
+                       f"{fmt_montante(estado.diferenca, c.moeda)} sem histórico contam como capital investido; o "
+                       "ganho/perda passa a contar a partir daqui (retifica o valor de novo nos próximos meses).")
+    else:
+        flash(request, f"Saldo retificado para {fmt_montante(saldo, c.moeda)} em {data:%d/%m/%Y}. " + (
+            f"Diferença por explicar com movimentos: {fmt_montante(estado.diferenca, c.moeda)}." if estado.diferenca
+            else "Os movimentos já explicam este saldo."))
     return RedirectResponse(f"/contas/{c.id}/movimentos", status_code=303)
 
 

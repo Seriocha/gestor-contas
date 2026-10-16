@@ -4,7 +4,7 @@ Gestor financeiro doméstico, multiutilizador e self-hosted, para a NAS QNAP. Es
 importa movimentos de bancos portugueses e gere contas à ordem, cartões, investimentos e
 Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIGN.md).
 
-## Estado: v0.25.0
+## Estado: v0.26.0
 
 - Login com várias pessoas: passwords em argon2, bloqueio ao fim de 5 tentativas falhadas,
   proteção CSRF e invalidação das sessões quando a password muda.
@@ -37,6 +37,17 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.26.0 — contas de fundos contabilizadas como carteira:** um extrato importado para uma conta de
+  Investimento (ex.: CSV da conta de liquidez da carteira BiG «FA Agressiva») já não é tratado como
+  conta à ordem: as subscrições e resgates de fundos são trocas dentro da carteira e não se importam
+  (a pré-visualização mostra quantos e os totais); o saldo do ficheiro (só a liquidez) é ignorado;
+  as entradas vindas da conta de liquidez são aplicações (transferências) e juros, rendimentos e
+  impostos ficam em «Rendimentos de investimento». O valor real da carteira entra por «Retificar
+  saldo». Novo **Limpar a conta** (fundo da página da conta, admin, escrever o nome da conta;
+  faz backup antes) para apagar movimentos, importações e retificações e reimportar.
+  Quando não se sabe o capital investido antes do extrato, a 1.ª retificação pode ser marcada como
+  **valor de partida** (migração 0013): a diferença conta como capital, não como ganho, não fica «por
+  explicar», e o ganho/perda de mercado passa a medir-se a partir dessa data.
 - **v0.25.0 — movimentos pareáveis:** novo ecrã **Movimentos › Pareáveis ↔** com as sugestões de
   ligação: débito numa conta e crédito noutra da mesma entidade, mesmo valor, no mesmo dia ou até
   1/3/5/7/10 dias, ainda sem par (filtros por conta e valor mínimo; respeita o início da análise).

@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from .models import Conta, Importacao, Movimento, Utilizador
 from .parsers import Extrato
-from . import emprestimos, retificacoes
+from . import emprestimos, investimentos, retificacoes
 from .qualificacao import aplicar_regras
 
 TAMANHO_MAX = 10 * 1024 * 1024
@@ -121,7 +121,16 @@ def confirmar(db: Session, conta: Conta, extrato: Extrato, nome: str, sha: str,
     ) for l in novas]
     db.add_all(movs)
     # Nas contas de empréstimo a qualificação é própria (prestação/juros/encargos), não pelas regras gerais.
-    imp.n_qualificados = aplicar_regras(db, movs) if conta.tipo != "EMPRESTIMO" else 0
+    if investimentos.e_investimento(conta):
+        # Carteira: juros, rendimentos e impostos são ganho/perda do investimento (não passam pelas regras gerais).
+        cat = investimentos.categoria_rendimentos(db)
+        imp.n_qualificados = 0
+        for m in movs:
+            if not m.transferencia:
+                m.categoria_id, m.qualificado_por = cat.id, "regra"
+                imp.n_qualificados += 1
+    else:
+        imp.n_qualificados = aplicar_regras(db, movs) if conta.tipo != "EMPRESTIMO" else 0
     db.flush()
     imp.n_pagamentos_cartao = ligar_pagamentos_cartao(db, conta)
     imp.n_transferencias = ligar_transferencias(db, conta.entidade_id)
@@ -305,6 +314,27 @@ def relatorio_pagamentos_cartao(db: Session, entidade_id: int) -> list[Pagamento
             sem_par.append((pag, candidatos))
         out.append(PagamentosCartao(cartao, pares, sem_par))
     return out
+
+
+def limpar_conta(db: Session, conta: Conta) -> int:
+    """Apaga todos os movimentos, importações e retificações da conta (a conta fica). Os movimentos
+    ligados noutras contas perdem a ligação mas mantêm a qualificação. Devolve quantos movimentos."""
+    from .models import RetificacaoSaldo
+    movs = db.scalars(select(Movimento).where(Movimento.conta_id == conta.id)).all()
+    ids = {m.id for m in movs}
+    for outro in db.scalars(select(Movimento).where(Movimento.par_id.in_(ids), Movimento.conta_id != conta.id)):
+        outro.par_id = None
+    for m in movs:
+        m.par_id = None
+    db.flush()
+    for m in movs:
+        db.delete(m)
+    for r in db.scalars(select(RetificacaoSaldo).where(RetificacaoSaldo.conta_id == conta.id)):
+        db.delete(r)
+    for i in db.scalars(select(Importacao).where(Importacao.conta_id == conta.id)):
+        db.delete(i)
+    db.flush()
+    return len(movs)
 
 
 def ligar_manual(db: Session, a: Movimento, b: Movimento, transferencia: bool = True) -> None:

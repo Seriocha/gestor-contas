@@ -309,6 +309,8 @@ class RetificacaoSaldo(Base):
     conta_id: Mapped[int] = mapped_column(ForeignKey("conta.id", ondelete="CASCADE"), index=True)
     data: Mapped[date] = mapped_column(Date)
     saldo: Mapped[int] = mapped_column(BigInteger)       # cêntimos
+    # Valor de partida: sem histórico do capital investido, a diferença conta como capital (não como ganho).
+    partida: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     nota: Mapped[str | None] = mapped_column(Text)
     criado_por: Mapped[int | None] = mapped_column(ForeignKey("utilizador.id", ondelete="SET NULL"))
     criado_em: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, server_default=func.now())

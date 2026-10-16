@@ -262,6 +262,29 @@ async def gravar_inicio(request: Request, u: Utilizador = Depends(utilizador_atu
     return RedirectResponse(f"/contas/cobertura?entidade={ent_id}", status_code=303)
 
 
+@router.post("/{conta_id}/limpar")
+async def limpar(request: Request, conta_id: int, u: Utilizador = Depends(utilizador_atual),
+                 db: Session = Depends(get_db)):
+    """Apaga todos os movimentos, importações e retificações da conta (para reimportar). Faz backup antes."""
+    from ..backup import fazer_backup
+    from ..servicos import limpar_conta
+    c = db.get(Conta, conta_id)
+    if not c:
+        raise HTTPException(status_code=404, detail="Não encontrado.")
+    exigir_papel(db, u, c.entidade_id, "admin")
+    form = await ler_form(request)
+    if str(form.get("confirmar", "")).strip() != c.nome:
+        flash(request, f"Para limpar, escreve exatamente o nome da conta («{c.nome}»).", "erro")
+        return RedirectResponse(f"/contas/{c.id}/movimentos", status_code=303)
+    copia = fazer_backup(request.app.state.defs)
+    n = limpar_conta(db, c)
+    auditar(db, u, "conta_limpa", f"{c.nome}: {n} movimentos apagados (backup {copia.name})")
+    db.commit()
+    flash(request, f"Conta «{c.nome}» limpa: {n} movimentos, importações e retificações apagados "
+                   f"(backup {copia.name}). Podes reimportar.")
+    return RedirectResponse(f"/contas/{c.id}/movimentos", status_code=303)
+
+
 @router.get("/nova")
 def nova_form(request: Request, entidade: int, u: Utilizador = Depends(utilizador_atual),
               db: Session = Depends(get_db)):
