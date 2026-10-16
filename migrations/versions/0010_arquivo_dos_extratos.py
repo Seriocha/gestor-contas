@@ -1,4 +1,5 @@
-"""arquivo organizado dos extratos importados
+"""arquivo organizado dos extratos importados (funcionalidade retirada na v0.21.1;
+migração mantida para que bases que já a aplicaram continuem a arrancar)
 
 Revision ID: 0010
 Revises: 0009

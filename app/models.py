@@ -174,8 +174,6 @@ class Importacao(Base):
     n_novos: Mapped[int] = mapped_column(Integer, default=0)
     n_duplicados: Mapped[int] = mapped_column(Integer, default=0)
     estado: Mapped[str] = mapped_column(String(12), default="confirmada")  # confirmada | anulada
-    # Cópia organizada do extrato, relativa ao arquivo (ex.: Família/Santander/Santander ordem/2026/…xls).
-    arquivo: Mapped[str | None] = mapped_column(String(500))
 
     conta: Mapped[Conta] = relationship()
     utilizador: Mapped[Utilizador | None] = relationship()

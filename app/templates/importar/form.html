@@ -28,43 +28,6 @@
   {% endif %}
 </section>
 
-{% if contas %}
-<section class="cartao" id="entrada">
-  <div class="cartao-cabecalho">
-    <h2>Pasta _Entrada <span class="nota">· {{ entrada | length }} ficheiro{{ 's' if entrada | length != 1 }}</span></h2>
-    <span class="nota">{% if arquivo_partilhado %}grava os extratos na pasta partilhada <code>_Entrada</code> do arquivo{% else %}arquivo dentro da pasta de dados da app{% endif %}</span>
-  </div>
-  {% if not entrada %}
-  <p class="vazio sem-margem">Sem ficheiros. {% if arquivo_partilhado %}Descarrega os extratos do banco diretamente para a pasta
-    <code>_Entrada</code> da partilha do arquivo e aparecem aqui, já com a conta sugerida.{% else %}Monta uma pasta partilhada da NAS
-    (ver Administração › Importadores) para poderes largar aqui os extratos sem upload.{% endif %}</p>
-  {% else %}
-  <ul class="lista-entrada">
-    {% for i in entrada %}
-    <li>
-      <form method="post" action="/importar" class="linha-entrada">
-        <input type="hidden" name="csrf" value="{{ csrf_token }}">
-        <input type="hidden" name="entrada" value="{{ i.f.nome }}">
-        <div class="entrada-info">
-          <strong>{{ i.f.nome }}</strong>
-          <span class="nota">{% if i.erro %}{{ i.erro }}{% else %}{{ i.banco }} · {{ i.n }} mov.{% if i.ini %} · {{ i.ini | data }} a {{ i.fim | data }}{% endif %}{% endif %}
-            · {{ (i.f.tamanho / 1024) | round(0) | int }} KB · {{ i.f.modificado.strftime('%d-%m-%Y %H:%M') }}</span>
-        </div>
-        {% if not i.erro %}
-        <select name="conta_id" required aria-label="Conta para {{ i.f.nome }}">
-          <option value="">— conta —</option>
-          {% for c in contas %}<option value="{{ c.id }}" {% if i.conta_id == c.id %}selected{% endif %}>{{ c.entidade.nome }} · {{ c.nome }}</option>{% endfor %}
-        </select>
-        <button>Pré-visualizar</button>
-        {% endif %}
-      </form>
-    </li>
-    {% endfor %}
-  </ul>
-  {% endif %}
-</section>
-{% endif %}
-
 <section class="cartao">
   <h2>Histórico de importações</h2>
   {% if not historico %}<p class="vazio">Ainda não há importações.</p>{% else %}
@@ -76,7 +39,7 @@
     <tr class="{{ '' if i.estado == 'confirmada' else 'arquivada' }}">
       <td>{{ i.criado_em.strftime('%d-%m-%Y %H:%M') }}</td>
       <td><a href="/contas/{{ i.conta_id }}/movimentos">{{ i.conta.nome }}</a></td>
-      <td class="nota">{% if i.estado == 'confirmada' %}<a href="/importar/{{ i.id }}/ficheiro" title="{{ i.arquivo or 'cópia do upload (ainda não arquivada)' }}">{{ i.arquivo.split('/')[-1] if i.arquivo else i.ficheiro_nome }}</a>{% else %}{{ i.ficheiro_nome }}{% endif %}</td>
+      <td class="nota">{{ i.ficheiro_nome }}</td>
       <td>{{ i.data_ini | data }} a {{ i.data_fim | data }}</td>
       <td class="num">{{ i.n_novos }}</td>
       <td class="num">{{ i.n_duplicados }}</td>

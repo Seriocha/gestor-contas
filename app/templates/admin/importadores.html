@@ -36,38 +36,4 @@
   <p class="nota sem-margem">Contas de depósitos a prazo, fundos e Certificados de Aforro não têm extrato para importar:
     usa «+ Movimento» na página da conta para registar entradas, saídas e juros, e liga-os ao movimento da conta à ordem.</p>
 </section>
-
-<section class="cartao" id="arquivo">
-  <div class="cartao-cabecalho">
-    <h2>Arquivo de extratos</h2>
-    {% if arq.escrita %}<span class="etiqueta etiqueta-ok">✓ acessível</span>{% else %}<span class="etiqueta">sem escrita</span>{% endif %}
-  </div>
-  <table class="tabela compacta">
-    <tr><th>Pasta no contentor</th><td><code>{{ arq.raiz }}</code></td></tr>
-    <tr><th>Origem</th><td>{% if arq.partilhado %}Pasta da NAS montada (GESTOR_ARQUIVO_DIR) — os ficheiros são visíveis na partilha.
-      {% else %}Dentro da pasta de dados da app (não montada). Para ver os extratos na rede, monta uma pasta partilhada — ver abaixo.{% endif %}</td></tr>
-    <tr><th>Extratos arquivados</th><td>{{ arq.n_ficheiros }}{% if por_arquivar %} · {{ por_arquivar }} importação(ões) anterior(es) ainda por arquivar{% endif %}</td></tr>
-    <tr><th>Na pasta _Entrada</th><td>{{ arq.n_entrada }} {% if arq.n_entrada %}· <a href="/importar#entrada">importar</a>{% endif %}</td></tr>
-    {% if arq.livre is not none %}<tr><th>Espaço livre</th><td>{{ '%.1f' % (arq.livre / 1024 ** 3) }} GB</td></tr>{% endif %}
-    {% if arq.erro %}<tr><th>Erro</th><td class="neg">{{ arq.erro }}</td></tr>{% endif %}
-  </table>
-  <p class="nota">Organização: <code>&lt;arquivo&gt;/&lt;Entidade&gt;/&lt;Banco&gt;/&lt;Conta&gt;/&lt;Ano&gt;/AAAA-MM-DD_a_AAAA-MM-DD_&lt;Conta&gt;.xls</code>
-    (período dos movimentos do ficheiro). Ficheiros gravados em <code>_Entrada</code> aparecem em Importar com a conta sugerida
-    e, depois de importados, passam para a árvore.</p>
-  {% if por_arquivar %}
-  <form method="post" action="/importar/arquivar-antigas">
-    <input type="hidden" name="csrf" value="{{ csrf_token }}">
-    <button>Arquivar as {{ por_arquivar }} importações anteriores</button>
-  </form>
-  {% endif %}
-  <details>
-    <summary>Montar uma pasta partilhada da NAS</summary>
-    <ol class="nota">
-      <li>No QTS (File Station), escolhe ou cria a pasta, por exemplo <code>/share/Documentos/Gestor-Contas</code>.</li>
-      <li>Por SSH na NAS: <code>echo /share/Documentos/Gestor-Contas &gt; /share/Container/gestor-contas/arquivo.conf</code></li>
-      <li>Corre <code>sh /share/Container/gestor-contas/update.sh</code>: o contentor é recriado com a pasta montada em <code>/arquivo</code>.</li>
-      <li>Volta aqui: «Origem» deve dizer «Pasta da NAS montada» e o estado «acessível». Usa o botão acima para arquivar as importações anteriores.</li>
-    </ol>
-  </details>
-</section>
 {% endblock %}

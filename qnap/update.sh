@@ -14,21 +14,6 @@ BASE="/share/Container/gestor-contas"
 
 mkdir -p "$BASE/data" "$BASE/backup"
 
-# Arquivo de extratos numa pasta partilhada (opcional): o caminho vem de
-# $BASE/arquivo.conf, ex.:  echo /share/Documentos/Gestor-Contas > $BASE/arquivo.conf
-ARQUIVO_OPTS=""
-if [ -f "$BASE/arquivo.conf" ]; then
-  ARQUIVO="$(head -n 1 "$BASE/arquivo.conf" | tr -d '\r')"
-  case "$ARQUIVO" in
-    *" "*) echo "ERRO: o caminho em arquivo.conf não pode ter espaços: $ARQUIVO"; exit 1 ;;
-  esac
-  if [ -n "$ARQUIVO" ]; then
-    mkdir -p "$ARQUIVO"
-    ARQUIVO_OPTS="-v $ARQUIVO:/arquivo:rw -e GESTOR_ARQUIVO_DIR=/arquivo"
-    echo "Arquivo de extratos: $ARQUIVO -> /arquivo"
-  fi
-fi
-
 echo "A obter a imagem mais recente ($IMAGE)..."
 docker pull "$IMAGE"
 
@@ -44,7 +29,6 @@ docker run -d \
   -e GESTOR_BACKUP_RETENCAO_DIAS=30 \
   -v "$BASE/data:/data:rw" \
   -v "$BASE/backup:/backup:rw" \
-  $ARQUIVO_OPTS \
   "$IMAGE"
 
 echo "A limpar imagens antigas..."

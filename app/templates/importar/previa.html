@@ -20,12 +20,7 @@
     <input type="hidden" name="conta_id" value="{{ conta.id }}">
     <input type="hidden" name="sha" value="{{ sha }}">
     <input type="hidden" name="nome" value="{{ nome }}">
-    {% if entrada %}<input type="hidden" name="entrada" value="{{ entrada }}">{% endif %}
-    {% if n_novos or not entrada %}
     <button class="primario" {% if not n_novos %}disabled{% endif %}>Importar {{ n_novos }} movimentos</button>
-    {% else %}
-    <button class="primario">Nada de novo — arquivar o ficheiro</button>
-    {% endif %}
     <a href="/importar">Cancelar</a>
   </form>
   {% else %}
