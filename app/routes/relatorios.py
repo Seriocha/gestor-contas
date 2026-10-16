@@ -38,6 +38,7 @@ def _mes_escolhido(mes: str, ref: date) -> date | None:
 def _meses_disponiveis(db: Session, entidade_id: int, ref: date) -> list[tuple[str, str]]:
     """[('aaaa-mm', 'Out 2026')] do mês de referência para trás até ao 1.º movimento (máx. 36)."""
     primeiro = db.scalar(select(func.min(Movimento.data_mov)).join(Conta).where(Conta.entidade_id == entidade_id)) or ref
+    primeiro = max(primeiro, rel.inicio_analise(db, entidade_id) or primeiro)
     out, d = [], ref.replace(day=1)
     while d >= primeiro.replace(day=1) and len(out) < 36:
         out.append((f"{d:%Y-%m}", f"{rel.MESES_PT[d.month - 1].capitalize()} {d.year}"))
@@ -70,14 +71,18 @@ def _contexto(request: Request, db: Session, u: Utilizador, entidade, periodo, d
     if previstas == "1":
         r = previsoes.somar(r, pendentes)
     # Tendências: sempre 12 meses até ao fim do período, para haver contexto.
-    janela = rel.Periodo("ano", rel.somar_meses(p.fim.replace(day=1), -11), p.fim, "12 meses")
+    corte = rel.inicio_analise(db, ent.id)
+    ini_janela = rel.somar_meses(p.fim.replace(day=1), -11)
+    if corte and corte.replace(day=1) > ini_janela:   # as tendências começam no início da análise
+        ini_janela = min(corte.replace(day=1), p.fim.replace(day=1))
+    janela = rel.Periodo("ano", ini_janela, p.fim, "12 meses")
     movs_janela = rel.movimentos_reportaveis(db, ent.id, janela.ini, janela.fim, conta_ids, etiqueta or None)
     return {
         "visiveis": visiveis, "entidade": ent, "p": p, "ant": ant, "presets": rel.PRESETS, "contas": contas,
         "etiquetas": db.scalars(select(Etiqueta).order_by(Etiqueta.nome)).all(),
         "meses": _meses_disponiveis(db, ent.id, ref_dados),
         "f": {"periodo": p.chave, "mes": f"{ref:%Y-%m}", "de": de, "ate": ate, "conta": conta or "", "etiqueta": etiqueta or ""},
-        "r": r, "r_ant": r_ant, "r_real": r_real, "pendentes": pendentes, "previstas": previstas,
+        "corte": corte, "r": r, "r_ant": r_ant, "r_real": r_real, "pendentes": pendentes, "previstas": previstas,
         "total_previsto": sum(e.valor for e in pendentes), "janela": janela, "movs_janela": movs_janela,
         "despesas": rel.linhas_ordenadas(r.por_categoria["DESPESA"], r_ant.por_categoria["DESPESA"]),
         "receitas": rel.linhas_ordenadas(r.por_categoria["RECEITA"], r_ant.por_categoria["RECEITA"]),

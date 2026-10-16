@@ -7,10 +7,12 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from ..deps import IntOpcional, auditar, entidades_visiveis, exigir_papel, flash, get_db, render, utilizador_atual
+from ..deps import IntOpcional, auditar, entidade_escolhida, entidades_visiveis, exigir_papel, flash, get_db, render, utilizador_atual
 from ..formatos import montante_para_input, normalizar_iban, parse_data, parse_montante
 from ..seguranca import ler_form
-from .. import retificacoes
+from datetime import date
+
+from .. import cobertura, retificacoes
 from ..emprestimos import PADRAO_OMISSAO, parse_taxa, taxa_para_input
 from ..models import (PAPEIS, TIPOS_CONTA, TIPOS_TAXA, Conta, Emprestimo, Entidade, Instituicao, Permissao,
                       Utilizador)
@@ -223,6 +225,41 @@ def lista(request: Request, arquivadas: IntOpcional = 0, ordem: str = "", agrupa
     return render(request, "contas/lista.html", blocos=blocos, arquivadas=arquivadas, ordem=ordem, ordens=ordens,
                   agrupar=agrupar, opcoes_agrupar=AGRUPAR_CONTAS,
                   avisos=retificacoes.avisos(db, todas))
+
+
+@router.get("/cobertura")
+def ver_cobertura(request: Request, entidade: IntOpcional = None, u: Utilizador = Depends(utilizador_atual),
+                  db: Session = Depends(get_db)):
+    """Cronograma dos movimentos de cada conta e data de início da análise."""
+    visiveis, ent, papel = entidade_escolhida(request, db, u, entidade)
+    if not ent:
+        return render(request, "contas/cobertura.html", visiveis=visiveis, entidade=None)
+    return render(request, "contas/cobertura.html", visiveis=visiveis, entidade=ent,
+                  cob=cobertura.calcular(db, ent.id, date.today()),
+                  pode_editar=PAPEIS[papel] >= PAPEIS["editar"])
+
+
+@router.post("/cobertura")
+async def gravar_inicio(request: Request, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
+    form = await ler_form(request)
+    ent_id = int(form["entidade"]) if str(form.get("entidade", "")).isdigit() else 0
+    exigir_papel(db, u, ent_id, "editar")
+    ent = db.get(Entidade, ent_id)
+    txt = "" if form.get("acao") == "remover" else str(form.get("data_inicio", "")).strip()
+    try:
+        nova = parse_data(txt) if txt else None
+    except ValueError:
+        flash(request, "Data inválida.", "erro")
+        return RedirectResponse(f"/contas/cobertura?entidade={ent_id}", status_code=303)
+    ent.data_inicio = nova
+    auditar(db, u, "inicio_analise", f"{ent.nome}: {nova.isoformat() if nova else 'sem limite'}")
+    db.commit()
+    if nova:
+        flash(request, f"Análise de «{ent.nome}» a partir de {nova:%d-%m-%Y}: os movimentos anteriores são "
+                       "ignorados nos relatórios, fluxo de caixa e gráficos.")
+    else:
+        flash(request, f"«{ent.nome}»: todos os movimentos voltam a contar nas análises.")
+    return RedirectResponse(f"/contas/cobertura?entidade={ent_id}", status_code=303)
 
 
 @router.get("/nova")

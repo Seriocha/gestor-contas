@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block titulo %}Cobertura dos dados{% endblock %}
+{% block conteudo %}
+<div class="titulo-acoes">
+  <h1>Cobertura dos dados</h1>
+  <a href="/contas">‹ Contas</a>
+</div>
+{% set destino = '/contas/cobertura' %}{% include "_entidades.html" %}
+{% if entidade %}
+<section class="cartao">
+  <div class="cartao-cabecalho">
+    <h2>Movimentos por conta <span class="nota">· do mais antigo ao mais recente</span></h2>
+    <div class="legenda-cobertura nota">
+      {% if cob.sugestao %}<span><i class="marca-sugestao"></i> sugestão {{ cob.sugestao | data }}</span>{% endif %}
+      {% if entidade.data_inicio %}<span><i class="marca-corte"></i> início da análise {{ entidade.data_inicio | data }}</span>{% endif %}
+    </div>
+  </div>
+  {% set p_sug = cob.pct(cob.sugestao) %}{% set p_corte = cob.pct(entidade.data_inicio) %}
+  <div class="cronograma">
+    <div class="cron-linha cron-eixo">
+      <span class="cron-nome"></span>
+      <div class="cron-pista">
+        {% for pct, rot in cob.marcas %}<span class="cron-marca" style="left: {{ '%.2f' % pct }}%">{{ rot }}</span>{% endfor %}
+      </div>
+      <span class="cron-datas"></span>
+    </div>
+    {% for l in cob.linhas %}
+    <div class="cron-linha{{ ' sem-dados' if not l.primeiro }}">
+      <span class="cron-nome"><a href="/contas/{{ l.conta.id }}/movimentos">{{ l.conta.nome }}</a>
+        <span class="nota">{{ l.conta.instituicao.nome }} · {{ l.conta.tipo_rotulo }}</span></span>
+      <div class="cron-pista">
+        {% for pct, rot in cob.marcas %}<i class="cron-grelha" style="left: {{ '%.2f' % pct }}%"></i>{% endfor %}
+        {% if p_corte is not none %}<i class="cron-ignorado" style="width: {{ '%.2f' % p_corte }}%"></i>{% endif %}
+        {% if l.primeiro %}
+        <i class="cron-barra{{ ' fora-sugestao' if not l.conta_para_sugestao }}{{ ' limita' if cob.limitada_por and l.conta.id == cob.limitada_por.conta.id }}"
+           style="left: {{ '%.2f' % l.esq }}%; width: {{ '%.2f' % l.larg }}%"
+           title="{{ l.primeiro | data }} a {{ l.ultimo | data }} · {{ l.n }} movimentos"></i>
+        {% endif %}
+        {% if p_sug is not none %}<i class="cron-sugestao" style="left: {{ '%.2f' % p_sug }}%"></i>{% endif %}
+        {% if p_corte is not none %}<i class="cron-corte" style="left: {{ '%.2f' % p_corte }}%"></i>{% endif %}
+      </div>
+      <span class="cron-datas nota">{% if l.primeiro %}desde <strong>{{ l.primeiro | data }}</strong> · {{ l.n }} mov.{% else %}sem movimentos{% endif %}</span>
+    </div>
+    {% endfor %}
+  </div>
+  <p class="nota">Barra azul: a conta que começa mais tarde e define a sugestão. Barras claras: contas que não entram na sugestão
+    (poupança, investimento, aforro, empréstimo — movimentos esporádicos, manuais ou conta aberta mais tarde). A zona tracejada à esquerda é ignorada nas análises.</p>
+</section>
+
+<section class="cartao">
+  <h2>Início da análise</h2>
+  {% if cob.sugestao %}
+  <p>Sugestão: <strong>{{ cob.sugestao | data }}</strong>. A conta que começa mais tarde é
+    <strong>{{ cob.limitada_por.conta.nome }}</strong> (primeiro movimento a {{ cob.limitada_por.primeiro | data }});
+    a partir daí todas as contas do dia a dia têm meses completos.</p>
+  {% else %}<p class="vazio">Ainda sem movimentos para sugerir uma data.</p>{% endif %}
+  <p class="nota">Os movimentos anteriores à data ficam na base de dados e nos saldos, mas deixam de contar nos relatórios,
+    no fluxo de caixa, nas tendências e no gráfico do património. Quando importares os extratos antigos, recua ou remove a data.</p>
+  {% if pode_editar %}
+  <form method="post" action="/contas/cobertura" class="formulario formulario-linha">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <input type="hidden" name="entidade" value="{{ entidade.id }}">
+    <label>Ignorar movimentos antes de
+      <input type="date" name="data_inicio" id="data-inicio" value="{{ entidade.data_inicio or cob.sugestao or '' }}"></label>
+    <div class="acoes-form">
+      {% if cob.sugestao %}<button type="button" class="ligacao" id="usar-sugestao" data-data="{{ cob.sugestao }}">Usar a sugestão</button>{% endif %}
+      <button class="primario">Guardar</button>
+      {% if entidade.data_inicio %}<button name="acao" value="remover">Remover (usar todos)</button>{% endif %}
+    </div>
+  </form>
+  {% elif entidade.data_inicio %}<p>Análise a partir de <strong>{{ entidade.data_inicio | data }}</strong>.</p>{% endif %}
+</section>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const b = document.getElementById('usar-sugestao');
+  if (b) b.addEventListener('click', () => { document.getElementById('data-inicio').value = b.dataset.data; });
+</script>
+{% endblock %}

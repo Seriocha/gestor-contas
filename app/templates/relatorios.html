@@ -47,6 +47,10 @@
   <button>Atualizar</button>
   <span class="nota">{{ p.rotulo }} · comparado com {{ ant.ini | data }} a {{ ant.fim | data }}</span>
 </form>
+{% if corte %}
+<p class="nota nota-corte">Movimentos anteriores a {{ corte | data }} ignorados (início da análise) ·
+  <a href="/contas/cobertura?entidade={{ entidade.id }}">ver cobertura dos dados</a></p>
+{% endif %}
 {% if pendentes %}
 <p class="nota previsoes-aviso">
   {% if previstas == '1' %}Inclui {{ total_previsto | eur }} de receitas previstas que ainda não entraram

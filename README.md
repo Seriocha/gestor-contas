@@ -4,7 +4,7 @@ Gestor financeiro doméstico, multiutilizador e self-hosted, para a NAS QNAP. Es
 importa movimentos de bancos portugueses e gere contas à ordem, cartões, investimentos e
 Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIGN.md).
 
-## Estado: v0.19.0
+## Estado: v0.20.0
 
 - Login com várias pessoas: passwords em argon2, bloqueio ao fim de 5 tentativas falhadas,
   proteção CSRF e invalidação das sessões quando a password muda.
@@ -37,6 +37,12 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.20.0 — cobertura dos dados e início da análise:** em **Contas › Cobertura dos dados**,
+  um cronograma mostra de quando a quando há movimentos em cada conta. A app sugere o início da
+  análise: o 1.º dia do mês seguinte ao primeiro movimento da conta do dia a dia que começa mais
+  tarde (poupança, investimento, aforro e empréstimo não contam). Definida a data (por entidade,
+  migração 0009), os movimentos anteriores ficam na base e nos saldos mas deixam de contar nos
+  relatórios, fluxo de caixa, tendências, gráfico do património e «O que mudou».
 - **v0.19.0 — tarefas de importação, mês nos relatórios, grupos de contas:** novo ecrã
   **Importar › Tarefas de importação do mês**: por banco, ligação ao serviço online, onde exportar
   cada extrato (da ficha do importador) e se cada conta já foi atualizada no ciclo; contas sem

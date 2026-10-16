@@ -69,6 +69,9 @@ def painel(request: Request, entidade: IntOpcional = None, periodo: str = "mes",
 
     # Património: 12 fins de mês + a data de referência.
     meses = [rel.fim_do_mes(rel.somar_meses(ref.replace(day=1), -i)) for i in range(12, 0, -1)] + [ref]
+    corte = rel.inicio_analise(db, ent.id)
+    if corte:   # o gráfico começa no início da análise
+        meses = [d for d in meses if d >= corte] or [ref]
     pat = rel.patrimonio(db, ent.id, meses)
     atual, ha_30 = pat["serie"][-1], rel.patrimonio(db, ent.id, [ref - timedelta(days=30)])["serie"][0]
     # Organização das contas (escolha memorizada na sessão).
@@ -102,7 +105,7 @@ def painel(request: Request, entidade: IntOpcional = None, periodo: str = "mes",
     por_importar = None
     if tarefas.na_janela(prefs, date.today()) and PAPEIS[papel] >= PAPEIS["editar"]:
         por_importar = sum(b.por_fazer for b in tarefas.do_ciclo(db, ent.id, tarefas.inicio_ciclo(prefs, date.today())))
-    return render(request, "painel.html", visiveis=visiveis, entidade=ent, p=p, por_importar=por_importar, periodos=PERIODOS_PAINEL, ref=ref,
+    return render(request, "painel.html", visiveis=visiveis, entidade=ent, p=p, por_importar=por_importar, corte=corte, periodos=PERIODOS_PAINEL, ref=ref,
                   atual=atual, ha_30=ha_30, grupos_ativos=grupos_ativos, grupos_passivos=grupos_passivos,
                   agrupar=agrupar, ordenar=ordenar, opcoes_agrupar=AGRUPAR, opcoes_ordenar=ORDENAR,
                   avisos=retificacoes.avisos(db, [c.id for c, _ in pat["contas"]]),

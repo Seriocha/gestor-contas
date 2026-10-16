@@ -3,7 +3,7 @@
 {% block conteudo %}
 <div class="titulo-acoes">
   <h1>Painel</h1>
-  {% if entidade %}<span class="nota">Dados até {{ ref | data }}</span>{% endif %}
+  {% if entidade %}<span class="nota">{% if corte %}Análise de <a href="/contas/cobertura?entidade={{ entidade.id }}" title="Movimentos anteriores ignorados — alterar">{{ corte | data }}</a> a {{ ref | data }}{% else %}Dados até {{ ref | data }}{% endif %}</span>{% endif %}
 </div>
 {% set destino = "/" %}{% include "_entidades.html" %}
 

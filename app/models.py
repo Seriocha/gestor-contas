@@ -58,6 +58,9 @@ class Entidade(Base):
     nome: Mapped[str] = mapped_column(String(100), unique=True)
     descricao: Mapped[str | None] = mapped_column(Text)
     ordem: Mapped[int] = mapped_column(Integer, default=0)
+    # Início da análise: movimentos anteriores ficam fora dos relatórios, do fluxo de caixa e dos
+    # gráficos (enquanto não houver extratos antigos de todas as contas). Os saldos não mudam.
+    data_inicio: Mapped[date | None] = mapped_column(Date)
 
     contas: Mapped[list["Conta"]] = relationship(back_populates="entidade")
 

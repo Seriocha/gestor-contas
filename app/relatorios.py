@@ -17,7 +17,7 @@ from datetime import date, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from .models import TIPOS_PASSIVO, Categoria, Conta, Movimento
+from .models import TIPOS_PASSIVO, Categoria, Conta, Entidade, Movimento
 
 PASSIVOS = TIPOS_PASSIVO
 SEM_CATEGORIA = "Sem categoria"
@@ -103,8 +103,16 @@ def contas_da_entidade(db: Session, entidade_id: int, so_ativas: bool = False) -
     return db.scalars(q.options(selectinload(Conta.instituicao)).order_by(Conta.nome)).all()
 
 
+def inicio_analise(db: Session, entidade_id: int) -> date | None:
+    """Data a partir da qual os movimentos contam nas análises (None = todos)."""
+    return db.scalar(select(Entidade.data_inicio).where(Entidade.id == entidade_id))
+
+
 def movimentos_reportaveis(db: Session, entidade_id: int, ini: date, fim: date,
                            conta_ids: list[int] | None = None, etiqueta_id: int | None = None) -> list[Movimento]:
+    corte = inicio_analise(db, entidade_id)
+    if corte and ini < corte:
+        ini = corte
     q = (select(Movimento).join(Conta)
          .where(Conta.entidade_id == entidade_id, Movimento.data_mov >= ini, Movimento.data_mov <= fim,
                 ~Movimento.transferencia, ~Movimento.excluido)
@@ -343,6 +351,9 @@ def variacao_patrimonio(db: Session, entidade_id: int, ini: date, fim: date, lim
     movimentos do período explicam-na, e o que sobra é «não explicado»
     (tipicamente um período sem extrato importado)."""
     from datetime import timedelta as _td
+    corte = inicio_analise(db, entidade_id)
+    if corte and ini < corte:
+        ini = min(corte, fim)
     contas = [c for c in contas_da_entidade(db, entidade_id) if c.moeda == "EUR"]
     variacoes = []
     for c in contas:
