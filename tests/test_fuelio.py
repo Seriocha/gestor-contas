@@ -130,3 +130,9 @@ def test_banco_depois_e_consolidacao(admin, app):
         assert r["fuelio"] == 1
         m = db.scalar(select(Movimento).where(Movimento.descricao_original == "BP VILAMOURA"))
         assert m.bem_id == b and m.categoria.nome == "Combustível"
+
+
+def test_formulario_tambem_em_carro_vendido(admin, app):
+    b = _carro(admin, "Velho", data_venda="2026-01-31")
+    p = admin.get(f"/patrimonio/{b}").text
+    assert f'action="/patrimonio/{b}/fuelio"' in p and "marcado como vendido em 31/01/2026" in p

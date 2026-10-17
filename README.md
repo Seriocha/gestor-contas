@@ -4,7 +4,7 @@ Gestor financeiro doméstico, multiutilizador e self-hosted, para a NAS QNAP. Es
 importa movimentos de bancos portugueses e gere contas à ordem, cartões, investimentos e
 Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIGN.md).
 
-## Estado: v0.37.0
+## Estado: v0.37.1
 
 - Login com várias pessoas: passwords em argon2, bloqueio ao fim de 5 tentativas falhadas,
   proteção CSRF e invalidação das sessões quando a password muda.
@@ -37,6 +37,7 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.37.1** — o formulário de importação do Fuelio aparece sempre a quem pode editar (também em carros vendidos/devolvidos, com aviso).
 - **v0.37.0 — Fuelio.** Na ficha do carro importa-se o ficheiro de sincronização do Fuelio (vehicle-N-sync.csv ou
   o ZIP). Cada abastecimento dá uma leitura de km (média km/mês e previsão da manutenção) e liga-se ao débito do banco
   (mesmo valor ou até 0,20 € de diferença, de 1 dia antes a 5 dias depois, primeiro os que parecem combustível): o débito

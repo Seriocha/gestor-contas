@@ -34,11 +34,15 @@
     no Fuelio, Definições › Cópia de segurança › exportar CSV (ou o ficheiro <code>vehicle-N-sync.csv</code> da pasta de sincronização
     no Google Drive / Dropbox). Os km de cada abastecimento entram nas leituras do carro.</p>
   {% endif %}
-  {% if pode_editar and not b.vendido %}
+  {% if pode_editar %}
+  {% if b.vendido %}<p class="nota">Este carro está marcado como {{ 'devolvido' if b.empresa else 'vendido' }} em {{ b.data_venda | data }}: os abastecimentos
+    depois dessa data não são atribuídos a ele (Editar para mudar).</p>{% endif %}
   <form method="post" action="/patrimonio/{{ b.id }}/fuelio" enctype="multipart/form-data" class="formulario">
     <input type="hidden" name="csrf" value="{{ csrf_token }}">
     <div class="linha"><label>Ficheiro do Fuelio (CSV ou ZIP) <input type="file" name="ficheiro" accept=".csv,.zip" required></label></div>
     <div class="acoes-form"><button>{{ 'Atualizar abastecimentos' if t.abastecimentos else 'Importar abastecimentos' }}</button></div>
   </form>
+  {% else %}
+  <p class="nota">Para importar o ficheiro do Fuelio precisas de permissão de edição nesta entidade.</p>
   {% endif %}
 </section>
