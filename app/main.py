@@ -18,11 +18,11 @@ from .config import BASE_DIR, carregar_definicoes
 from .db import criar_engine, url_sqlite
 from .deps import NaoAutenticado, render
 from .routes import (admin, auth, categorias, contas, emprestimos, importar, movimentos, painel, pareaveis, previsoes,
-                     regras, relatorios, viagens)
+                     regras, relatorios, subscricoes, viagens)
 from .seed import semear
 
 APP_DIR = Path(__file__).resolve().parent
-VERSAO = "0.30.0"
+VERSAO = "0.31.0"
 
 
 def aplicar_migracoes(db_path: Path) -> None:
@@ -75,7 +75,7 @@ def create_app(data_dir: Path | None = None, backups_automaticos: bool = True) -
 
     for r in (auth.router, painel.router, movimentos.router, contas.router, importar.router, categorias.router,
               regras.router, relatorios.router, emprestimos.router, previsoes.router, pareaveis.router, viagens.router,
-              admin.router):
+              subscricoes.router, admin.router):
         app.include_router(r)
 
     @app.get("/healthz", include_in_schema=False)

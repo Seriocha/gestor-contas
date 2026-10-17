@@ -26,7 +26,7 @@
   ('/relatorios', 'relatorios', 'Relatórios', caminho.startswith('/relatorios')),
   ('/importar', 'importar', 'Importar', caminho.startswith('/importar') and not caminho.startswith('/importar/tarefas')),
 ] %}
-{% set itens_lateral = itens_dia[:3] + [('/viagens', 'viagens', 'Viagens', caminho.startswith('/viagens'))] + itens_dia[3:] + ([('/importar/tarefas', 'tarefas', 'Tarefas do mês', caminho.startswith('/importar/tarefas'))] if tarefas_janela() else []) %}
+{% set itens_lateral = itens_dia[:3] + [('/viagens', 'viagens', 'Viagens', caminho.startswith('/viagens')), ('/subscricoes', 'subscricoes', 'Subscrições', caminho.startswith('/subscricoes'))] + itens_dia[3:] + ([('/importar/tarefas', 'tarefas', 'Tarefas do mês', caminho.startswith('/importar/tarefas'))] if tarefas_janela() else []) %}
 {% set itens_config = [
   ('/contas', 'contas', 'Contas', caminho.startswith('/contas') and not em_movimentos),
   ('/categorias', 'categorias', 'Categorias e regras', caminho.startswith('/categorias') or caminho.startswith('/regras')),

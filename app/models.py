@@ -424,6 +424,55 @@ class ViagemConfirmado(Base):
     modelo_id: Mapped[int] = mapped_column(ForeignKey("modelo_viagem.id", ondelete="CASCADE"))
 
 
+PERIODICIDADES = {"mensal": ("Mensal", 1), "bimestral": ("Bimestral", 2), "trimestral": ("Trimestral", 3),
+                  "semestral": ("Semestral", 6), "anual": ("Anual", 12)}
+
+
+class Subscricao(Base):
+    """Subscrição / assinatura / contrato com pagamento periódico (streaming, telemóvel, ginásio, seguro…)."""
+    __tablename__ = "subscricao"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entidade_id: Mapped[int] = mapped_column(ForeignKey("entidade.id", ondelete="CASCADE"), index=True)
+    nome: Mapped[str] = mapped_column(String(100))
+    servico: Mapped[str | None] = mapped_column(String(40))          # chave do catálogo (netflix, meo, …)
+    categoria_id: Mapped[int | None] = mapped_column(ForeignKey("categoria.id", ondelete="SET NULL"))
+    conta_id: Mapped[int | None] = mapped_column(ForeignKey("conta.id", ondelete="SET NULL"))   # onde é debitada
+    valor: Mapped[int] = mapped_column(BigInteger)                      # cêntimos, por pagamento
+    periodicidade: Mapped[str] = mapped_column(String(12), default="mensal")
+    dia_pagamento: Mapped[int | None] = mapped_column(Integer)          # dia do mês em que costuma ser debitada
+    data_inicio: Mapped[date] = mapped_column(Date)
+    fim_fidelizacao: Mapped[date | None] = mapped_column(Date)          # até quando há período de fidelização
+    data_fim: Mapped[date | None] = mapped_column(Date)                 # cancelada / terminada
+    padrao: Mapped[str | None] = mapped_column(String(200))             # texto do débito no extrato
+    notas: Mapped[str | None] = mapped_column(Text)
+    criado_em: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, server_default=func.now())
+
+    conta: Mapped["Conta | None"] = relationship()
+    categoria: Mapped["Categoria | None"] = relationship()
+
+    @property
+    def meses_periodo(self) -> int:
+        return PERIODICIDADES.get(self.periodicidade, ("", 1))[1]
+
+    @property
+    def custo_mensal(self) -> float:
+        return self.valor / self.meses_periodo
+
+    def ativa_em(self, d: date) -> bool:
+        return self.data_inicio <= d and (self.data_fim is None or self.data_fim >= d)
+
+
+class SubscricaoIgnorada(Base):
+    """Padrão recorrente que o utilizador disse não ser uma subscrição (não volta a ser sugerido)."""
+    __tablename__ = "subscricao_ignorada"
+    __table_args__ = (UniqueConstraint("entidade_id", "padrao"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entidade_id: Mapped[int] = mapped_column(ForeignKey("entidade.id", ondelete="CASCADE"))
+    padrao: Mapped[str] = mapped_column(String(200))
+
+
 class ParIgnorado(Base):
     """Sugestão de ligação (débito ↔ crédito) que o utilizador disse não ser o mesmo dinheiro."""
     __tablename__ = "par_ignorado"

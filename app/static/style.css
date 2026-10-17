@@ -569,3 +569,5 @@ button.pequeno { min-height: 32px; padding: .3rem .8rem; font-size: .85rem; }
 .form-inline input, .form-inline select { width: auto; min-width: 0; }
 .tabela-modelos .form-inline input { width: 14rem; max-width: 100%; }
 .perigo-texto { color: var(--neg); }
+
+.etiqueta-erro { background: var(--erro-fundo); color: var(--erro-texto); border-color: transparent; }

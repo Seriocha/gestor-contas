@@ -4,7 +4,7 @@ Gestor financeiro doméstico, multiutilizador e self-hosted, para a NAS QNAP. Es
 importa movimentos de bancos portugueses e gere contas à ordem, cartões, investimentos e
 Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIGN.md).
 
-## Estado: v0.30.0
+## Estado: v0.31.0
 
 - Login com várias pessoas: passwords em argon2, bloqueio ao fim de 5 tentativas falhadas,
   proteção CSRF e invalidação das sessões quando a password muda.
@@ -37,6 +37,14 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.31.0 — Subscrições e assinaturas.** Novo menu «Subscrições» com um catálogo de ~40 serviços
+  comuns em Portugal (streaming, telecomunicações, energia, ginásio, seguros, Via Verde…). Cada subscrição
+  guarda valor, periodicidade, dia de pagamento, conta, texto do extrato, data de início, fim da fidelização
+  e data de fim. Os débitos são ligados automaticamente aos movimentos (±7 dias do dia de pagamento), com
+  situação «em dia» / «aguarda extrato» / «em atraso» / «terminada», aviso quando o valor muda, falhas
+  registadas, total pago, meses de permanência e dias de fidelização que faltam. Custo mensal e anual,
+  próximos 30 dias e sugestões detetadas nos movimentos (catálogo ou débitos recorrentes), que se podem
+  adicionar ou ignorar.
 - **v0.30.0 — Revolut: extrato completo em Excel e PDF.** O Excel da Revolut (CSV numa só coluna,
   texto mal codificado) passa a ler-se, com cada produto na sua subconta: Atual (em cada moeda),
   Conta reforçada, cofres («Poupanças») e Investimentos. A conta Revolut em euros recebe também as

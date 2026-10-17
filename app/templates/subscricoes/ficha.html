@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% set s = e.sub %}
+{% block titulo %}{{ s.nome }}{% endblock %}
+{% block conteudo %}
+<div class="titulo-acoes">
+  <h1>{{ s.nome }}</h1>
+  <div class="acoes-form">
+    <a href="/subscricoes?entidade={{ s.entidade_id }}">‹ Subscrições</a>
+    {% if pode_editar %}<a class="botao" href="/subscricoes/{{ s.id }}/editar">Editar</a>{% endif %}
+  </div>
+</div>
+<p class="nota">{{ s.valor | eur }} · {{ periodicidades[s.periodicidade][0] | lower }}{% if s.dia_pagamento %} · dia {{ s.dia_pagamento }}{% endif %}
+  · {{ s.conta.nome if s.conta else 'qualquer conta' }}{% if s.categoria %} · {{ s.categoria.nome_completo }}{% endif %}
+  {% if s.padrao %}· texto «{{ s.padrao }}»{% endif %}</p>
+{% if s.notas %}<p class="nota">{{ s.notas }}</p>{% endif %}
+
+<section class="kpi-grelha">
+  <div class="cartao kpi"><span class="nota">Situação</span><strong>{{ e.situacao }}</strong>
+    {% if e.valor_mudou %}<span class="nota neg">último débito {{ e.valor_mudou | eur }} (previsto {{ s.valor | eur }})</span>{% endif %}</div>
+  <div class="cartao kpi"><span class="nota">Próximo pagamento</span><strong>{{ e.proxima | data if e.proxima else '—' }}</strong></div>
+  <div class="cartao kpi"><span class="nota">Ativa há</span><strong>{{ e.meses }} mes{{ 'es' if e.meses != 1 }}</strong>
+    <span class="nota">desde {{ s.data_inicio | data }}{% if s.data_fim %} até {{ s.data_fim | data }}{% endif %}</span></div>
+  <div class="cartao kpi"><span class="nota">Fidelização</span>
+    <strong>{% if e.fidelizada_dias is not none %}{{ e.fidelizada_dias }} dias{% elif s.fim_fidelizacao %}terminada{% else %}sem{% endif %}</strong>
+    <span class="nota">{% if s.fim_fidelizacao %}até {{ s.fim_fidelizacao | data }}{% else %}pode cancelar quando quiser{% endif %}</span></div>
+  <div class="cartao kpi"><span class="nota">Custo por ano</span><strong>{{ e.custo_anual | eur }}</strong></div>
+  <div class="cartao kpi"><span class="nota">Total pago (extratos)</span><strong>{{ e.total_pago | eur }}</strong>
+    <span class="nota">{{ e.pagos | length }} débito{{ 's' if e.pagos | length != 1 }}</span></div>
+</section>
+
+{% if e.falhas %}
+<div class="aviso aviso-alerta">Sem débito encontrado perto de: {% for d in e.falhas[-6:] %}{{ d | data }}{{ ', ' if not loop.last }}{% endfor %}.
+  Confirma o dia de pagamento, a conta e o texto do extrato{% if s.padrao %} («{{ s.padrao }}»){% endif %}.</div>
+{% endif %}
+
+<section class="cartao">
+  <h2>Débitos encontrados nos extratos</h2>
+  {% if not s.padrao %}<p class="vazio sem-margem">Indica o texto do débito no extrato (Editar) para a app encontrar os pagamentos.</p>
+  {% elif not e.pagos %}<p class="vazio sem-margem">Nenhum débito com «{{ s.padrao }}» {{ 'em ' ~ s.conta.nome if s.conta else 'nas contas' }} desde {{ s.data_inicio | data }}.</p>
+  {% else %}
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th>Data</th><th>Conta</th><th>Descrição</th><th class="num">Montante</th></tr></thead>
+    {% for m in e.pagos | reverse %}
+    <tr><td class="sem-quebra">{{ m.data_mov | data }}</td><td class="nota">{{ m.conta.nome }}</td>
+      <td><a href="/movimentos/{{ m.id }}">{{ m.descricao_original }}</a></td>
+      <td class="num {{ 'neg' if -m.montante != s.valor }}">{{ m.montante | eur }}</td></tr>
+    {% endfor %}
+  </table></div>
+  {% endif %}
+</section>
+{% endblock %}

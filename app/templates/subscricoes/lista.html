@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block titulo %}Subscrições{% endblock %}
+{% macro badge(e) -%}
+  {% set cls = {'em dia': 'etiqueta-ok', 'em atraso': 'etiqueta-erro', 'aguarda extrato': '', 'terminada': '', 'sem padrão': '', 'ainda não começou': ''}[e.situacao] %}
+  <span class="etiqueta {{ cls }}">{{ e.situacao }}</span>
+  {% if e.valor_mudou %}<span class="etiqueta etiqueta-cor" title="O último débito foi diferente do valor previsto">valor mudou: {{ e.valor_mudou | eur }}</span>{% endif %}
+{%- endmacro %}
+{% block conteudo %}
+<div class="titulo-acoes">
+  <h1>Subscrições</h1>
+  {% if entidade and pode_editar %}<a class="botao primario" href="/subscricoes/nova?entidade={{ entidade.id }}">+ Nova subscrição</a>{% endif %}
+</div>
+{% set destino = '/subscricoes' %}{% include "_entidades.html" %}
+{% if entidade %}
+<section class="kpi-grelha">
+  <div class="cartao kpi"><span class="nota">Ativas</span><strong>{{ r.ativas | length }}</strong>
+    {% if r.fidelizadas %}<span class="nota">{{ r.fidelizadas }} com fidelização</span>{% endif %}</div>
+  <div class="cartao kpi"><span class="nota">Custo por mês</span><strong>{{ r.custo_mensal | eur }}</strong></div>
+  <div class="cartao kpi"><span class="nota">Custo por ano</span><strong>{{ r.custo_anual | eur }}</strong></div>
+  <div class="cartao kpi"><span class="nota">Próximos 30 dias</span><strong>{{ r.proximos_30 | eur }}</strong></div>
+</section>
+
+<section class="cartao">
+  <h2>Ativas</h2>
+  {% if not r.ativas %}<p class="vazio sem-margem">Sem subscrições registadas. Vê as sugestões abaixo, tiradas dos teus movimentos.</p>{% else %}
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th>Subscrição</th><th>Conta</th><th class="num">Valor</th><th>Próximo pagamento</th><th>Último débito</th>
+      <th>Desde</th><th>Fidelização</th><th>Situação</th></tr></thead>
+    <tbody>
+    {% for e in r.ativas %}{% set s = e.sub %}
+    <tr>
+      <td><a href="/subscricoes/{{ s.id }}"><strong>{{ s.nome }}</strong></a>
+        {% if s.categoria %}<br><span class="nota">{{ s.categoria.nome_completo }}</span>{% endif %}</td>
+      <td class="nota">{{ s.conta.nome if s.conta else 'qualquer conta' }}</td>
+      <td class="num">{{ s.valor | eur }}<br><span class="nota">{{ periodicidades[s.periodicidade][0] | lower }}</span></td>
+      <td class="sem-quebra">{% if e.proxima %}{{ e.proxima | data }}<br><span class="nota">dia {{ s.dia_pagamento or s.data_inicio.day }}</span>{% else %}—{% endif %}</td>
+      <td class="sem-quebra">{% if e.ultimo %}{{ e.ultimo.data_mov | data }}<br><span class="nota">{{ (-e.ultimo.montante) | eur }}</span>{% else %}<span class="nota">nenhum encontrado</span>{% endif %}</td>
+      <td class="sem-quebra">{{ s.data_inicio | data }}<br><span class="nota">{{ e.meses }} mes{{ 'es' if e.meses != 1 }}</span></td>
+      <td class="sem-quebra">{% if e.fidelizada_dias is not none %}até {{ s.fim_fidelizacao | data }}<br><span class="nota">faltam {{ e.fidelizada_dias }} dias</span>
+        {% elif s.fim_fidelizacao %}<span class="nota">livre desde {{ s.fim_fidelizacao | data }}</span>{% else %}<span class="nota">—</span>{% endif %}</td>
+      <td>{{ badge(e) }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% endif %}
+</section>
+
+<section class="cartao" id="sugestoes">
+  <div class="cartao-cabecalho">
+    <h2>Sugestões dos teus movimentos <span class="nota">· {{ sugestoes | length }}</span></h2>
+  </div>
+  <p class="nota sem-margem">Serviços comuns (Netflix, Spotify, MEO, NOS, Vodafone, EDP, ginásios, seguros, Via Verde…) e débitos que se repetem
+    todos os períodos com valor estável. «Adicionar» abre o formulário já preenchido — acrescenta a data de fim da fidelização, se houver.</p>
+  {% if sugestoes %}
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th>Serviço</th><th>Conta</th><th class="num">Valor</th><th>Periodicidade</th><th>Desde / último</th><th></th></tr></thead>
+    <tbody>
+    {% for s in sugestoes %}
+    <tr class="{{ '' if s.ativa else 'arquivada' }}">
+      <td><strong>{{ s.nome }}</strong> <span class="etiqueta">{{ s.fonte }}</span>{% if s.servico %} <span class="nota">{{ tipos.get(s.servico, '') }}</span>{% endif %}
+        <br><span class="nota">texto «{{ s.padrao }}» · {{ s.n }} débito{{ 's' if s.n != 1 }}{% if not s.ativa %} · parece parada{% endif %}</span></td>
+      <td class="nota">{{ s.conta_nome }}</td>
+      <td class="num">{{ s.valor | eur }}</td>
+      <td>{{ periodicidades[s.periodicidade][0] }}<br><span class="nota">dia {{ s.dia }}</span></td>
+      <td class="sem-quebra">{{ s.inicio | data }}<br><span class="nota">{{ s.ultima | data }}</span></td>
+      <td class="acoes">{% if pode_editar %}
+        <a class="botao pequeno" href="{{ s.href }}">Adicionar</a>
+        <form method="post" action="/subscricoes/ignorar">
+          <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="entidade" value="{{ entidade.id }}">
+          <input type="hidden" name="padrao" value="{{ s.padrao }}"><button class="ligacao">Ignorar</button>
+        </form>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<p class="vazio sem-margem">Sem sugestões novas.</p>{% endif %}
+</section>
+
+{% if r.terminadas %}
+<section class="cartao">
+  <h2>Terminadas <span class="nota">· {{ r.terminadas | length }}</span></h2>
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th>Subscrição</th><th>Período</th><th class="num">Meses</th><th class="num">Total pago</th></tr></thead>
+    {% for e in r.terminadas %}
+    <tr class="arquivada"><td><a href="/subscricoes/{{ e.sub.id }}">{{ e.sub.nome }}</a></td>
+      <td>{{ e.sub.data_inicio | data }} – {{ e.sub.data_fim | data }}</td><td class="num">{{ e.meses }}</td>
+      <td class="num">{{ e.total_pago | eur }}</td></tr>
+    {% endfor %}
+  </table></div>
+</section>
+{% endif %}
+{% endif %}
+{% endblock %}

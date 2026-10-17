@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block titulo %}{{ 'Editar subscrição' if sub else 'Nova subscrição' }}{% endblock %}
+{% block conteudo %}
+<h1>{{ 'Editar «' ~ sub.nome ~ '»' if sub else 'Nova subscrição' }} <span class="nota">· {{ entidade.nome }}</span></h1>
+{% if erros %}<div class="aviso aviso-erro"><ul>{% for e in erros %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
+<form method="post" class="formulario" action="{{ '/subscricoes/' ~ sub.id ~ '/editar' if sub else '/subscricoes/nova?entidade=' ~ entidade.id }}">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  <label>Serviço
+    <select name="servico" id="servico">
+      <option value="">— outro —</option>
+      {% for chave, nome, padrao, categoria, tipo in catalogo %}
+      <option value="{{ chave }}" data-nome="{{ nome }}" data-padrao="{{ padrao }}" data-categoria="{{ categorias_por_nome.get(categoria, '') }}"
+        {% if v.servico == chave %}selected{% endif %}>{{ nome }} · {{ tipo }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <div class="linha">
+    <label>Nome <input name="nome" id="nome" value="{{ v.nome or '' }}" required maxlength="100" placeholder="ex.: Netflix, MEO casa, seguro do carro"></label>
+    <label>Conta onde é debitada
+      <select name="conta_id"><option value="">— qualquer conta —</option>
+        {% for c in contas %}<option value="{{ c.id }}" {% if v.conta_id == c.id|string %}selected{% endif %}>{{ c.nome }}</option>{% endfor %}
+      </select></label>
+  </div>
+  <div class="linha">
+    <label>Valor de cada pagamento <input name="valor" value="{{ v.valor or '' }}" inputmode="decimal" required placeholder="0,00"></label>
+    <label>Periodicidade
+      <select name="periodicidade">{% for k, (rotulo, _) in periodicidades.items() %}<option value="{{ k }}" {% if v.periodicidade == k %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}</select></label>
+    <label>Dia do pagamento <input type="number" name="dia" min="1" max="31" value="{{ v.dia or '' }}" placeholder="dia do mês"></label>
+  </div>
+  <div class="linha">
+    <label>Início <input type="date" name="inicio" value="{{ v.inicio or '' }}" required></label>
+    <label>Fim da fidelização <input type="date" name="fim_fidelizacao" value="{{ v.fim_fidelizacao or '' }}"></label>
+    <label>Fim (cancelada) <input type="date" name="fim" value="{{ v.fim or '' }}"></label>
+  </div>
+  <p class="nota">Início e fim definem quanto tempo esteve ativa (e o total pago); a fidelização mostra até quando há penalização por cancelar.</p>
+  <div class="linha">
+    <label>Texto do débito no extrato <input name="padrao" id="padrao" value="{{ v.padrao or '' }}" maxlength="200" placeholder="ex.: NETFLIX ou MEO|ALTICE"></label>
+    <label>Categoria
+      <select name="categoria_id" id="categoria"><option value="">—</option>
+        {% for raiz in categorias if raiz.natureza == 'DESPESA' %}
+          <option value="{{ raiz.id }}" {% if v.categoria_id == raiz.id|string %}selected{% endif %}>{{ raiz.nome }}</option>
+          {% for c in raiz.filhas %}<option value="{{ c.id }}" {% if v.categoria_id == c.id|string %}selected{% endif %}>&nbsp;&nbsp;{{ raiz.nome }} › {{ c.nome }}</option>{% endfor %}
+        {% endfor %}
+      </select></label>
+  </div>
+  <p class="nota">O texto liga a subscrição aos débitos no extrato (alternativas separadas por «|»), para ver o último pagamento, os que faltam e se o valor mudou.</p>
+  <label>Notas <textarea name="notas" rows="2">{{ v.notas or '' }}</textarea></label>
+  <div class="acoes-form">
+    <button class="primario">Guardar</button>
+    <a href="{{ '/subscricoes/' ~ sub.id if sub else '/subscricoes?entidade=' ~ entidade.id }}">Cancelar</a>
+  </div>
+</form>
+{% if sub %}
+<form method="post" action="/subscricoes/{{ sub.id }}/apagar" onsubmit="return confirm('Apagar esta subscrição? Os movimentos ficam.')">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="perigo">Apagar subscrição</button>
+</form>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Escolher um serviço do catálogo preenche o nome, o texto do extrato e a categoria (se ainda vazios)
+  document.getElementById('servico').addEventListener('change', e => {
+    const o = e.target.selectedOptions[0];
+    if (!o || !o.value) return;
+    const nome = document.getElementById('nome'), padrao = document.getElementById('padrao'), cat = document.getElementById('categoria');
+    if (!nome.value) nome.value = o.dataset.nome;
+    if (!padrao.value) padrao.value = o.dataset.padrao;
+    if (!cat.value && o.dataset.categoria) cat.value = o.dataset.categoria;
+  });
+</script>
+{% endblock %}
