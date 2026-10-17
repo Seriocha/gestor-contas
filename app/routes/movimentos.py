@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from ..deps import (IntOpcional, auditar, entidade_escolhida, exigir_papel, flash, get_db, papel_em, render,
                     utilizador_atual)
-from ..formatos import parse_data, parse_montante
+from ..formatos import fmt_montante, parse_data, parse_montante
 from ..models import CORES, PAPEIS, Categoria, Conta, Entidade, Etiqueta, Movimento, RetificacaoSaldo, Utilizador
 from ..qualificacao import aplicar_regras, arvore_categorias, qualificar_manual, repor
 from ..servicos import normalizar_descricao
@@ -556,8 +556,27 @@ async def lote(request: Request, u: Utilizador = Depends(utilizador_atual), db: 
             return RedirectResponse(voltar, status_code=303)
         como = str(form.get("ligar_como", "T"))
         cat = db.get(Categoria, int(como)) if como.isdigit() else None
-        if not (cat or como in ("T", "X")):
+        if not (cat or como in ("T", "X", "D")):
             flash(request, "Escolhe como classificar o par.", "erro")
+            return RedirectResponse(voltar, status_code=303)
+        if como == "D":
+            # Conta dividida: a entrada (a parte que os outros pagaram) fica na categoria da saída e
+            # abate-lhe — nos relatórios conta só a tua parte.
+            saida, entrada = (a, b) if a.montante < 0 else (b, a)
+            cat = saida.categoria or db.scalar(select(Categoria).where(Categoria.nome == "Restaurantes e cafés"))
+            if not cat:
+                flash(request, "Classifica primeiro a saída (ex.: Restaurantes) para dividir a conta.", "erro")
+                return RedirectResponse(voltar, status_code=303)
+            servicos.ligar_manual(db, saida, entrada, transferencia=False)
+            for m in (saida, entrada):
+                qualificar_manual(db, m, categoria_id=cat.id)
+            if not entrada.notas:
+                entrada.notas = f"Parte de outros na conta dividida: {saida.descricao_original}"[:500]
+            parte = -(saida.montante + entrada.montante)
+            auditar(db, u, "conta_dividida", f"{saida.id} ↔ {entrada.id} ({cat.nome_completo})")
+            db.commit()
+            flash(request, f"Conta dividida em {cat.nome_completo}: pagaste {fmt_montante(-saida.montante)}, "
+                           f"recebeste {fmt_montante(entrada.montante)} — a tua parte é {fmt_montante(parte)}.")
             return RedirectResponse(voltar, status_code=303)
         servicos.ligar_manual(db, a, b, transferencia=como == "T")
         for m in (a, b):

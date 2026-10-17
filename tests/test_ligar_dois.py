@@ -73,3 +73,33 @@ def test_ligar_excluir_e_validacoes(admin, app):
     assert "seleciona exatamente 2 movimentos" in admin.get("/movimentos?entidade=1").text
     with app.state.SessionLocal() as db:
         assert db.get(Movimento, 3).par_id is None
+
+
+def test_dividir_a_conta(admin, app):
+    # jantar pago por mim (80 €) e a parte do amigo devolvida por MB WAY (30 €)
+    _mov(admin, 1, "2026-09-12", "80,00", "COMPRA 6344 RESTAURANTE O PATEO", sentido="saida")      # 6
+    _mov(admin, 2, "2026-09-12", "30,00", "TRF MB WAY DE AMIGO")                                    # 7
+    p = admin.get("/movimentos?entidade=1").text
+    assert 'value="D"' in p and 'id="ligar-resumo"' in p
+    r = _lote(admin, [6, 7], acao="ligar", ligar_como="D")
+    assert r.status_code == 303
+    msg = admin.get("/movimentos?entidade=1").text
+    assert "a tua parte é 50,00 €" in msg and "Restaurantes e cafés" in msg
+    with app.state.SessionLocal() as db:
+        saida, entrada = db.get(Movimento, 6), db.get(Movimento, 7)
+        assert (saida.par_id, entrada.par_id) == (7, 6) and not saida.transferencia and not entrada.transferencia
+        assert saida.categoria.nome == entrada.categoria.nome == "Restaurantes e cafés"
+        assert entrada.notas.startswith("Parte de outros na conta dividida: COMPRA 6344 RESTAURANTE")
+    # nos relatórios conta só a minha parte
+    rel = admin.get("/relatorios?entidade=1&periodo=personalizado&de=2026-09-12&ate=2026-09-12").text
+    assert "Despesas</span><strong>50,00 €" in rel
+
+
+def test_dividir_usa_a_categoria_da_saida(admin, app):
+    with app.state.SessionLocal() as db:
+        cat = db.query(Categoria).filter(Categoria.nome == "Take-away").one()
+        db.get(Movimento, 1).categoria_id = cat.id
+        db.commit()
+    _lote(admin, [1, 2], acao="ligar", ligar_como="D")
+    with app.state.SessionLocal() as db:
+        assert db.get(Movimento, 2).categoria.nome == "Take-away" and db.get(Movimento, 1).par_id == 2

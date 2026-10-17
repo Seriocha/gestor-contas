@@ -270,6 +270,7 @@
         <label>Ligar estes 2 como
           <select name="ligar_como">
             <option value="T">↔ Transferência entre contas minhas</option>
+            <option value="D">÷ Dividir a conta (a entrada abate à despesa, na categoria da saída)</option>
             <optgroup label="Mesma categoria (ex.: compra e reembolso)">
             {% for raiz in categorias %}
               <option value="{{ raiz.id }}">{{ raiz.nome }}</option>
@@ -280,6 +281,7 @@
           </select>
         </label>
         <button name="acao" value="ligar" formnovalidate>Ligar e classificar</button>
+        <span class="nota ligar-resumo" id="ligar-resumo"></span>
       </div>
     </div>
     {% endif %}
@@ -422,6 +424,13 @@
       const sel = caixas.filter(c => c.checked);
       const sinais = sel.map(c => Number(c.dataset.montante) > 0);
       dois.hidden = !(sel.length === 2 && sinais[0] !== sinais[1]);
+      const resumo = document.getElementById('ligar-resumo');
+      if (resumo && !dois.hidden) {
+        const v = sel.map(c => Number(c.dataset.montante));
+        const saida = -Math.min(...v), entrada = Math.max(...v);
+        const eur = x => (x / 100).toLocaleString('pt-PT', { style: 'currency', currency: 'EUR' });
+        resumo.textContent = `Saída ${eur(saida)} · entrada ${eur(entrada)} · se dividires a conta, a tua parte é ${eur(saida - entrada)}`;
+      }
     }
   };
   caixas.forEach(c => c.addEventListener('change', atualizar));
