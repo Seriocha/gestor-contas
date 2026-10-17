@@ -1,7 +1,7 @@
 """Viagens: registo, sugestão e associação dos gastos, e modelos de viagem."""
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from .. import viagens as vg
@@ -23,6 +23,19 @@ def _viagem(db: Session, u: Utilizador, vid: int, minimo: str = "ver") -> tuple[
     return v, exigir_papel(db, u, v.entidade_id, minimo)
 
 
+def _uso_modelos(db: Session) -> dict[int, int]:
+    """{modelo_id: n.º de viagens (de todas as entidades) que o usam}."""
+    return dict(db.execute(select(Viagem.modelo_id, func.count()).where(Viagem.modelo_id.is_not(None))
+                           .group_by(Viagem.modelo_id)).all())
+
+
+def _nome_livre(db: Session, nome: str, exceto: int | None = None) -> bool:
+    q = select(ModeloViagem.id).where(ModeloViagem.nome == nome)
+    if exceto:
+        q = q.where(ModeloViagem.id != exceto)
+    return not db.scalar(q)
+
+
 def _modelos(db: Session) -> list[ModeloViagem]:
     vg.modelo_omissao(db)
     return db.scalars(select(ModeloViagem).order_by(ModeloViagem.nome)).all()
@@ -40,7 +53,7 @@ def lista(request: Request, entidade: IntOpcional = None, u: Utilizador = Depend
     modelos = _modelos(db)
     db.commit()
     return render(request, "viagens/lista.html", visiveis=visiveis, entidade=ent,
-                  viagens=[(v, vg.resumo(db, v)) for v in viagens], modelos=modelos,
+                  viagens=[(v, vg.resumo(db, v)) for v in viagens], modelos=modelos, uso=_uso_modelos(db),
                   pode_editar=PAPEIS[papel] >= PAPEIS["editar"])
 
 
@@ -154,9 +167,26 @@ def ficha(request: Request, vid: int, u: Utilizador = Depends(utilizador_atual),
         viagem.modelo_id = vg.modelo_omissao(db).id
     vg.etiqueta_da(db, viagem)
     db.commit()
-    return render(request, "viagens/detalhe.html", visiveis=visiveis, entidade=ent, viagem=viagem,
+    return render(request, "viagens/detalhe.html", visiveis=visiveis, entidade=ent, viagem=viagem, modelos=_modelos(db),
                   r=vg.resumo(db, viagem), sugestoes=vg.candidatos(db, viagem), motivos=MOTIVOS_VIAGEM,
                   pode_editar=PAPEIS[papel] >= PAPEIS["editar"])
+
+
+@router.post("/{vid}/modelo")
+async def trocar_modelo(request: Request, vid: int, u: Utilizador = Depends(utilizador_atual),
+                        db: Session = Depends(get_db)):
+    viagem, _ = _viagem(db, u, vid, "editar")
+    form = await ler_form(request)
+    mid = str(form.get("modelo_id", ""))
+    m = db.get(ModeloViagem, int(mid)) if mid.isdigit() else None
+    if m and m.id != viagem.modelo_id:
+        viagem.modelo_id = m.id
+        auditar(db, u, "viagem_modelo", f"{viagem.nome} → {m.nome}")
+        db.commit()
+    db.refresh(viagem)
+    n = len(vg.candidatos(db, viagem))
+    flash(request, f"Sugestões recalculadas com o modelo «{viagem.modelo.nome}»: {n}.")
+    return RedirectResponse(f"/viagens/{viagem.id}#sugestoes", status_code=303)
 
 
 async def _movimentos_do_form(request, db, viagem) -> tuple[list[Movimento], dict]:
@@ -208,7 +238,17 @@ def modelo(request: Request, mid: int, u: Utilizador = Depends(exigir_editor), d
                   sel_tipos=set(filter(None, m.tipos_conta.split(","))), sel_contas=vg._ids(m.contas),
                   sel_cats=vg._ids(m.categorias), est=vg.estatisticas_modelo(db, m),
                   valor_min=montante_para_input(m.valor_min) if m.valor_min else "",
-                  padroes=sorted(m.padroes, key=lambda p: (-(p.positivos - p.negativos), p.padrao)))
+                  padroes=sorted(m.padroes, key=lambda p: (-(p.positivos - p.negativos), p.padrao)),
+                  em_uso=_viagens_do_modelo(db, u, m))
+
+
+def _viagens_do_modelo(db: Session, u: Utilizador, m: ModeloViagem) -> list[tuple[Viagem, int]]:
+    """Viagens (das entidades visíveis) que usam o modelo, com o n.º de sugestões calculadas agora."""
+    from ..deps import entidades_visiveis
+    ids = [e.id for e, _ in entidades_visiveis(db, u)]
+    viagens = db.scalars(select(Viagem).where(Viagem.modelo_id == m.id, Viagem.entidade_id.in_(ids))
+                         .order_by(Viagem.data_ini.desc())).all() if ids else []
+    return [(v, len(vg.candidatos(db, v))) for v in viagens]
 
 
 @router.post("/modelos/{mid}")
@@ -220,6 +260,9 @@ async def guardar_modelo(request: Request, mid: int, u: Utilizador = Depends(exi
     form = await ler_form(request)
     nome = str(form.get("nome", "")).strip()[:80]
     if nome and nome != m.nome and db.scalar(select(ModeloViagem.id).where(ModeloViagem.nome == nome)):
+        flash(request, "Já existe um modelo com esse nome.", "erro")
+        return RedirectResponse(f"/viagens/modelos/{m.id}", status_code=303)
+    if nome and not _nome_livre(db, nome, m.id):
         flash(request, "Já existe um modelo com esse nome.", "erro")
         return RedirectResponse(f"/viagens/modelos/{m.id}", status_code=303)
     m.nome = nome or m.nome
@@ -239,8 +282,53 @@ async def guardar_modelo(request: Request, mid: int, u: Utilizador = Depends(exi
         flash(request, "Valor mínimo inválido.", "erro")
     auditar(db, u, "modelo_viagem", m.nome)
     db.commit()
-    flash(request, f"Modelo «{m.nome}» guardado.")
-    return RedirectResponse(f"/viagens/modelos/{m.id}", status_code=303)
+    em_uso = _viagens_do_modelo(db, u, m)
+    if em_uso:
+        detalhe = ", ".join(f"{v.nome}: {n}" for v, n in em_uso)
+        flash(request, f"Modelo «{m.nome}» guardado. Sugestões recalculadas — {detalhe}.")
+    else:
+        flash(request, f"Modelo «{m.nome}» guardado.")
+    return RedirectResponse(f"/viagens/modelos/{m.id}#em-uso", status_code=303)
+
+
+@router.post("/modelos/{mid}/renomear")
+async def renomear_modelo(request: Request, mid: int, u: Utilizador = Depends(exigir_editor),
+                          db: Session = Depends(get_db)):
+    form = await ler_form(request)
+    m = db.get(ModeloViagem, mid)
+    if not m:
+        raise HTTPException(status_code=404, detail="Não encontrado.")
+    nome = str(form.get("nome", "")).strip()[:80]
+    voltar = "/viagens" if form.get("voltar") == "lista" else f"/viagens/modelos/{m.id}"
+    if not nome:
+        flash(request, "O nome não pode ficar vazio.", "erro")
+    elif not _nome_livre(db, nome, m.id):
+        flash(request, f"Já existe um modelo «{nome}».", "erro")
+    else:
+        antigo, m.nome = m.nome, nome
+        auditar(db, u, "modelo_viagem_renomeado", f"{antigo} → {nome}")
+        db.commit()
+        flash(request, f"Modelo «{antigo}» passou a «{nome}».")
+    return RedirectResponse(voltar, status_code=303)
+
+
+@router.post("/modelos/{mid}/apagar")
+async def apagar_modelo(request: Request, mid: int, u: Utilizador = Depends(exigir_editor),
+                        db: Session = Depends(get_db)):
+    await ler_form(request)
+    m = db.get(ModeloViagem, mid)
+    if not m:
+        raise HTTPException(status_code=404, detail="Não encontrado.")
+    n = _uso_modelos(db).get(m.id, 0)
+    if n:
+        flash(request, f"O modelo «{m.nome}» está associado a {n} viagem(ns): muda-lhes o modelo antes de o apagar.", "erro")
+        return RedirectResponse(f"/viagens/modelos/{m.id}", status_code=303)
+    nome = m.nome
+    db.delete(m)
+    auditar(db, u, "modelo_viagem_apagado", nome)
+    db.commit()
+    flash(request, f"Modelo «{nome}» apagado (com o que tinha aprendido).")
+    return RedirectResponse("/viagens", status_code=303)
 
 
 @router.post("/modelos/{mid}/copiar")

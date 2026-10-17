@@ -37,12 +37,27 @@
   </div>
   <p class="nota sem-margem">Cada modelo diz onde procurar os gastos (contas usadas em viagem, dias antes e depois, textos típicos como
     AIRBNB ou RYANAIR, o que excluir) e vai aprendendo com o que confirmas ou rejeitas em cada viagem.</p>
-  <ul class="lista-simples">
+  <div class="rolar"><table class="tabela compacta tabela-modelos">
+    <thead><tr><th>Modelo</th><th class="num">Viagens</th><th class="num">Aprendidos</th><th>Renomear</th><th></th></tr></thead>
     {% for m in modelos %}
-    <li><a href="/viagens/modelos/{{ m.id }}">{{ m.nome }}</a>
-      <span class="nota">· {{ m.dias_antes }} dias antes, {{ m.dias_depois }} depois · {{ m.padroes | length }} padrões aprendidos</span></li>
+    {% set n = uso.get(m.id, 0) %}
+    <tr>
+      <td><a href="/viagens/modelos/{{ m.id }}"><strong>{{ m.nome }}</strong></a>
+        <br><span class="nota">{{ m.dias_antes }} dias antes, {{ m.dias_depois }} depois</span></td>
+      <td class="num">{{ n }}</td>
+      <td class="num">{{ m.padroes | length }}</td>
+      <td>{% if pode_editar %}<form method="post" action="/viagens/modelos/{{ m.id }}/renomear" class="form-inline">
+        <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="voltar" value="lista">
+        <input name="nome" value="{{ m.nome }}" maxlength="80" aria-label="Novo nome de {{ m.nome }}" required>
+        <button class="pequeno">Renomear</button></form>{% endif %}</td>
+      <td class="acoes">{% if pode_editar %}
+        {% if n %}<span class="nota" title="Muda o modelo dessas viagens antes de o apagar">em uso</span>
+        {% else %}<form method="post" action="/viagens/modelos/{{ m.id }}/apagar" onsubmit="return confirm('Apagar o modelo «{{ m.nome }}» e o que aprendeu?')">
+          <input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="ligacao perigo-texto">Apagar</button></form>{% endif %}
+      {% endif %}</td>
+    </tr>
     {% endfor %}
-  </ul>
+  </table></div>
 </section>
 {% endif %}
 {% endblock %}

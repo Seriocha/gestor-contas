@@ -8,6 +8,11 @@
     <form method="post" action="/viagens/modelos/{{ m.id }}/copiar">
       <input type="hidden" name="csrf" value="{{ csrf_token }}"><button>Copiar para um modelo novo</button>
     </form>
+    {% if not em_uso %}
+    <form method="post" action="/viagens/modelos/{{ m.id }}/apagar" onsubmit="return confirm('Apagar o modelo «{{ m.nome }}» e o que aprendeu?')">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="perigo">Apagar modelo</button>
+    </form>
+    {% endif %}
   </div>
 </div>
 
@@ -52,6 +57,22 @@
     <input name="valor_min" value="{{ valor_min }}" inputmode="decimal" placeholder="opcional"></label>
   <div class="acoes-form"><button class="primario">Guardar modelo</button></div>
 </form>
+
+<section class="cartao" id="em-uso">
+  <div class="cartao-cabecalho">
+    <h2>Viagens que usam este modelo <span class="nota">· {{ em_uso | length }}</span></h2>
+    {% if em_uso %}<span class="nota">não pode ser apagado enquanto estiver em uso</span>{% endif %}
+  </div>
+  {% if em_uso %}
+  <p class="nota sem-margem">As sugestões são recalculadas sempre que guardas o modelo (e ao abrir cada viagem).</p>
+  <ul class="lista-simples">
+    {% for v, n in em_uso %}
+    <li><a href="/viagens/{{ v.id }}#sugestoes">{{ v.nome }}</a> <span class="nota">· {{ v.data_ini | data }} – {{ v.data_fim | data }}</span>
+      · <strong>{{ n }}</strong> sugestão{{ 'ões' if n != 1 else '' }} <a href="/viagens/{{ v.id }}#sugestoes">↻ ver</a></li>
+    {% endfor %}
+  </ul>
+  {% else %}<p class="vazio sem-margem">Nenhuma viagem usa este modelo.</p>{% endif %}
+</section>
 
 <section class="cartao" id="aprendido">
   <h2>O que o modelo aprendeu <span class="nota">· {{ padroes | length }} padrões</span></h2>

@@ -47,7 +47,17 @@
 <section class="cartao" id="sugestoes">
   <div class="cartao-cabecalho">
     <h2>Sugestões <span class="nota">· {{ sugestoes | length }} movimento{{ 's' if sugestoes | length != 1 }} que podem ser desta viagem</span></h2>
-    {% if viagem.modelo %}<a href="/viagens/modelos/{{ viagem.modelo_id }}">afinar o modelo</a>{% endif %}
+    <div class="acoes-form">
+      {% if pode_editar %}
+      <form method="post" action="/viagens/{{ viagem.id }}/modelo" class="form-inline">
+        <input type="hidden" name="csrf" value="{{ csrf_token }}">
+        <label class="nota">Modelo
+          <select name="modelo_id">{% for m in modelos %}<option value="{{ m.id }}" {% if m.id == viagem.modelo_id %}selected{% endif %}>{{ m.nome }}</option>{% endfor %}</select></label>
+        <button class="pequeno">↻ Recalcular</button>
+      </form>
+      {% endif %}
+      {% if viagem.modelo %}<a href="/viagens/modelos/{{ viagem.modelo_id }}">afinar o modelo</a>{% endif %}
+    </div>
   </div>
   {% if not sugestoes %}
   <p class="vazio sem-margem">Sem sugestões{% if r.movimentos %} novas{% endif %}. Se faltar algo, ajusta o modelo (contas, dias antes/depois, textos a incluir)

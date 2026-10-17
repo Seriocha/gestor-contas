@@ -138,3 +138,46 @@ def test_validacoes_e_apagar(admin, app):
     _post(admin, f"/viagens/{vid}/editar", f"/viagens/{vid}/apagar")
     with app.state.SessionLocal() as db:
         assert db.get(Viagem, vid) is None and db.get(Movimento, rest).etiquetas == []
+
+
+def test_gerir_modelos_renomear_apagar_e_recalcular(admin, app):
+    vid = _criar(admin)
+    with app.state.SessionLocal() as db:
+        base = db.query(ModeloViagem).one().id
+    lista = admin.get("/viagens?entidade=1").text
+    assert "Renomear" in lista and "em uso" in lista          # o modelo base está em uso: sem «Apagar»
+    # renomear (e não deixar repetir nomes)
+    _post(admin, "/viagens?entidade=1", f"/viagens/modelos/{base}/renomear", nome="Férias", voltar="lista")
+    r = _post(admin, f"/viagens/modelos/{base}", f"/viagens/modelos/{base}/copiar")
+    copia = int(r.headers["location"].rsplit("/", 1)[1])
+    r = admin.post(f"/viagens/modelos/{copia}/renomear",
+                   data={"csrf": _csrf(admin.get(f"/viagens/modelos/{copia}")), "nome": "Férias"})
+    assert "Já existe um modelo «Férias»" in r.text
+    _post(admin, f"/viagens/modelos/{copia}", f"/viagens/modelos/{copia}/renomear", nome="Trabalho")
+    # apagar só quando não está em uso
+    r = admin.post(f"/viagens/modelos/{base}/apagar", data={"csrf": _csrf(admin.get(f"/viagens/modelos/{base}"))})
+    assert "está associado a 1 viagem" in r.text
+    # trocar o modelo da viagem recalcula as sugestões; o antigo deixa de estar em uso e pode ser apagado
+    _post(admin, f"/viagens/{vid}", f"/viagens/{vid}/modelo", modelo_id=str(copia))
+    with app.state.SessionLocal() as db:
+        assert db.get(Viagem, vid).modelo_id == copia
+    r = _post(admin, f"/viagens/modelos/{base}", f"/viagens/modelos/{base}/apagar")
+    assert r.status_code == 303
+    with app.state.SessionLocal() as db:
+        assert db.get(ModeloViagem, base) is None and [m.nome for m in db.query(ModeloViagem)] == ["Trabalho"]
+    assert "Trabalho" in admin.get("/viagens?entidade=1").text          # o padrão não é recriado
+
+
+def test_ajustar_o_modelo_recalcula_as_sugestoes(admin, app):
+    vid = _criar(admin)
+    with app.state.SessionLocal() as db:
+        mid = db.get(Viagem, vid).modelo_id
+        antes = len(vg.candidatos(db, db.get(Viagem, vid)))
+    assert antes == 4
+    # tirar o Revolut das contas de viagem e excluir UBER: o restaurante e o uber deixam de ser sugeridos
+    r = admin.post(f"/viagens/modelos/{mid}", data={
+        "csrf": _csrf(admin.get(f"/viagens/modelos/{mid}")), "nome": "Viagem (padrão)", "dias_antes": "90",
+        "dias_depois": "3", "tipos_conta": ["CARTAO_CREDITO"], "incluir": "RYANAIR\nAIRBNB", "excluir": "UBER"})
+    assert "Sugestões recalculadas — Maurícias 2026: 2" in r.text and "Viagens que usam este modelo" in r.text
+    p = admin.get(f"/viagens/{vid}").text
+    assert "2 movimentos que podem ser desta viagem" in p and "↻ Recalcular" in p

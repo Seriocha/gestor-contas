@@ -564,3 +564,8 @@ button.pequeno { min-height: 32px; padding: .3rem .8rem; font-size: .85rem; }
 .opcoes-grelha { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: .25rem 1rem; margin: .3rem 0 .6rem; }
 .opcoes-grelha .recuo-leve { padding-left: 1.2rem; font-size: .9rem; }
 .tabela-sugestoes tr.fase-antes td, .tabela-sugestoes tr.fase-depois td { background: color-mix(in srgb, var(--previsto) 7%, transparent); }
+
+.form-inline { display: inline-flex; gap: .4rem; align-items: center; flex-wrap: wrap; margin: 0; }
+.form-inline input, .form-inline select { width: auto; min-width: 0; }
+.tabela-modelos .form-inline input { width: 14rem; max-width: 100%; }
+.perigo-texto { color: var(--neg); }

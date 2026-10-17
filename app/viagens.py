@@ -77,7 +77,10 @@ def _ids(csv: str) -> set[int]:
 
 
 def modelo_omissao(db: Session) -> ModeloViagem:
-    m = db.scalar(select(ModeloViagem).where(ModeloViagem.nome == MODELO_OMISSAO))
+    """O modelo «Viagem (padrão)»; se foi renomeado ou apagado, o 1.º que existir. Só se cria
+    quando não há nenhum modelo."""
+    m = (db.scalar(select(ModeloViagem).where(ModeloViagem.nome == MODELO_OMISSAO))
+         or db.scalar(select(ModeloViagem).order_by(ModeloViagem.id).limit(1)))
     if not m:
         nomes = ("Restaurantes e cafés", "Transportes", "Lazer", "Viagens")
         cats = [c.id for c in db.scalars(select(Categoria).where(Categoria.nome.in_(nomes)))]
