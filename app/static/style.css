@@ -616,3 +616,10 @@ details.recolher[open] > summary { margin-bottom: 1rem; }
   .barras-categoria li { grid-template-columns: 1fr auto; }
   .barras-categoria .barra { grid-column: 1 / -1; grid-row: 2; }
 }
+
+/* tabela de abastecimentos: posto numa linha (cortado com reticências), diferença destacada */
+.tabela-abastecimentos td.posto { max-width: 12rem; }
+.tabela-abastecimentos td.posto > span:first-child { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; vertical-align: bottom; }
+.tabela-abastecimentos tr.com-diferenca td { background: var(--alerta-fundo); }
+.tabela-abastecimentos details[open] { min-width: 18rem; }

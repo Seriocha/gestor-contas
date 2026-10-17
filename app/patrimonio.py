@@ -254,9 +254,16 @@ class LinhaBem:
         return (self.valor - b.valor_aquisicao) if self.valor is not None and b.valor_aquisicao else None
 
 
+def inicio_periodo(db: Session, entidade_id: int, hoje: date) -> date:
+    """Início dos «últimos 12 meses» dos bens: 12 meses atrás, ou o início da análise (cobertura) se for depois."""
+    ini = rel.somar_meses(hoje.replace(day=1), -11)
+    corte = rel.inicio_analise(db, entidade_id)
+    return max(ini, corte) if corte else ini
+
+
 def resumo(db: Session, entidade_id: int, hoje: date) -> dict:
     bens = db.scalars(select(Bem).where(Bem.entidade_id == entidade_id).order_by(Bem.tipo, Bem.nome)).all()
-    ini = rel.somar_meses(hoje.replace(day=1), -11)
+    ini = inicio_periodo(db, entidade_id, hoje)
     gastos, recebido = defaultdict(int), defaultdict(int)
     for m, bid, v in por_bem(db, entidade_id, rel.movimentos_reportaveis(db, entidade_id, ini, hoje)):
         if not bid:

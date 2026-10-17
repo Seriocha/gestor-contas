@@ -67,9 +67,10 @@ def _carro(c, nome, **extra):
 
 
 def _importar(c, bid, nome, dados):
-    f = c.get(f"/patrimonio/{bid}")
-    return c.post(f"/patrimonio/{bid}/fuelio", data={"csrf": _csrf(f)}, files={"ficheiro": (nome, dados, "text/csv")},
-                  follow_redirects=False)
+    """A importação do Fuelio é uma tarefa administrativa (Administração › Tarefas)."""
+    f = c.get("/admin/tarefas")
+    return c.post("/admin/tarefas/fuelio", data={"csrf": _csrf(f), "bem_id": str(bid)},
+                  files={"ficheiro": (nome, dados, "text/csv")}, follow_redirects=False)
 
 
 def test_ler():
@@ -132,7 +133,34 @@ def test_banco_depois_e_consolidacao(admin, app):
         assert m.bem_id == b and m.categoria.nome == "Combustível"
 
 
-def test_formulario_tambem_em_carro_vendido(admin, app):
+def test_fuelio_so_nas_tarefas_e_carro_vendido(admin, app):
     b = _carro(admin, "Velho", data_venda="2026-01-31")
     p = admin.get(f"/patrimonio/{b}").text
-    assert f'action="/patrimonio/{b}/fuelio"' in p and "marcado como vendido em 31/01/2026" in p
+    assert "/fuelio\"" not in p and "Administração › Tarefas" in p and "marcado como vendido em 31/01/2026" in p
+    t = admin.get("/admin/tarefas").text
+    assert "Importar histórico do Fuelio" in t and "Velho" in t
+    assert admin.post(f"/patrimonio/{b}/fuelio", data={}).status_code in (404, 405)
+
+
+def test_corrigir_e_apagar_abastecimento(admin, app):
+    b = _carro(admin, "Frontera")
+    _importar(admin, b, "v.csv", _ficheiro(ABAST))
+    with app.state.SessionLocal() as db:
+        galp = db.scalar(select(Abastecimento).where(Abastecimento.data == date(2026, 9, 5)))
+        assert galp.valor == 3602 and -galp.movimento.montante == 3600       # 2 cêntimos de diferença
+        aid = galp.id
+    ficha = admin.get(f"/patrimonio/{b}").text
+    assert "Diferença" in ficha and "-0,02 €" in ficha and "Usar o valor do banco (36,00 €)" in ficha
+    admin.post(f"/patrimonio/{b}/abastecimento/{aid}", data={"csrf": _csrf(admin.get(f"/patrimonio/{b}")), "usar_banco": "1"})
+    with app.state.SessionLocal() as db:
+        assert db.get(Abastecimento, aid).valor == 3600
+    # correção do valor que deixa de bater com o débito: desliga e procura de novo (não há outro → por ligar)
+    admin.post(f"/patrimonio/{b}/abastecimento/{aid}", data={"csrf": _csrf(admin.get(f"/patrimonio/{b}")),
+               "data": "2026-09-05", "hora": "09:00", "km": "11010", "litros": "21,5", "valor": "45,00", "cheio": "1"})
+    with app.state.SessionLocal() as db:
+        a = db.get(Abastecimento, aid)
+        assert (a.valor, a.litros, a.km, a.movimento_id) == (4500, 21.5, 11010, None)
+        assert 11010 in [r.km for r in db.get(Bem, b).registos_km]           # a leitura de km acompanha
+    admin.post(f"/patrimonio/{b}/abastecimento/{aid}/apagar", data={"csrf": _csrf(admin.get(f"/patrimonio/{b}"))})
+    with app.state.SessionLocal() as db:
+        assert db.get(Abastecimento, aid) is None

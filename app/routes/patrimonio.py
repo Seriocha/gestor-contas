@@ -1,6 +1,6 @@
 """Património: casas e carros — valor (histórico de avaliações, IA), dívida associada,
 despesas por bem (casa principal vs. férias, cada carro) e atribuição das despesas."""
-from datetime import date
+from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
@@ -279,7 +279,7 @@ def ficha(request: Request, bid: int, u: Utilizador = Depends(utilizador_atual),
     b, papel = _bem(db, u, bid)
     visiveis, ent, _ = entidade_escolhida(request, db, u, b.entidade_id)
     hoje = date.today()
-    ini = rel.somar_meses(hoje.replace(day=1), -11)
+    ini = pt.inicio_periodo(db, b.entidade_id, hoje)
     valor, divida = pt.valor_atual(b), pt.divida(db, b, hoje)
     c = pt.custos(db, b, ini, hoje)
     return render(request, "patrimonio/ficha.html", visiveis=visiveis, entidade=ent, b=b, hoje=hoje, ini=ini,
@@ -299,29 +299,17 @@ def ficha(request: Request, bid: int, u: Utilizador = Depends(utilizador_atual),
                   consumo_total=fuelio.consumo(db, b, date.min, hoje) if b.tipo == "carro" else None)
 
 
-@router.post("/{bid}/fuelio")
-async def importar_fuelio(request: Request, bid: int, u: Utilizador = Depends(utilizador_atual),
-                          db: Session = Depends(get_db)):
-    """CSV de sincronização do Fuelio (vehicle-N-sync.csv, ou o ZIP) deste carro."""
-    form = await ler_form(request)
-    b = _carro(db, u, bid)
-    voltar = f"/patrimonio/{b.id}#fuelio"
-    f = form.get("ficheiro")
-    if f is None or not getattr(f, "filename", ""):
-        flash(request, "Escolhe o ficheiro do Fuelio.", "erro")
-        return RedirectResponse(voltar, status_code=303)
+def importar_fuelio_bem(db: Session, b: Bem, nome: str, conteudo: bytes, u: Utilizador) -> tuple[str, bool]:
+    """Importa o CSV/ZIP do Fuelio para o carro. Devolve (mensagem, erro)."""
     try:
-        conteudo = await f.read(5 * 1024 * 1024 + 1)
         if len(conteudo) > 5 * 1024 * 1024:
             raise ValueError("ficheiro demasiado grande")
-        dados = fuelio.ler(f.filename, conteudo)
+        dados = fuelio.ler(nome, conteudo)
     except Exception as e:   # zip/csv corrompido ou de outra app
-        flash(request, f"Não foi possível ler o ficheiro: {e}", "erro")
-        return RedirectResponse(voltar, status_code=303)
+        return f"Não foi possível ler o ficheiro: {e}", True
     mat = norm_matricula(dados.veiculo.matricula)
     if mat and b.matricula and mat != norm_matricula(b.matricula):
-        flash(request, f"O ficheiro é do carro com matrícula {dados.veiculo.matricula}, não de {b.matricula}.", "erro")
-        return RedirectResponse(voltar, status_code=303)
+        return f"O ficheiro é do carro com matrícula {dados.veiculo.matricula}, não de {b.matricula}.", True
     if mat and not b.matricula:
         b.matricula = dados.veiculo.matricula.upper()[:12]
     novos, atualizados, leituras = fuelio.importar(db, b, dados)
@@ -329,11 +317,93 @@ async def importar_fuelio(request: Request, bid: int, u: Utilizador = Depends(ut
     pt.atribuir(db, b.entidade_id)
     auditar(db, u, "fuelio", f"{b.nome}: {novos} novos, {atualizados} atualizados, {ligados} ligados")
     db.commit()
-    flash(request, f"Fuelio: {novos} abastecimento{'s' if novos != 1 else ''} novo{'s' if novos != 1 else ''}"
-                   + (f", {atualizados} atualizados" if atualizados else "")
-                   + f", {leituras} leitura{'s' if leituras != 1 else ''} de km e {ligados} "
-                   f"débito{'s' if ligados != 1 else ''} do banco ligado{'s' if ligados != 1 else ''}.")
+    return (f"Fuelio ({b.nome}): {novos} abastecimento{'s' if novos != 1 else ''} novo{'s' if novos != 1 else ''}"
+            + (f", {atualizados} atualizados" if atualizados else "")
+            + f", {leituras} leitura{'s' if leituras != 1 else ''} de km e {ligados} "
+            f"débito{'s' if ligados != 1 else ''} do banco ligado{'s' if ligados != 1 else ''}."), False
+
+
+def _abastecimento(db: Session, u: Utilizador, bid: int, aid: int):
+    from ..models import Abastecimento
+    b = _carro(db, u, bid)
+    a = db.get(Abastecimento, aid)
+    if not a or a.bem_id != b.id:
+        raise HTTPException(status_code=404, detail="Não encontrado.")
+    return b, a
+
+
+@router.post("/{bid}/abastecimento/{aid}")
+async def corrigir_abastecimento(request: Request, bid: int, aid: int, u: Utilizador = Depends(utilizador_atual),
+                                 db: Session = Depends(get_db)):
+    """Corrige um abastecimento (ex.: valor mal escrito); «usar o valor do banco» copia o débito ligado."""
+    form = await ler_form(request)
+    b, a = _abastecimento(db, u, bid, aid)
+    voltar = f"/patrimonio/{b.id}#fuelio"
+    if form.get("usar_banco") and a.movimento:
+        a.valor = -a.movimento.montante
+        a.preco_litro = round(a.valor / 100 / a.litros, 3) if a.litros else None
+        db.commit()
+        flash(request, f"Valor corrigido para {fmt_montante(a.valor)} (o do banco).")
+        return RedirectResponse(voltar, status_code=303)
+    erros = []
+    try:
+        data = parse_data(str(form.get("data", ""))) or a.data
+    except ValueError:
+        data = a.data
+        erros.append("Data inválida.")
+    hora = str(form.get("hora", "")).strip()[:5] or None
+    km = _inteiro(str(form.get("km", "")), "Km", erros, 0, 5_000_000)
+    try:
+        litros = float(str(form.get("litros", "")).replace(",", "."))
+        if not 0 < litros < 500:
+            raise ValueError
+    except ValueError:
+        litros = a.litros
+        erros.append("Litros inválidos.")
+    try:
+        valor = abs(parse_montante(str(form.get("valor")))) if form.get("valor") else None
+    except ValueError:
+        valor = a.valor
+        erros.append("Valor inválido.")
+    if erros:
+        flash(request, " ".join(erros), "erro")
+        return RedirectResponse(voltar, status_code=303)
+    mudou_ligacao = valor != a.valor or data != a.data
+    # a leitura de km deste abastecimento acompanha a correção
+    if km != a.km and a.km is not None:
+        for r in b.registos_km:
+            if r.data == a.data and r.km == a.km and r.origem in ("fuelio", "abastec"):
+                r.km, r.data = km, data
+                break
+    a.data, a.hora, a.km, a.litros, a.valor = data, hora, km, litros, valor
+    a.cheio = bool(form.get("cheio"))
+    a.posto = str(form.get("posto", "")).strip()[:120] or None
+    a.preco_litro = round(valor / 100 / litros, 3) if valor and litros else None
+    if mudou_ligacao and a.movimento and (valor is None or abs(-a.movimento.montante - valor) > fuelio.TOLERANCIA
+                                          or not (data - timedelta(days=fuelio.DIAS_ANTES) <= a.movimento.data_mov
+                                                  <= data + timedelta(days=fuelio.DIAS_DEPOIS))):
+        a.movimento_id = None          # deixou de bater com o débito: procura outro
+    db.flush()
+    ligados = fuelio.ligar(db, b.entidade_id)
+    pt.atribuir(db, b.entidade_id)
+    auditar(db, u, "abastecimento_corrigido", f"{b.nome} {a.data} {a.litros} l {a.valor}")
+    db.commit()
+    flash(request, "Abastecimento corrigido." + (" Ligado ao débito no banco." if ligados else ""))
     return RedirectResponse(voltar, status_code=303)
+
+
+@router.post("/{bid}/abastecimento/{aid}/apagar")
+async def apagar_abastecimento(request: Request, bid: int, aid: int, u: Utilizador = Depends(utilizador_atual),
+                               db: Session = Depends(get_db)):
+    await ler_form(request)
+    b, a = _abastecimento(db, u, bid, aid)
+    db.delete(a)
+    db.flush()
+    pt.atribuir(db, b.entidade_id)        # o débito que estava ligado volta à atribuição normal
+    auditar(db, u, "abastecimento_apagado", f"{b.nome} {a.data} {a.litros} l")
+    db.commit()
+    flash(request, "Abastecimento apagado (a leitura de km fica).")
+    return RedirectResponse(f"/patrimonio/{b.id}#fuelio", status_code=303)
 
 
 def _movs_oficina(db: Session, b: Bem, hoje: date) -> list[Movimento]:

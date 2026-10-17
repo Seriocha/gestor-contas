@@ -322,6 +322,32 @@ async def consolidar(request: Request, admin: Utilizador = Depends(exigir_admin)
     return RedirectResponse("/admin/consolidar", status_code=303)
 
 
+@router.get("/tarefas")
+def tarefas(request: Request, admin: Utilizador = Depends(exigir_admin), db: Session = Depends(get_db)):
+    """Tarefas administrativas pontuais (ex.: importar o histórico do Fuelio)."""
+    from ..models import Abastecimento, Bem
+    carros = db.scalars(select(Bem).where(Bem.tipo == "carro").order_by(Bem.entidade_id, Bem.nome)).all()
+    n = dict(db.execute(select(Abastecimento.bem_id, func.count()).group_by(Abastecimento.bem_id)).all())
+    return render(request, "admin/tarefas.html", carros=carros, n_abast=n,
+                  entidades={e.id: e for e in _entidades(db)})
+
+
+@router.post("/tarefas/fuelio")
+async def tarefa_fuelio(request: Request, admin: Utilizador = Depends(exigir_admin), db: Session = Depends(get_db)):
+    from ..models import Bem
+    from .patrimonio import importar_fuelio_bem
+    form = await ler_form(request)
+    bid = str(form.get("bem_id", ""))
+    b = db.get(Bem, int(bid)) if bid.isdigit() else None
+    f = form.get("ficheiro")
+    if not b or b.tipo != "carro" or f is None or not getattr(f, "filename", ""):
+        flash(request, "Escolhe o carro e o ficheiro do Fuelio.", "erro")
+        return RedirectResponse("/admin/tarefas", status_code=303)
+    msg, erro = importar_fuelio_bem(db, b, f.filename, await f.read(5 * 1024 * 1024 + 1), admin)
+    flash(request, msg, "erro" if erro else "ok")
+    return RedirectResponse("/admin/tarefas", status_code=303)
+
+
 @router.post("/backup")
 async def backup_agora(request: Request, admin: Utilizador = Depends(exigir_admin),
                        db: Session = Depends(get_db)):

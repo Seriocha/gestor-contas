@@ -276,3 +276,16 @@ def test_movimentos_filtrados_por_bem(admin, app):
     t = admin.get(f"/movimentos?entidade=1&bem={golf}").text
     assert "Só os movimentos de" in t and "GALP ALVALADE" in t and "EDP COMERCIAL" not in t
     assert 'name="f_bem" value="%d"' % golf in t
+
+
+def test_periodo_dos_bens_respeita_a_cobertura(admin, app):
+    from app.models import Entidade
+    golf = _criar(admin, "carro")
+    with app.state.SessionLocal() as db:
+        db.get(Entidade, 1).data_inicio = date(2026, 8, 1)
+        db.commit()
+        assert pt.inicio_periodo(db, 1, HOJE) == date(2026, 8, 1)
+        c = pt.custos(db, db.get(Bem, golf), pt.inicio_periodo(db, 1, HOJE), HOJE)
+        assert c.meses[0] == date(2026, 8, 1) and len(c.meses) == 3          # ago, set, out — sem meses a zero antes
+    ficha = admin.get(f"/patrimonio/{golf}").text
+    assert "desde 01/08/2026" in ficha
