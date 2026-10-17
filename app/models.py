@@ -525,9 +525,19 @@ class Bem(Base):
     notas: Mapped[str | None] = mapped_column(Text)
     criado_em: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, server_default=func.now())
 
+    # Carros: plano de manutenção (gerado pela IA a partir de marca, modelo, ano e combustível).
+    plano_notas: Mapped[str | None] = mapped_column(Text)
+    plano_em: Mapped[date | None] = mapped_column(Date)
+    plano_modelo: Mapped[str | None] = mapped_column(String(60))
+
     emprestimo_conta: Mapped["Conta | None"] = relationship()
     avaliacoes: Mapped[list["AvaliacaoBem"]] = relationship(back_populates="bem", cascade="all, delete-orphan",
                                                             order_by="AvaliacaoBem.data")
+    registos_km: Mapped[list["RegistoKm"]] = relationship(cascade="all, delete-orphan",
+                                                         order_by="[RegistoKm.data, RegistoKm.km]")
+    plano: Mapped[list["ItemPlano"]] = relationship(cascade="all, delete-orphan", order_by="ItemPlano.ordem")
+    manutencoes: Mapped[list["Manutencao"]] = relationship(cascade="all, delete-orphan",
+                                                          order_by="[Manutencao.data, Manutencao.km]")
 
     @property
     def tipo_rotulo(self) -> str:
@@ -550,6 +560,53 @@ class Bem(Base):
         """Viatura da empresa: não é património (sem valor, dívida nem avaliação) — serve só para
         lhe alocar o combustível."""
         return self.tipo == "carro" and self.uso == "empresa"
+
+
+class RegistoKm(Base):
+    """Leitura do conta-quilómetros de um carro numa data (registo periódico ou ida à oficina)."""
+    __tablename__ = "registo_km"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    bem_id: Mapped[int] = mapped_column(ForeignKey("bem.id", ondelete="CASCADE"), index=True)
+    data: Mapped[date] = mapped_column(Date)
+    km: Mapped[int] = mapped_column(Integer)
+    origem: Mapped[str] = mapped_column(String(10), default="manual")   # manual | oficina | ficha
+    nota: Mapped[str | None] = mapped_column(String(200))
+
+
+class ItemPlano(Base):
+    """Uma operação do plano de manutenção do carro (ex.: óleo e filtro a cada 15 000 km / 12 meses)."""
+    __tablename__ = "item_plano"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    bem_id: Mapped[int] = mapped_column(ForeignKey("bem.id", ondelete="CASCADE"), index=True)
+    item: Mapped[str] = mapped_column(String(120))
+    intervalo_km: Mapped[int | None] = mapped_column(Integer)
+    intervalo_meses: Mapped[int | None] = mapped_column(Integer)
+    custo_min: Mapped[int | None] = mapped_column(BigInteger)          # cêntimos, estimativa
+    custo_max: Mapped[int | None] = mapped_column(BigInteger)
+    notas: Mapped[str | None] = mapped_column(String(300))
+    ordem: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class Manutencao(Base):
+    """Ida à oficina / intervenção feita: data, km, operações do plano cobertas e custo."""
+    __tablename__ = "manutencao"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    bem_id: Mapped[int] = mapped_column(ForeignKey("bem.id", ondelete="CASCADE"), index=True)
+    data: Mapped[date] = mapped_column(Date)
+    km: Mapped[int | None] = mapped_column(Integer)
+    itens: Mapped[str | None] = mapped_column(Text)                     # nomes dos itens do plano, um por linha
+    custo: Mapped[int | None] = mapped_column(BigInteger)
+    movimento_id: Mapped[int | None] = mapped_column(ForeignKey("movimento.id", ondelete="SET NULL"))
+    nota: Mapped[str | None] = mapped_column(String(300))
+
+    movimento: Mapped["Movimento | None"] = relationship()
+
+    @property
+    def lista_itens(self) -> list[str]:
+        return [i for i in (self.itens or "").splitlines() if i.strip()]
 
 
 class AvaliacaoBem(Base):

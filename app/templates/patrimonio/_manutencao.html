@@ -1,0 +1,128 @@
+{# Carros: quilómetros, plano de manutenção (IA) e idas à oficina. Contexto: b, mr, hoje, pode_editar, ia_disponivel,
+   falta_plano, descricao_carro, oficina. #}
+{% macro km(v) %}{{ '{:,}'.format(v).replace(',', ' ') }} km{% endmacro %}
+{% macro intervalo(it) -%}
+  {%- if it.intervalo_km %}{{ km(it.intervalo_km) }}{% endif %}{% if it.intervalo_km and it.intervalo_meses %} ou {% endif -%}
+  {%- if it.intervalo_meses %}{{ it.intervalo_meses }} meses{% endif -%}
+{%- endmacro %}
+<section class="cartao" id="manutencao">
+  <h2>Manutenção e quilómetros</h2>
+  <div class="kpi-linha">
+    <div class="kpi"><span class="nota">Quilómetros</span><strong>{{ km(mr.km_hoje) if mr.km_hoje is not none else '—' }}</strong>
+      {% set u = b.registos_km[-1] if b.registos_km else none %}
+      <span class="nota">{% if u %}{{ 'estimados hoje · ' if mr.km_hoje != u.km }}leitura de {{ u.data | data }}{% else %}sem leituras{% endif %}</span></div>
+    <div class="kpi"><span class="nota">Média</span><strong>{{ km((mr.km_dia * 30.4) | round | int) ~ '/mês' if mr.km_dia is not none else '—' }}</strong>
+      <span class="nota">{{ 'calculada pelas leituras' if mr.km_dia is not none else 'precisa de leituras com 1 mês de distância' }}</span></div>
+    <div class="kpi"><span class="nota">Oficina</span>
+      <strong class="{{ 'neg' if mr.precisa_oficina }}">{% if not b.plano %}sem plano{% elif mr.precisa_oficina %}precisa já{% elif mr.breve %}em breve{% else %}em dia{% endif %}</strong>
+      {% if mr.precisa_oficina %}<span class="nota">{{ mr.atraso | length }} operaç{{ 'ões' if mr.atraso | length != 1 else 'ão' }} em atraso</span>
+      {% elif mr.proxima %}<span class="nota">próxima: {{ mr.proxima.item.item }} · ≈ {{ mr.proxima.data_prevista | data }}</span>{% endif %}</div>
+  </div>
+  {% if mr.lembrar_km and not b.vendido %}<div class="aviso">Regista os quilómetros atuais — {% if u %}a última leitura é de {{ u.data | data }}{% else %}ainda não há leituras{% endif %}.
+    Com leituras regulares a app estima quando chegas a cada revisão.</div>{% endif %}
+
+  {% if b.plano %}
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th>Operação</th><th>A cada</th><th>Última vez</th><th>Próxima</th><th class="num">Falta</th><th class="num">Custo estimado</th><th>Estado</th></tr></thead>
+    <tbody>
+    {% for e in mr.itens %}{% set it = e.item %}
+    <tr>
+      <td><strong>{{ it.item }}</strong>{% if it.notas %}<br><span class="nota">{{ it.notas }}</span>{% endif %}</td>
+      <td class="sem-quebra">{{ intervalo(it) }}</td>
+      <td class="sem-quebra">{% if e.ultima_data %}{{ e.ultima_data | data }}{% if e.ultima_km is not none %}<br><span class="nota">{{ km(e.ultima_km) }}</span>{% endif %}
+        {% else %}<span class="nota" title="Conta-se desde a compra/ano do carro. Regista a última vez que foi feito para acertar.">sem registo</span>{% endif %}</td>
+      <td class="sem-quebra">{% if e.prox_km is not none %}{{ km(e.prox_km) }}{% endif %}{% if e.prox_km is not none and e.prox_data %}<br>{% endif %}{% if e.prox_data %}<span class="nota">{{ e.prox_data | data }}</span>{% endif %}</td>
+      <td class="num sem-quebra">{% if e.falta_km is not none %}{% if e.falta_km < 0 %}<span class="neg">passou {{ km(-e.falta_km) }}</span>{% else %}{{ km(e.falta_km) }}{% endif %}{% endif %}
+        {%- if e.falta_km is not none and e.falta_dias is not none %}<br>{% endif %}
+        {%- if e.falta_dias is not none %}<span class="nota {{ 'neg' if e.falta_dias < 0 }}">{% if e.falta_dias < 0 %}há {{ -e.falta_dias }} dias{% else %}{{ e.falta_dias }} dias{% endif %}</span>{% endif %}
+        {% if e.data_prevista and e.estado != 'em atraso' %}<br><span class="nota">≈ {{ e.data_prevista | data }}</span>{% endif %}</td>
+      <td class="num nota sem-quebra">{% if it.custo_min is not none or it.custo_max is not none %}{{ it.custo_min | eur if it.custo_min is not none else '?' }} – {{ it.custo_max | eur if it.custo_max is not none else '?' }}{% else %}—{% endif %}</td>
+      <td><span class="etiqueta {{ {'em atraso': 'etiqueta-erro', 'em breve': 'etiqueta-cor', 'ok': 'etiqueta-ok'}.get(e.estado, '') }}">{{ e.estado }}</span></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  <p class="nota">{% if b.plano_notas %}{{ b.plano_notas }} {% endif %}Plano da IA de {{ b.plano_em | data if b.plano_em else '—' }}{{ ' (' ~ b.plano_modelo ~ ')' if b.plano_modelo }} —
+    confirma com o livro de manutenção do carro. «Sem registo» conta desde a compra (ou o ano) do carro: regista a última vez que cada operação foi feita.</p>
+  {% else %}
+  <p class="vazio sem-margem">Ainda sem plano de manutenção. A IA indica as operações e os intervalos do fabricante para este carro.</p>
+  {% endif %}
+
+  {% if pode_editar and not b.vendido %}
+  <div class="pat-acoes">
+    <form method="post" action="/patrimonio/{{ b.id }}/plano" class="formulario cartao-interno">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
+      <h3>{{ 'Atualizar o plano' if b.plano else 'Pedir o plano de manutenção' }}</h3>
+      {% if not ia_disponivel %}<p class="nota">A chave da Claude API não está configurada (ficheiro ia.env na NAS).</p>
+      {% elif falta_plano %}<p class="nota">Indica: {{ falta_plano | join(', ') }} (Editar).</p>
+      {% else %}
+      <p class="nota">É enviado só isto:</p>
+      <pre class="nota caixa-envio">{{ descricao_carro }}</pre>
+      <button class="primario" onclick="this.disabled=true;this.textContent='A consultar… (até 1 minuto)';this.form.submit()">{{ 'Atualizar' if b.plano else 'Pedir à IA' }}</button>
+      {% endif %}
+    </form>
+    <form method="post" action="/patrimonio/{{ b.id }}/km" class="formulario cartao-interno" id="km">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
+      <h3>Registar os km</h3>
+      <div class="linha">
+        <label>Data <input type="date" name="data" value="{{ hoje.isoformat() }}" max="{{ hoje.isoformat() }}"></label>
+        <label>Km <input name="km" inputmode="numeric" required placeholder="{{ mr.km_hoje or '' }}"></label>
+      </div>
+      <label>Nota <input name="nota" maxlength="200" placeholder="opcional"></label>
+      <button>Registar</button>
+    </form>
+  </div>
+  <form method="post" action="/patrimonio/{{ b.id }}/oficina" class="formulario cartao-interno" style="margin-top: 1rem; max-width: none">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <h3>Registar ida à oficina</h3>
+    <div class="linha">
+      <label>Data <input type="date" name="data" value="{{ hoje.isoformat() }}" max="{{ hoje.isoformat() }}"></label>
+      <label>Km <input name="km" inputmode="numeric" placeholder="km nesse dia"></label>
+      <label>Custo <input name="custo" inputmode="decimal" placeholder="0,00"></label>
+    </div>
+    {% if b.plano %}
+    <fieldset><legend>O que foi feito</legend>
+      {% for it in b.plano %}<label class="opcao"><input type="checkbox" name="itens" value="{{ it.item }}"> {{ it.item }}</label>{% endfor %}
+    </fieldset>
+    {% endif %}
+    <label>Outro <input name="outro" maxlength="120" placeholder="{{ 'outra operação' if b.plano else 'ex.: revisão completa, pneus' }}"></label>
+    {% if oficina %}
+    <label>Movimento do extrato
+      <select name="movimento_id"><option value="">— nenhum —</option>
+        {% for m in oficina %}<option value="{{ m.id }}">{{ m.data_mov | data }} · {{ m.descricao_original }} · {{ m.montante | eur }}</option>{% endfor %}
+      </select></label>
+    {% endif %}
+    <label>Nota <input name="nota" maxlength="300" placeholder="oficina, o que mais foi visto…"></label>
+    <div class="acoes-form"><button>Registar</button></div>
+  </form>
+  {% endif %}
+
+  {% if b.manutencoes %}
+  <h3>Idas à oficina</h3>
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th>Data</th><th class="num">Km</th><th>Operações</th><th class="num">Custo</th><th></th></tr></thead>
+    {% for m in b.manutencoes | reverse %}
+    <tr><td class="sem-quebra">{{ m.data | data }}</td><td class="num sem-quebra">{{ km(m.km) if m.km is not none else '—' }}</td>
+      <td>{{ m.lista_itens | join(' · ') }}{% if m.nota %}<br><span class="nota">{{ m.nota }}</span>{% endif %}
+        {% if m.movimento %}<br><a class="nota" href="/movimentos/{{ m.movimento.id }}">{{ m.movimento.descricao_original }}</a>{% endif %}</td>
+      <td class="num">{{ m.custo | eur if m.custo is not none else '—' }}</td>
+      <td>{% if pode_editar %}<form method="post" action="/patrimonio/{{ b.id }}/oficina/{{ m.id }}/apagar" onsubmit="return confirm('Apagar este registo?')">
+        <input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="ligacao">Apagar</button></form>{% endif %}</td></tr>
+    {% endfor %}
+  </table></div>
+  {% endif %}
+
+  {% if b.registos_km %}
+  <details class="separado">
+    <summary>Leituras de km ({{ b.registos_km | length }})</summary>
+    <div class="rolar"><table class="tabela compacta">
+      {% for r in (b.registos_km | reverse | list)[:24] %}
+      <tr><td class="sem-quebra">{{ r.data | data }}</td><td class="num">{{ km(r.km) }}</td>
+        <td class="nota">{{ {'oficina': 'oficina', 'ficha': 'ficha do carro'}.get(r.origem, '') }}{{ ' · ' if r.nota and r.origem != 'manual' }}{{ r.nota or '' }}</td>
+        <td>{% if pode_editar %}<form method="post" action="/patrimonio/{{ b.id }}/km/{{ r.id }}/apagar" onsubmit="return confirm('Apagar esta leitura?')">
+          <input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="ligacao">Apagar</button></form>{% endif %}</td></tr>
+      {% endfor %}
+    </table></div>
+  </details>
+  {% endif %}
+</section>

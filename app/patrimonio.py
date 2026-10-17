@@ -191,6 +191,7 @@ class LinhaBem:
     receitas_12m: int
     proxima: date | None
     pendente: bool
+    manutencao: object = None        # manutencao.Resumo (carros)
 
     @property
     def liquido(self) -> int:
@@ -219,6 +220,9 @@ def resumo(db: Session, entidade_id: int, hoje: date) -> dict:
             recebido[m.bem_id] += m.montante
     linhas = [LinhaBem(b, valor_atual(b), divida(db, b, hoje), gastos[b.id], recebido[b.id], proxima_revisao(b),
                        revisao_pendente(b, hoje)) for b in bens]
+    from . import manutencao as mt
+    for l in linhas:
+        l.manutencao = mt.resumo(l.bem, hoje) if l.bem.tipo == "carro" and not l.bem.vendido else None
     ativos = [l for l in linhas if not l.bem.vendido]
     proprios = [l for l in ativos if not l.bem.empresa]
     por_uso = defaultdict(lambda: [0, 0])          # (tipo, uso) → [custo 12m, n.º de bens]
@@ -243,6 +247,8 @@ def resumo(db: Session, entidade_id: int, hoje: date) -> dict:
                           sorted(por_uso.items(), key=lambda x: list(USOS_BEM["casa"]).index(x[0][1])
                                  if x[0][1] in USOS_BEM["casa"] else 99) if tipo == "casa"],
         "pendentes": [l for l in ativos if l.pendente],
+        "oficina": [l for l in ativos if l.manutencao and l.manutencao.precisa_oficina],
+        "ler_km": [l for l in ativos if l.manutencao and l.manutencao.lembrar_km],
         "sem_bem": len(sem_bem), "sem_bem_total": -sum(m.montante for m in sem_bem),
         "desde": ini,
     }

@@ -4,7 +4,7 @@ Gestor financeiro doméstico, multiutilizador e self-hosted, para a NAS QNAP. Es
 importa movimentos de bancos portugueses e gere contas à ordem, cartões, investimentos e
 Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIGN.md).
 
-## Estado: v0.33.0
+## Estado: v0.34.0
 
 - Login com várias pessoas: passwords em argon2, bloqueio ao fim de 5 tentativas falhadas,
   proteção CSRF e invalidação das sessões quando a password muda.
@@ -37,6 +37,11 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.34.0 — Manutenção dos carros.** Registo periódico dos km (com lembrete quando a última leitura tem mais
+  de um mês) e média de km/mês. A IA (Claude API, com pesquisa web quando disponível) dá o plano de manutenção do
+  fabricante para a marca, modelo, ano, combustível e versão — operações com intervalo em km e/ou meses e custo
+  estimado. Com as idas à oficina registadas (data, km, operações, custo, movimento do extrato) a app calcula o próximo
+  marco de cada operação, estima quando lá chegas pelos km/dia e avisa quando é preciso ir à oficina.
 - **v0.33.0 — Viatura da empresa.** Um carro pode ter o uso «Viatura da empresa»: não conta no património
   (sem valor, dívida nem avaliação) e serve só para lhe alocar o combustível — pelos textos do extrato (ex.: cartão
   de frota) e, sendo «por omissão», todo o Transportes › Combustível do período em que a usas, antes do carro próprio.

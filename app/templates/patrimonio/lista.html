@@ -11,7 +11,12 @@
         {% if b.omissao %}<span class="etiqueta" title="Fica com as despesas de {{ 'Casa' if tipo == 'casa' else 'Transportes' }} que nenhum padrão atribuiu">por omissão</span>{% endif %}
         <br><span class="nota">{% if tipo == 'casa' %}{{ 'T%d' % b.tipologia if b.tipologia is not none }}{{ ' · %d m²' % b.area_m2 if b.area_m2 }}{{ ' · ' ~ b.localizacao if b.localizacao }}
           {% else %}{{ [b.marca, b.modelo] | select | join(' ') }}{{ ' · %d' % b.ano if b.ano }}{{ ' · %s km' % '{:,}'.format(b.km).replace(',', ' ') if b.km is not none }}{% endif %}</span></td>
-      <td>{% if b.vendido %}<span class="etiqueta">vendido {{ b.data_venda | data }}</span>{% else %}{{ b.uso_rotulo }}{% endif %}</td>
+      <td>{% if b.vendido %}<span class="etiqueta">vendido {{ b.data_venda | data }}</span>{% else %}{{ b.uso_rotulo }}{% endif %}
+        {% set mr = l.manutencao %}{% if mr %}
+        {% if mr.precisa_oficina %}<br><a class="etiqueta etiqueta-erro" href="/patrimonio/{{ b.id }}#manutencao">oficina: {{ mr.atraso | length }} em atraso</a>
+        {% elif mr.breve %}<br><a class="etiqueta etiqueta-cor" href="/patrimonio/{{ b.id }}#manutencao">oficina em breve</a>{% endif %}
+        {% if mr.lembrar_km %}<br><a class="etiqueta" href="/patrimonio/{{ b.id }}#km">registar km</a>{% endif %}
+        {% endif %}</td>
       <td class="num">{{ l.valor | eur if l.valor is not none else '—' }}
         {% if l.variacao is not none %}<br><span class="nota {{ 'pos' if l.variacao > 0 else 'neg' if l.variacao < 0 }}">{{ '+' if l.variacao > 0 }}{{ l.variacao | eur }} vs. compra</span>{% endif %}</td>
       <td class="num">{{ l.divida | eur if l.divida else '—' }}</td>
@@ -45,6 +50,14 @@
     <span class="nota">desde {{ r.desde | data }}</span></div>
 </section>
 
+{% if r.oficina %}
+<div class="aviso aviso-alerta">Precisa de ir à oficina: {% for l in r.oficina %}<a href="/patrimonio/{{ l.bem.id }}#manutencao">{{ l.bem.nome }}</a>
+  ({{ l.manutencao.atraso | map(attribute='item.item') | join(', ') }}){{ '; ' if not loop.last }}{% endfor %}.</div>
+{% endif %}
+{% if r.ler_km %}
+<div class="aviso">Regista os quilómetros de {% for l in r.ler_km %}<a href="/patrimonio/{{ l.bem.id }}#km">{{ l.bem.nome }}</a>{{ ', ' if not loop.last }}{% endfor %}
+  — a última leitura tem mais de um mês (ou ainda não há nenhuma).</div>
+{% endif %}
 {% if r.pendentes %}
 <div class="aviso aviso-alerta">Revisão do valor em atraso: {% for l in r.pendentes %}<a href="/patrimonio/{{ l.bem.id }}">{{ l.bem.nome }}</a>{{ ', ' if not loop.last }}{% endfor %}.
   {% if ia_disponivel %}A revisão automática corre uma vez por dia; podes também pedir já na página de cada bem.{% else %}Configura a chave da Claude API para a revisão automática, ou indica o valor à mão.{% endif %}</div>

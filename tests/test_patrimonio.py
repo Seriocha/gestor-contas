@@ -195,3 +195,77 @@ def test_viatura_da_empresa_so_combustivel(admin, app):
     p = admin.get(f"/patrimonio/{emp}").text
     assert "Combustível em 12 meses" in p and "Histórico do valor" not in p
     assert "+ Viatura da empresa" in admin.get("/patrimonio?entidade=1").text
+
+
+PLANO = {"itens": [
+    {"item": "Óleo e filtro de óleo", "intervalo_km": 15000, "intervalo_meses": 12, "custo_min": 120, "custo_max": 180},
+    {"item": "Correia de distribuição", "intervalo_km": 120000, "intervalo_meses": 60, "custo_min": 450, "custo_max": 700},
+    {"item": "Inspeção periódica", "intervalo_km": None, "intervalo_meses": 24},
+    {"item": "Sem intervalo", "intervalo_km": None, "intervalo_meses": None}],
+    "notas": "Motor 1.6 TDI com correia."}
+
+
+def test_km_plano_e_oficina(admin, app, monkeypatch):
+    from app import manutencao as mt
+    from app.models import Manutencao
+    bid = _criar(admin, "carro", data_aquisicao="2019-03-01", km="80 000")
+    enviados = []
+
+    def falso(sistema, mensagem, ferramentas=None, modelo_ia=None):
+        enviados.append(mensagem)
+        return json.dumps(PLANO)
+    monkeypatch.setattr(ia, "disponivel", lambda: True)
+    monkeypatch.setattr(ia, "_chamar", falso)
+    with app.state.SessionLocal() as db:
+        b = db.get(Bem, bid)
+        assert [r.km for r in b.registos_km] == [80000]          # os km da ficha entram como leitura
+        b.registos_km[0].data = date(2026, 6, 1)
+        mt.registar_km(db, b, date(2026, 8, 30), 83000)         # 3000 km em 90 dias
+        with pytest.raises(ValueError):
+            mt.registar_km(db, b, date(2026, 9, 1), 82000)      # não anda para trás
+        assert round(mt.km_por_dia(b), 2) == 33.33
+        assert mt.km_estimados(b, HOJE) == 83000 + round(3000 / 90 * 48)
+        assert mt.gerar_plano(db, b, HOJE) == 3                 # «Sem intervalo» é ignorado
+        db.commit()
+        assert "Volkswagen Golf" in enviados[0] and "Ano de fabrico: 2019" in enviados[0] and "Golf\n" not in enviados[0][:5]
+        e = {x.item.item: x for x in mt.estado_itens(b, HOJE)}
+        oleo = e["Óleo e filtro de óleo"]                     # nunca registado: desde 0 km / 03-2019
+        assert oleo.sem_registo and oleo.estado == "em atraso" and oleo.prox_km == 15000
+        assert e["Correia de distribuição"].estado == "em atraso"   # 60 meses desde 2019
+        assert mt.resumo(b, HOJE).precisa_oficina and mt.lembrar_km(b, HOJE)     # última leitura há 48 dias
+    # ida à oficina: óleo feito em setembro aos 83 500 km
+    _post(admin, f"/patrimonio/{bid}", f"/patrimonio/{bid}/oficina", data="2026-09-20", km="83 500",
+          itens=["Óleo e filtro de óleo", "Inválido"], outro="Pastilhas", custo="150,00")
+    with app.state.SessionLocal() as db:
+        b = db.get(Bem, bid)
+        m = db.scalar(select(Manutencao))
+        assert m.lista_itens == ["Óleo e filtro de óleo", "Pastilhas"] and m.custo == 15000 and b.km == 83500
+        oleo = {x.item.item: x for x in mt.estado_itens(b, HOJE)}["Óleo e filtro de óleo"]
+        assert (oleo.estado, oleo.prox_km, oleo.prox_data) == ("ok", 98500, date(2027, 9, 20))
+        # atualizar o plano mantém os itens (pelo nome) e o histórico continua a contar
+        ids = {it.item: it.id for it in b.plano}
+        mt.gerar_plano(db, b, HOJE)
+        db.commit()
+        assert {it.item: it.id for it in b.plano} == ids
+    p = admin.get(f"/patrimonio/{bid}").text
+    assert "Manutenção e quilómetros" in p and "precisa já" in p and "Correia de distribuição" in p and "Pastilhas" in p
+    lista = admin.get("/patrimonio?entidade=1").text
+    assert "Precisa de ir à oficina" in lista and "oficina: 2 em atraso" in lista
+
+
+def test_lembrar_km_e_sem_plano(admin, app, monkeypatch):
+    from app import manutencao as mt
+    bid = _criar(admin, "carro", marca="", modelo="")
+    monkeypatch.setattr(ia, "disponivel", lambda: True)
+    _post(admin, f"/patrimonio/{bid}", f"/patrimonio/{bid}/plano")
+    assert "indica: marca, modelo" in admin.get(f"/patrimonio/{bid}").text
+    with app.state.SessionLocal() as db:
+        b = db.get(Bem, bid)
+        b.registos_km[0].data = date(2026, 8, 1)
+        db.commit()
+        assert mt.lembrar_km(b, HOJE)
+    r = _post(admin, f"/patrimonio/{bid}", f"/patrimonio/{bid}/km", data="2026-10-10", km="86000")
+    assert r.status_code == 303
+    with app.state.SessionLocal() as db:
+        b = db.get(Bem, bid)
+        assert b.km == 86000 and not mt.lembrar_km(b, HOJE)

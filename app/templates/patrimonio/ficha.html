@@ -99,6 +99,8 @@
 </section>
 {% endif %}
 
+{% if mr %}{% include "patrimonio/_manutencao.html" %}{% endif %}
+
 <section class="cartao">
   <h2>{{ 'Combustível' if b.empresa else 'Despesas e receitas' }} <span class="nota">· desde {{ ini | data }}</span></h2>
   {% if c.movimentos %}
