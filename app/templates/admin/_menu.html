@@ -1,5 +1,6 @@
 <nav class="separadores">
   <a href="/admin/utilizadores" {% if request.url.path.startswith('/admin/utilizadores') %}class="ativo"{% endif %}>Utilizadores</a>
   <a href="/admin/entidades" {% if request.url.path.startswith('/admin/entidades') %}class="ativo"{% endif %}>Entidades</a>
+  <a href="/admin/consolidar" {% if request.url.path.startswith('/admin/consolidar') %}class="ativo"{% endif %}>Consolidação</a>
   <a href="/admin/importadores" {% if request.url.path.startswith('/admin/importadores') %}class="ativo"{% endif %}>Importadores</a>
 </nav>

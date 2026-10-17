@@ -117,3 +117,27 @@ def test_ligar_quando_o_banco_chega_depois(admin, app):
         assert db.scalar(select(ViaVerde)).movimento.data_mov == date(2026, 10, 31)
     p = admin.get("/patrimonio?entidade=1").text
     assert "sem carro com esta matrícula" in p
+
+
+def test_consolidacao_depois_de_registar_matriculas(admin, app):
+    from app import consolidacao
+    from app.models import Entidade
+    _upload(admin, [("set.csv", _csv(SETEMBRO))])                        # ainda sem carros
+    _post(admin, "/admin/consolidar", "/admin/consolidar")               # sem passos: erro, nada muda
+    p = admin.get("/admin/consolidar").text
+    assert "Consolidação de movimentos" in p and "AA-11-BB" in p and "CC-22-DD" in p
+    _mov(admin, 1, "2026-10-06", "7,77", "Via Verde", sentido="saida")   # débito que ainda não tem linhas
+    _upload(admin, [("out.csv", _csv([("AA-11-BB", "", "Ponte", "20-09-2026", "7,77", "Portagens", "30-09-2026")], "10"))])
+    golf = _carro(admin, "Golf", "AA-11-BB")
+    with app.state.SessionLocal() as db:
+        d = consolidacao.diagnostico(db, db.get(Entidade, 1))
+        assert d.vv_sem_carro == ["CC22DD"] and d.vv_por_ligar == 0
+    f = admin.get("/admin/consolidar")
+    r = admin.post("/admin/consolidar", data={"csrf": _csrf(f), "passos": list(consolidacao.PASSOS), "entidades": ["1", "2"]},
+                   follow_redirects=False)
+    assert r.status_code == 303
+    p = admin.get("/admin/consolidar").text
+    assert "Consolidação feita" in p and "via verde" in p.lower()
+    with app.state.SessionLocal() as db:
+        c = pt.custos(db, db.get(Bem, golf), date(2025, 11, 1), HOJE)
+        assert c.despesas >= 1060 + 340 + 777                          # a parte do Golf em cada débito

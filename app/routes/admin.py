@@ -209,6 +209,37 @@ async def gravar_preferencias(request: Request, admin: Utilizador = Depends(exig
     return RedirectResponse("/admin/utilizadores#preferencias", status_code=303)
 
 
+@router.get("/consolidar")
+def consolidar_form(request: Request, admin: Utilizador = Depends(exigir_admin), db: Session = Depends(get_db)):
+    from .. import consolidacao
+    return render(request, "admin/consolidar.html", passos=consolidacao.PASSOS,
+                  diagnosticos=[consolidacao.diagnostico(db, e) for e in _entidades(db)],
+                  resultado=request.session.pop("consolidacao", None))
+
+
+@router.post("/consolidar")
+async def consolidar(request: Request, admin: Utilizador = Depends(exigir_admin), db: Session = Depends(get_db)):
+    """Backup e depois os passos escolhidos, em todas as entidades escolhidas."""
+    from .. import consolidacao
+    form = await ler_form(request)
+    passos = {p for p in form.getlist("passos") if p in consolidacao.PASSOS}
+    ids = {int(x) for x in form.getlist("entidades") if str(x).isdigit()}
+    entidades = [e for e in _entidades(db) if e.id in ids]
+    if not passos or not entidades:
+        flash(request, "Escolhe pelo menos um passo e uma entidade.", "erro")
+        return RedirectResponse("/admin/consolidar", status_code=303)
+    destino = fazer_backup(request.app.state.defs)
+    resultado = []
+    for e in entidades:
+        r = consolidacao.consolidar(db, e, passos)
+        resultado.append({"entidade": e.nome, "passos": {k: r[k] for k in consolidacao.PASSOS if k in r}})
+    auditar(db, admin, "consolidacao", f"{sorted(passos)} em {[e.nome for e in entidades]} (backup {destino.name})")
+    db.commit()
+    request.session["consolidacao"] = resultado
+    flash(request, f"Consolidação feita (backup antes: {destino.name}).")
+    return RedirectResponse("/admin/consolidar", status_code=303)
+
+
 @router.post("/backup")
 async def backup_agora(request: Request, admin: Utilizador = Depends(exigir_admin),
                        db: Session = Depends(get_db)):

@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block titulo %}Consolidação{% endblock %}
+{% block conteudo %}
+<h1>Administração</h1>
+{% include "admin/_menu.html" %}
+<section class="cartao">
+  <h2>Consolidação de movimentos</h2>
+  <p class="nota">Cada importação já liga e atribui os movimentos, mas só com o que existia nesse momento. Quando registas algo depois —
+    a matrícula de um carro, um carro ou casa novos, uma regra, o extrato do banco de um mês antigo — corre aqui os passos para os
+    dados já gravados passarem a contar. Os passos podem correr as vezes que quiseres e nunca mexem no que foi tratado à mão.
+    Antes de começar é feito um backup.</p>
+
+  {% if resultado %}
+  <div class="aviso aviso-ok">
+    {% for r in resultado %}<strong>{{ r.entidade }}:</strong>
+      {% for k, n in r.passos.items() %}{{ passos[k][0] | lower }} {{ n }}{{ ', ' if not loop.last }}{% endfor %}{{ '; ' if not loop.last else '.' }}
+    {% endfor %}
+    <br><span class="nota">Contagens: movimentos categorizados, pagamentos e transferências ligados, movimentos com bem alterado, grupos Via Verde ligados, contas recalculadas.</span>
+  </div>
+  {% endif %}
+
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th>Entidade</th><th class="num">Sem categoria</th><th class="num">Pagamentos de cartão por ligar</th>
+      <th class="num">Via Verde sem débito</th><th>Matrículas Via Verde sem carro</th></tr></thead>
+    {% for d in diagnosticos %}
+    <tr><td><strong>{{ d.entidade.nome }}</strong></td><td class="num">{{ d.sem_categoria }}</td><td class="num">{{ d.cartoes_por_ligar }}</td>
+      <td class="num">{{ d.vv_por_ligar }}{% if d.vv_por_ligar %}<br><span class="nota">{{ d.vv_total_por_ligar | eur }}</span>{% endif %}</td>
+      <td>{% for m in d.vv_sem_carro %}<span class="etiqueta etiqueta-erro">{{ m[:2] ~ '-' ~ m[2:4] ~ '-' ~ m[4:] if m | length == 6 else m }}</span> {% else %}<span class="nota">—</span>{% endfor %}
+        {% if d.vv_sem_carro %}<br><a class="nota" href="/patrimonio?entidade={{ d.entidade.id }}">indica a matrícula no carro</a>{% endif %}</td></tr>
+    {% endfor %}
+  </table></div>
+  <p class="nota">Os registos Via Verde sem débito ligam-se quando houver no banco o débito do mesmo valor (extrato desse mês importado).</p>
+
+  <form method="post" class="formulario">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <fieldset><legend>Passos</legend>
+      {% for k, (nome, desc) in passos.items() %}
+      <label class="opcao"><input type="checkbox" name="passos" value="{{ k }}" checked> <span><strong>{{ nome }}</strong> — <span class="nota">{{ desc }}</span></span></label>
+      {% endfor %}
+    </fieldset>
+    <fieldset><legend>Entidades</legend>
+      {% for d in diagnosticos %}<label class="opcao"><input type="checkbox" name="entidades" value="{{ d.entidade.id }}" checked> {{ d.entidade.nome }}</label>{% endfor %}
+    </fieldset>
+    <div class="acoes-form"><button class="primario" onclick="this.disabled=true;this.textContent='A consolidar…';this.form.submit()">Consolidar agora</button></div>
+  </form>
+</section>
+{% endblock %}
