@@ -39,14 +39,17 @@ def disponivel() -> bool:
     return bool(chave_api())
 
 
-def _chamar(sistema: str, mensagem: str) -> str:
-    """Uma chamada à Messages API; devolve o texto da resposta."""
-    corpo = json.dumps({"model": modelo(), "max_tokens": 8000, "system": sistema,
-                        "messages": [{"role": "user", "content": mensagem}]}).encode()
+def _chamar(sistema: str, mensagem: str, ferramentas: list | None = None, modelo_ia: str | None = None) -> str:
+    """Uma chamada à Messages API; devolve o texto da resposta (junta os blocos de texto)."""
+    pedido_json = {"model": modelo_ia or modelo(), "max_tokens": 8000, "system": sistema,
+                   "messages": [{"role": "user", "content": mensagem}]}
+    if ferramentas:
+        pedido_json["tools"] = ferramentas
+    corpo = json.dumps(pedido_json).encode()
     pedido = urllib.request.Request(URL, data=corpo, method="POST", headers={
         "x-api-key": chave_api() or "", "anthropic-version": "2023-06-01", "content-type": "application/json"})
     try:
-        with urllib.request.urlopen(pedido, timeout=90) as r:
+        with urllib.request.urlopen(pedido, timeout=180 if ferramentas else 90) as r:
             dados = json.loads(r.read().decode())
     except urllib.error.HTTPError as e:
         detalhe = e.read().decode(errors="ignore")[:300]

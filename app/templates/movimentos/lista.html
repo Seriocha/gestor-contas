@@ -254,6 +254,12 @@
           {% for e in etiquetas %}<option value="etiqueta_menos:{{ e.id }}">− {{ e.nome }}</option>{% endfor %}
         </optgroup>
         {% endif %}
+        {% if bens %}
+        <optgroup label="Património (casa / carro)">
+          {% for b in bens %}<option value="bem:{{ b.id }}">→ {{ b.nome }}</option>{% endfor %}
+          <option value="bem:">Retirar o bem</option>
+        </optgroup>
+        {% endif %}
         <optgroup label="Relatórios">
           <option value="transferencia">Marcar como transferência entre contas</option>
           <option value="nao_transferencia">Não é transferência</option>
@@ -317,6 +323,7 @@
           {% if (m.hash_dedup or '').startswith('retif:') %}<span class="etiqueta etiqueta-cor">retificação</span>{% endif %}
           {% if naturezas_inv.get(m.id) %}{% set n = naturezas_inv[m.id] %}<span class="etiqueta natureza natureza-{{ n }}">{{ {'aplicacao': 'aplicação', 'resgate': 'resgate', 'ganho': 'ganho', 'perda': 'perda', 'partida': 'valor de partida'}[n] }}</span>{% endif %}
           {% for e in m.etiquetas %}<span class="etiqueta etiqueta-cor">#{{ e.nome }}</span>{% endfor %}
+          {% if m.bem %}<a class="etiqueta etiqueta-bem" href="/patrimonio/{{ m.bem.id }}">{{ '⌂' if m.bem.tipo == 'casa' else '🚗' }} {{ m.bem.nome }}</a>{% endif %}
           {% if m.notas %}<br><span class="nota">{{ m.notas }}</span>{% endif %}
         </td>
         <td class="c-cat">

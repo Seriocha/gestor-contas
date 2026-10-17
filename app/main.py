@@ -14,15 +14,16 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.sessions import SessionMiddleware
 
 from . import backup, formatos, preferencias, tarefas
+from . import patrimonio as pt
 from .config import BASE_DIR, carregar_definicoes
 from .db import criar_engine, url_sqlite
 from .deps import NaoAutenticado, render
 from .routes import (admin, auth, categorias, contas, emprestimos, importar, movimentos, painel, pareaveis, previsoes,
-                     regras, relatorios, subscricoes, viagens)
+                     patrimonio, regras, relatorios, subscricoes, viagens)
 from .seed import semear
 
 APP_DIR = Path(__file__).resolve().parent
-VERSAO = "0.31.0"
+VERSAO = "0.32.0"
 
 
 def aplicar_migracoes(db_path: Path) -> None:
@@ -43,10 +44,12 @@ def create_app(data_dir: Path | None = None, backups_automaticos: bool = True) -
 
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI):
-        tarefa = asyncio.create_task(backup.ciclo_backups(defs)) if backups_automaticos else None
+        tarefas_fundo = [asyncio.create_task(backup.ciclo_backups(defs)),
+                         asyncio.create_task(pt.ciclo_revisoes(SessionLocal, lambda: app.state.prefs))] \
+            if backups_automaticos else []
         yield
-        if tarefa:
-            tarefa.cancel()
+        for t in tarefas_fundo:
+            t.cancel()
 
     app = FastAPI(title="Gestor de Contas", version=VERSAO, lifespan=lifespan, docs_url=None, redoc_url=None)
     app.state.defs = defs
@@ -75,7 +78,7 @@ def create_app(data_dir: Path | None = None, backups_automaticos: bool = True) -
 
     for r in (auth.router, painel.router, movimentos.router, contas.router, importar.router, categorias.router,
               regras.router, relatorios.router, emprestimos.router, previsoes.router, pareaveis.router, viagens.router,
-              subscricoes.router, admin.router):
+              subscricoes.router, patrimonio.router, admin.router):
         app.include_router(r)
 
     @app.get("/healthz", include_in_schema=False)

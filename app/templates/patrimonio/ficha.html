@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block titulo %}{{ b.nome }}{% endblock %}
+{% block conteudo %}
+<div class="titulo-acoes">
+  <h1>{{ b.nome }} <span class="nota">· {{ b.uso_rotulo }}</span></h1>
+  <div class="acoes-form">
+    <a href="/patrimonio?entidade={{ b.entidade_id }}">‹ Património</a>
+    {% if pode_editar %}<a class="botao" href="/patrimonio/{{ b.id }}/editar">Editar</a>{% endif %}
+  </div>
+</div>
+<p class="nota">{% if b.tipo == 'casa' %}{{ 'T%d' % b.tipologia if b.tipologia is not none }}{{ ' · %d m²' % b.area_m2 if b.area_m2 }}{{ ' · ' ~ b.localizacao if b.localizacao }}{{ ' · construída em %d' % b.ano if b.ano }}
+  {% else %}{{ [b.marca, b.modelo] | select | join(' ') }}{{ ' · %d' % b.ano if b.ano }}{{ ' · %s km' % '{:,}'.format(b.km).replace(',', ' ') if b.km is not none }}{{ ' · ' ~ combustiveis[b.combustivel] if b.combustivel }}{% endif %}
+  {{ ' · ' ~ estados[b.estado] if b.estado }}{{ ' · ' ~ b.extras if b.extras }}</p>
+{% if b.notas %}<p class="nota">{{ b.notas }}</p>{% endif %}
+
+<section class="kpi-grelha">
+  <div class="cartao kpi"><span class="nota">Valor atual</span><strong>{{ valor | eur if valor is not none else '—' }}</strong>
+    {% set a = b.avaliacoes[-1] if b.avaliacoes else none %}
+    <span class="nota">{% if b.vendido %}vendido em {{ b.data_venda | data }}{% if b.valor_venda %} por {{ b.valor_venda | eur }}{% endif %}
+      {% elif a %}{{ 'IA' if a.fonte == 'ia' else 'à mão' }} em {{ a.data | data }}{% elif b.valor_aquisicao %}valor de compra{% else %}sem avaliação{% endif %}</span></div>
+  <div class="cartao kpi"><span class="nota">Face à compra</span>
+    {% if valor is not none and b.valor_aquisicao and not b.vendido %}{% set dif = valor - b.valor_aquisicao %}
+    <strong class="{{ 'pos' if dif > 0 else 'neg' if dif < 0 }}">{{ '+' if dif > 0 }}{{ dif | eur }}</strong>
+    <span class="nota">compra {{ b.valor_aquisicao | eur }}{{ ' em ' ~ (b.data_aquisicao | data) if b.data_aquisicao }}</span>
+    {% else %}<strong>—</strong>{% endif %}</div>
+  <div class="cartao kpi"><span class="nota">Dívida</span><strong>{{ divida | eur if divida else '—' }}</strong>
+    {% if b.emprestimo_conta %}<span class="nota"><a href="/contas/{{ b.emprestimo_conta.id }}/movimentos">{{ b.emprestimo_conta.nome }}</a></span>{% endif %}</div>
+  <div class="cartao kpi"><span class="nota">Capital próprio</span><strong>{{ ((valor or 0) - divida) | eur }}</strong></div>
+  <div class="cartao kpi"><span class="nota">Custos em 12 meses</span><strong>{{ c.liquido | eur }}</strong>
+    <span class="nota">{{ (c.liquido / 12) | round | int | eur }}/mês{% if c.receitas %} · despesas {{ c.despesas | eur }}, recebido {{ c.receitas | eur }}{% endif %}</span></div>
+  <div class="cartao kpi"><span class="nota">Próxima revisão</span>
+    <strong>{% if b.vendido %}—{% elif pendente %}agora{% elif proxima %}{{ proxima | data }}{% else %}só à mão{% endif %}</strong>
+    <span class="nota">{% if b.revisao_meses and not b.vendido %}a cada {{ b.revisao_meses }} meses{% endif %}</span></div>
+</section>
+
+<section class="cartao" id="avaliacoes">
+  <div class="cartao-cabecalho"><h2>Histórico do valor</h2></div>
+  {% if (b.avaliacoes | length) + (1 if b.valor_aquisicao and b.data_aquisicao else 0) > 1 %}
+  <div class="grafico grafico-medio"><canvas data-grafico="bem" aria-label="Evolução do valor estimado" role="img"></canvas></div>
+  {% endif %}
+  {% if b.avaliacoes %}
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th>Data</th><th class="num">Valor</th><th class="num">Intervalo</th><th>Fonte</th><th>Justificação</th><th></th></tr></thead>
+    <tbody>
+    {% for a in b.avaliacoes | reverse %}
+    <tr>
+      <td class="sem-quebra">{{ a.data | data }}</td>
+      <td class="num"><strong>{{ a.valor | eur }}</strong></td>
+      <td class="num nota">{% if a.minimo or a.maximo %}{{ a.minimo | eur if a.minimo else '?' }} – {{ a.maximo | eur if a.maximo else '?' }}{% else %}—{% endif %}</td>
+      <td>{% if a.fonte == 'ia' %}<span class="etiqueta etiqueta-cor" title="{{ a.modelo or '' }}">IA</span>{% if a.confianca is not none %} <span class="nota">confiança {{ (a.confianca * 100) | round | int }}%</span>{% endif %}
+        {% else %}<span class="etiqueta">à mão</span>{% endif %}</td>
+      <td class="nota">{{ a.justificacao or '' }}
+        {% if a.referencias %}<br>{% for url in a.referencias.splitlines() %}<a href="{{ url }}" target="_blank" rel="noopener noreferrer">fonte {{ loop.index }}</a>{{ ' · ' if not loop.last }}{% endfor %}{% endif %}</td>
+      <td>{% if pode_editar %}<form method="post" action="/patrimonio/{{ b.id }}/avaliacoes/{{ a.id }}/apagar" onsubmit="return confirm('Apagar esta avaliação?')">
+        <input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="ligacao">Apagar</button></form>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<p class="vazio sem-margem">Ainda sem avaliações.</p>{% endif %}
+
+  {% if pode_editar and not b.vendido %}
+  <div class="pat-acoes">
+    <form method="post" action="/patrimonio/{{ b.id }}/avaliar" class="formulario cartao-interno">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
+      <h3>Avaliar com IA</h3>
+      {% if not ia_disponivel %}<p class="nota">A chave da Claude API não está configurada (ficheiro ia.env na NAS).</p>
+      {% elif falta %}<p class="nota">Para avaliar, indica: {{ falta | join(', ') }} (Editar).</p>
+      {% else %}
+      <p class="nota">É enviado só isto (sem nomes, contas nem preço de compra), mais as avaliações anteriores:</p>
+      <pre class="nota caixa-envio">{{ descricao_ia }}</pre>
+      <p class="nota">A IA pesquisa preços recentes na web (quando a conta da API o permite) e devolve valor, intervalo e fontes.</p>
+      <button class="primario" onclick="this.disabled=true;this.textContent='A avaliar… (até 1 minuto)';this.form.submit()">Avaliar agora</button>
+      {% endif %}
+    </form>
+    <form method="post" action="/patrimonio/{{ b.id }}/avaliacao" class="formulario cartao-interno">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
+      <h3>Indicar o valor à mão</h3>
+      <div class="linha">
+        <label>Data <input type="date" name="data" value="{{ hoje.isoformat() }}"></label>
+        <label>Valor <input name="valor" inputmode="decimal" required placeholder="0,00"></label>
+      </div>
+      <label>Nota <input name="nota" maxlength="500" placeholder="ex.: avaliação do banco, proposta recebida"></label>
+      <button>Registar</button>
+    </form>
+  </div>
+  {% endif %}
+</section>
+
+<section class="cartao">
+  <h2>Despesas e receitas <span class="nota">· desde {{ ini | data }}</span></h2>
+  {% if c.movimentos %}
+  <div class="linha-dupla">
+    <div>
+      <h3>Por categoria</h3>
+      <table class="tabela compacta">
+        {% for nome, cor, total in c.por_categoria %}
+        <tr><td><span class="ponto" style="background: {{ cor }}"></span> {{ nome }}</td><td class="num">{{ total | eur }}</td></tr>
+        {% endfor %}
+      </table>
+    </div>
+    <div>
+      <h3>Por mês</h3>
+      <table class="tabela compacta">
+        {% for rotulo, total in c.por_mes %}<tr><td>{{ rotulo }}</td><td class="num">{{ total | eur }}</td></tr>{% endfor %}
+      </table>
+    </div>
+  </div>
+  <h3>Movimentos</h3>
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th>Data</th><th>Conta</th><th>Descrição</th><th>Categoria</th><th class="num">Montante</th></tr></thead>
+    {% for m in c.movimentos[:50] %}
+    <tr><td class="sem-quebra">{{ m.data_mov | data }}</td><td class="nota">{{ m.conta.nome }}</td>
+      <td><a href="/movimentos/{{ m.id }}">{{ m.descricao_original }}</a></td>
+      <td class="nota">{{ m.categoria.nome_completo if m.categoria else '—' }}</td>
+      <td class="num {{ 'neg' if m.montante < 0 else 'pos' }}">{{ m.montante | eur }}</td></tr>
+    {% endfor %}
+  </table></div>
+  {% if c.movimentos | length > 50 %}<p class="nota">Mostrados os 50 mais recentes de {{ c.movimentos | length }}.</p>{% endif %}
+  {% else %}
+  <p class="vazio sem-margem">Nenhum movimento ligado a este bem nos últimos 12 meses.
+    {% if not b.lista_padroes and not b.omissao %}Indica os textos do extrato ou marca-o «por omissão» (Editar).{% endif %}</p>
+  {% endif %}
+  {% if b.lista_padroes %}<p class="nota">Textos do extrato: {{ b.lista_padroes | join(' · ') }}{{ ' · por omissão' if b.omissao }}</p>
+  {% elif b.omissao %}<p class="nota">Por omissão: fica com as despesas de {{ 'Casa' if b.tipo == 'casa' else 'Transportes' }} sem outro bem.</p>{% endif %}
+</section>
+{% endblock %}
+
+{% block scripts %}
+{% if (b.avaliacoes | length) + (1 if b.valor_aquisicao and b.data_aquisicao else 0) > 1 %}
+<script type="application/json" id="dados-graficos">{{ graficos | tojson }}</script>
+<script src="/static/vendor/chart.umd.min.js?v={{ versao }}"></script>
+<script src="/static/graficos.js?v={{ versao }}"></script>
+{% endif %}
+{% endblock %}

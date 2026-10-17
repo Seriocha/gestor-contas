@@ -38,6 +38,12 @@
     <p class="nota sem-margem">Desligado, aparece só o país e os últimos 4 dígitos (PT50 •••• 1234). Vale para todos os utilizadores.
       Os NIB gravados antes da v0.11 foram guardados já truncados: volta a escrevê-los em Contas › Editar para os veres completos.</p>
     <fieldset>
+      <legend>Património</legend>
+      <label class="opcao"><input type="checkbox" name="avaliacao_automatica" value="1" {% if prefs.avaliacao_automatica == '1' %}checked{% endif %}>
+        Rever sozinho o valor das casas e carros (IA) quando passa o prazo de revisão de cada um</label>
+      <p class="nota sem-margem">Corre uma vez por dia e só com a chave da Claude API configurada (ia.env).</p>
+    </fieldset>
+    <fieldset>
       <legend>Lembrete das tarefas de importação</legend>
       <label class="opcao"><input type="checkbox" name="tarefas_ativas" value="1" {% if prefs.tarefas_ativas == '1' %}checked{% endif %}>
         Mostrar «Tarefas do mês» no menu e o aviso no painel</label>

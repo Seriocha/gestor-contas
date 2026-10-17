@@ -571,3 +571,13 @@ button.pequeno { min-height: 32px; padding: .3rem .8rem; font-size: .85rem; }
 .perigo-texto { color: var(--neg); }
 
 .etiqueta-erro { background: var(--erro-fundo); color: var(--erro-texto); border-color: transparent; }
+
+/* ------------------------------------------------------------------ património */
+.pat-acoes { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 1rem; margin-top: 1rem; }
+.cartao-interno { border: 1px solid var(--linha); border-radius: var(--raio-m); padding: .9rem 1rem; max-width: none; gap: .6rem; }
+.cartao-interno h3 { margin: 0; }
+.cartao-interno p { margin: 0; }
+.caixa-envio { white-space: pre-wrap; background: var(--superficie-2); padding: .6rem .8rem; border-radius: var(--raio-p); margin: 0; font-family: inherit; }
+.linha-dupla { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 1.5rem; }
+.ponto { display: inline-block; width: .6rem; height: .6rem; border-radius: 50%; margin-right: .2rem; }
+.etiqueta-bem { background: var(--destaque-suave); border-color: transparent; }

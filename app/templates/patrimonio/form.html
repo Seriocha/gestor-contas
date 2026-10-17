@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block titulo %}{{ 'Editar ' ~ bem.nome if bem else ('Nova casa' if tipo == 'casa' else 'Novo carro') }}{% endblock %}
+{% block conteudo %}
+<h1>{{ 'Editar «' ~ bem.nome ~ '»' if bem else ('Nova casa' if tipo == 'casa' else 'Novo carro') }} <span class="nota">· {{ entidade.nome }}</span></h1>
+{% if erros %}<div class="aviso aviso-erro"><ul>{% for e in erros %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
+<form method="post" class="formulario" action="{{ '/patrimonio/' ~ bem.id ~ '/editar' if bem else '/patrimonio/novo?entidade=' ~ entidade.id ~ '&tipo=' ~ tipo }}">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  <div class="linha">
+    <label>Nome <input name="nome" value="{{ v.nome or '' }}" required maxlength="100"
+      placeholder="{{ 'ex.: Casa de Lisboa, Casa da praia' if tipo == 'casa' else 'ex.: Golf, carro da Ana' }}"></label>
+    <label>Uso
+      <select name="uso">{% for k, rotulo in usos.items() %}<option value="{{ k }}" {% if v.uso == k %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}</select></label>
+  </div>
+
+  <h2>Características <span class="nota">· usadas na avaliação por IA</span></h2>
+  {% if tipo == 'casa' %}
+  <div class="linha">
+    <label>Tipologia (assoalhadas) <input name="tipologia" value="{{ v.tipologia or '' }}" maxlength="3" placeholder="ex.: T3 ou 3"></label>
+    <label>Área útil (m²) <input name="area_m2" value="{{ v.area_m2 or '' }}" inputmode="numeric"></label>
+    <label>Ano de construção <input name="ano" value="{{ v.ano or '' }}" inputmode="numeric" maxlength="4"></label>
+  </div>
+  <label>Localização <input name="localizacao" value="{{ v.localizacao or '' }}" maxlength="200" placeholder="freguesia, concelho (ex.: Alvalade, Lisboa)"></label>
+  <p class="nota">Basta a freguesia e o concelho — não indiques a morada.</p>
+  <div class="linha">
+    <label>Estado
+      <select name="estado"><option value="">—</option>{% for k, rotulo in estados.items() %}<option value="{{ k }}" {% if v.estado == k %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}</select></label>
+    <label>Características <input name="extras" value="{{ v.extras or '' }}" maxlength="200" placeholder="ex.: moradia, garagem, piscina, vista mar, 3.º andar sem elevador"></label>
+  </div>
+  {% else %}
+  <div class="linha">
+    <label>Marca <input name="marca" value="{{ v.marca or '' }}" maxlength="60"></label>
+    <label>Modelo <input name="modelo" value="{{ v.modelo or '' }}" maxlength="60"></label>
+    <label>Ano <input name="ano" value="{{ v.ano or '' }}" inputmode="numeric" maxlength="4"></label>
+  </div>
+  <div class="linha">
+    <label>Quilómetros <input name="km" value="{{ v.km or '' }}" inputmode="numeric"></label>
+    <label>Combustível
+      <select name="combustivel"><option value="">—</option>{% for k, rotulo in combustiveis.items() %}<option value="{{ k }}" {% if v.combustivel == k %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}</select></label>
+    <label>Estado
+      <select name="estado"><option value="">—</option>{% for k, rotulo in estados.items() %}<option value="{{ k }}" {% if v.estado == k %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}</select></label>
+  </div>
+  <label>Versão / equipamento <input name="extras" value="{{ v.extras or '' }}" maxlength="200" placeholder="ex.: 1.6 TDI Highline, caixa automática"></label>
+  {% endif %}
+
+  <h2>Compra, dívida e venda</h2>
+  <div class="linha">
+    <label>Data de compra <input type="date" name="data_aquisicao" value="{{ v.data_aquisicao or '' }}"></label>
+    <label>Valor de compra <input name="valor_aquisicao" value="{{ v.valor_aquisicao or '' }}" inputmode="decimal" placeholder="0,00"></label>
+    {% if tipo == 'casa' or emprestimos %}
+    <label>Empréstimo associado
+      <select name="emprestimo_conta_id"><option value="">— nenhum —</option>
+        {% for c in emprestimos %}<option value="{{ c.id }}" {% if v.emprestimo_conta_id == c.id|string %}selected{% endif %}>{{ c.nome }}</option>{% endfor %}
+      </select></label>
+    {% endif %}
+  </div>
+  <div class="linha">
+    <label>Data de venda <input type="date" name="data_venda" value="{{ v.data_venda or '' }}"></label>
+    <label>Valor de venda <input name="valor_venda" value="{{ v.valor_venda or '' }}" inputmode="decimal" placeholder="0,00"></label>
+    <label>Rever o valor a cada (meses) <input type="number" name="revisao_meses" min="0" max="120" value="{{ v.revisao_meses or '0' }}"></label>
+  </div>
+  <p class="nota">O valor de compra é o ponto de partida do histórico e nunca é enviado à IA. Com revisão a cada N meses, a app pede uma nova
+    avaliação quando passa esse tempo (0 = só quando pedires ou indicares à mão).</p>
+
+  <h2>Despesas deste {{ 'imóvel' if tipo == 'casa' else 'carro' }}</h2>
+  <label>Textos do extrato <textarea name="padroes" rows="3" placeholder="um por linha, ex.: CONDOMINIO PRAIA&#10;EDP 1234567&#10;SEGURO MULTIRRISCOS">{{ v.padroes or '' }}</textarea></label>
+  <label class="opcao"><input type="checkbox" name="omissao" value="1" {% if v.omissao %}checked{% endif %}>
+    Por omissão: fica com as despesas de {{ 'Casa' if tipo == 'casa' else 'Transportes (sem transportes públicos)' }} que nenhum texto atribuiu</label>
+  <p class="nota">Os movimentos cuja descrição contém um destes textos ficam ligados a este bem (a partir da data de compra). Só um
+    {{ 'imóvel' if tipo == 'casa' else 'carro' }} pode ser «por omissão» — normalmente a habitação principal / o carro principal.</p>
+  <label>Notas <textarea name="notas" rows="2">{{ v.notas or '' }}</textarea></label>
+  <div class="acoes-form">
+    <button class="primario">Guardar</button>
+    <a href="{{ '/patrimonio/' ~ bem.id if bem else '/patrimonio?entidade=' ~ entidade.id }}">Cancelar</a>
+  </div>
+</form>
+{% if bem %}
+<form method="post" action="/patrimonio/{{ bem.id }}/apagar" onsubmit="return confirm('Apagar este bem e o histórico de avaliações? Os movimentos ficam, sem bem.')">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="perigo">Apagar</button>
+</form>
+{% endif %}
+{% endblock %}

@@ -209,12 +209,16 @@ class Movimento(Base):
     regra_id: Mapped[int | None] = mapped_column(ForeignKey("regra.id", ondelete="SET NULL"))
     # O outro lado de uma transferência (ex.: pagamento do cartão ↔ débito na conta pagadora).
     par_id: Mapped[int | None] = mapped_column(ForeignKey("movimento.id", ondelete="SET NULL"))
+    # Bem (casa, carro) a que a despesa/receita diz respeito: separa casa principal, de férias, cada carro…
+    bem_id: Mapped[int | None] = mapped_column(ForeignKey("bem.id", ondelete="SET NULL"), index=True)
+    bem_manual: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")  # escolhido à mão: a atribuição automática não mexe
 
     conta: Mapped[Conta] = relationship()
     par: Mapped["Movimento | None"] = relationship(remote_side="Movimento.id", foreign_keys=[par_id],
                                                    post_update=True)
     categoria: Mapped["Categoria | None"] = relationship()
     etiquetas: Mapped[list["Etiqueta"]] = relationship(secondary="movimento_etiqueta")
+    bem: Mapped["Bem | None"] = relationship(lazy="selectin")
 
 
 NATUREZAS = {"DESPESA": "Despesa", "RECEITA": "Receita"}
@@ -471,6 +475,94 @@ class SubscricaoIgnorada(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     entidade_id: Mapped[int] = mapped_column(ForeignKey("entidade.id", ondelete="CASCADE"))
     padrao: Mapped[str] = mapped_column(String(200))
+
+
+TIPOS_BEM = {"casa": "Casa", "carro": "Carro"}
+USOS_BEM = {
+    "casa": {"principal": "Habitação principal", "ferias": "Casa de férias", "arrendada": "Arrendada", "outra": "Outra"},
+    "carro": {"principal": "Carro principal", "secundario": "Segundo carro", "outro": "Outro"},
+}
+ESTADOS_BEM = {"novo": "Novo / como novo", "bom": "Bom estado", "usado": "Precisa de obras / desgaste",
+               "recuperar": "Para recuperar"}
+COMBUSTIVEIS = {"gasolina": "Gasolina", "gasoleo": "Gasóleo", "hibrido": "Híbrido", "hibrido_plugin": "Híbrido plug-in",
+                "eletrico": "Elétrico", "gpl": "GPL"}
+
+
+class Bem(Base):
+    """Património fora das contas: casas e carros, com atributos para avaliação e as despesas associadas."""
+    __tablename__ = "bem"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entidade_id: Mapped[int] = mapped_column(ForeignKey("entidade.id", ondelete="CASCADE"), index=True)
+    tipo: Mapped[str] = mapped_column(String(10))                      # casa | carro
+    nome: Mapped[str] = mapped_column(String(100))
+    uso: Mapped[str] = mapped_column(String(20), default="principal")  # ver USOS_BEM
+    # Casa: assoalhadas (T2 = 2), área útil, localização (freguesia, concelho), ano de construção.
+    tipologia: Mapped[int | None] = mapped_column(Integer)
+    area_m2: Mapped[int | None] = mapped_column(Integer)
+    localizacao: Mapped[str | None] = mapped_column(String(200))
+    ano: Mapped[int | None] = mapped_column(Integer)                   # construção (casa) / matrícula (carro)
+    estado: Mapped[str | None] = mapped_column(String(12))
+    extras: Mapped[str | None] = mapped_column(String(200))           # garagem, piscina… / versão do carro
+    # Carro
+    marca: Mapped[str | None] = mapped_column(String(60))
+    modelo: Mapped[str | None] = mapped_column(String(60))
+    km: Mapped[int | None] = mapped_column(Integer)
+    combustivel: Mapped[str | None] = mapped_column(String(16))
+    # Aquisição, dívida e venda
+    data_aquisicao: Mapped[date | None] = mapped_column(Date)
+    valor_aquisicao: Mapped[int | None] = mapped_column(BigInteger)   # cêntimos
+    emprestimo_conta_id: Mapped[int | None] = mapped_column(ForeignKey("conta.id", ondelete="SET NULL"))
+    data_venda: Mapped[date | None] = mapped_column(Date)
+    valor_venda: Mapped[int | None] = mapped_column(BigInteger)
+    # Revisão periódica do valor (meses entre avaliações; 0 = só à mão).
+    revisao_meses: Mapped[int] = mapped_column(Integer, default=6, server_default="6")
+    # Atribuição das despesas: textos do extrato (um por linha) e «por omissão» (fica com as despesas
+    # da categoria Casa / Transportes que nenhum padrão atribuiu).
+    padroes: Mapped[str | None] = mapped_column(Text)
+    omissao: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    notas: Mapped[str | None] = mapped_column(Text)
+    criado_em: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, server_default=func.now())
+
+    emprestimo_conta: Mapped["Conta | None"] = relationship()
+    avaliacoes: Mapped[list["AvaliacaoBem"]] = relationship(back_populates="bem", cascade="all, delete-orphan",
+                                                            order_by="AvaliacaoBem.data")
+
+    @property
+    def tipo_rotulo(self) -> str:
+        return TIPOS_BEM.get(self.tipo, self.tipo)
+
+    @property
+    def uso_rotulo(self) -> str:
+        return USOS_BEM.get(self.tipo, {}).get(self.uso, self.uso)
+
+    @property
+    def lista_padroes(self) -> list[str]:
+        return [p.strip().upper() for p in (self.padroes or "").replace("|", "\n").splitlines() if p.strip()]
+
+    @property
+    def vendido(self) -> bool:
+        return self.data_venda is not None
+
+
+class AvaliacaoBem(Base):
+    """Valor estimado de um bem numa data (IA ou indicado à mão) — o histórico das revisões."""
+    __tablename__ = "avaliacao_bem"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    bem_id: Mapped[int] = mapped_column(ForeignKey("bem.id", ondelete="CASCADE"), index=True)
+    data: Mapped[date] = mapped_column(Date)
+    valor: Mapped[int] = mapped_column(BigInteger)                    # cêntimos
+    minimo: Mapped[int | None] = mapped_column(BigInteger)
+    maximo: Mapped[int | None] = mapped_column(BigInteger)
+    fonte: Mapped[str] = mapped_column(String(10), default="manual")  # ia | manual
+    justificacao: Mapped[str | None] = mapped_column(Text)
+    referencias: Mapped[str | None] = mapped_column(Text)             # URLs consultadas pela IA (uma por linha)
+    confianca: Mapped[float | None] = mapped_column(Float)
+    modelo: Mapped[str | None] = mapped_column(String(60))
+    criado_em: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, server_default=func.now())
+
+    bem: Mapped[Bem] = relationship(back_populates="avaliacoes")
 
 
 class ParIgnorado(Base):

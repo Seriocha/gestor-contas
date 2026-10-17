@@ -104,6 +104,22 @@
       });
     },
 
+    bem(canvas) {
+      // Histórico do valor de uma casa/carro: valor estimado e o intervalo (mín.–máx.) dado pela IA.
+      const d = dados.bem;
+      new Chart(canvas, {
+        type: 'line',
+        data: { labels: d.rotulos, datasets: [
+          { label: 'Máximo', data: d.maximo, borderWidth: 0, pointRadius: 0, fill: false },
+          { label: 'Mínimo', data: d.minimo, borderWidth: 0, pointRadius: 0, backgroundColor: COR.patrimonio + '1f', fill: '-1' },
+          { label: 'Valor', data: d.valor, borderColor: COR.patrimonio, borderWidth: 2, tension: 0.2, pointRadius: 3,
+            pointHoverRadius: 5, fill: false },
+        ] },
+        options: { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+          plugins: { legend: { display: false } }, scales: eixos },
+      });
+    },
+
     tendencia(canvas) {
       const d = dados.tendencia;
       const barra = { borderRadius: 4, borderSkipped: 'start', maxBarThickness: 22, categoryPercentage: 0.7, barPercentage: 0.9 };

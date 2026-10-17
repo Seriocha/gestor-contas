@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block titulo %}Património{% endblock %}
+{% macro tabela(linhas, tipo) -%}
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th>{{ 'Casa' if tipo == 'casa' else 'Carro' }}</th><th>Uso</th><th class="num">Valor</th><th class="num">Dívida</th>
+      <th class="num">Líquido</th><th class="num">Custos 12 meses</th><th>Revisão do valor</th></tr></thead>
+    <tbody>
+    {% for l in linhas %}{% set b = l.bem %}
+    <tr class="{{ 'arquivada' if b.vendido }}">
+      <td><a href="/patrimonio/{{ b.id }}"><strong>{{ b.nome }}</strong></a>
+        {% if b.omissao %}<span class="etiqueta" title="Fica com as despesas de {{ 'Casa' if tipo == 'casa' else 'Transportes' }} que nenhum padrão atribuiu">por omissão</span>{% endif %}
+        <br><span class="nota">{% if tipo == 'casa' %}{{ 'T%d' % b.tipologia if b.tipologia is not none }}{{ ' · %d m²' % b.area_m2 if b.area_m2 }}{{ ' · ' ~ b.localizacao if b.localizacao }}
+          {% else %}{{ [b.marca, b.modelo] | select | join(' ') }}{{ ' · %d' % b.ano if b.ano }}{{ ' · %s km' % '{:,}'.format(b.km).replace(',', ' ') if b.km is not none }}{% endif %}</span></td>
+      <td>{% if b.vendido %}<span class="etiqueta">vendido {{ b.data_venda | data }}</span>{% else %}{{ b.uso_rotulo }}{% endif %}</td>
+      <td class="num">{{ l.valor | eur if l.valor is not none else '—' }}
+        {% if l.variacao is not none %}<br><span class="nota {{ 'pos' if l.variacao > 0 else 'neg' if l.variacao < 0 }}">{{ '+' if l.variacao > 0 }}{{ l.variacao | eur }} vs. compra</span>{% endif %}</td>
+      <td class="num">{{ l.divida | eur if l.divida else '—' }}</td>
+      <td class="num"><strong>{{ l.liquido | eur }}</strong></td>
+      <td class="num">{{ l.custo_12m | eur }}<br><span class="nota">{{ l.custo_mensal | eur }}/mês{% if l.receitas_12m %} · recebeu {{ l.receitas_12m | eur }}{% endif %}</span></td>
+      <td class="sem-quebra">{% if b.vendido %}—{% elif l.pendente %}<span class="etiqueta etiqueta-erro">em atraso</span>
+        {% elif l.proxima %}{{ l.proxima | data }}{% else %}<span class="nota">só à mão</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+{%- endmacro %}
+{% block conteudo %}
+<div class="titulo-acoes">
+  <h1>Património</h1>
+  {% if entidade and pode_editar %}<div class="acoes-form">
+    <a class="botao primario" href="/patrimonio/novo?entidade={{ entidade.id }}&tipo=casa">+ Casa</a>
+    <a class="botao" href="/patrimonio/novo?entidade={{ entidade.id }}&tipo=carro">+ Carro</a>
+  </div>{% endif %}
+</div>
+{% set destino = '/patrimonio' %}{% include "_entidades.html" %}
+{% if entidade %}
+<section class="kpi-grelha">
+  <div class="cartao kpi"><span class="nota">Valor dos bens</span><strong>{{ r.valor | eur }}</strong>
+    <span class="nota">última avaliação de cada um</span></div>
+  <div class="cartao kpi"><span class="nota">Dívida associada</span><strong>{{ r.divida | eur }}</strong>
+    <span class="nota">empréstimos ligados aos bens</span></div>
+  <div class="cartao kpi"><span class="nota">Capital próprio</span><strong>{{ r.liquido | eur }}</strong></div>
+  <div class="cartao kpi"><span class="nota">Custos em 12 meses</span><strong>{{ r.custo_12m | eur }}</strong>
+    <span class="nota">desde {{ r.desde | data }}</span></div>
+</section>
+
+{% if r.pendentes %}
+<div class="aviso aviso-alerta">Revisão do valor em atraso: {% for l in r.pendentes %}<a href="/patrimonio/{{ l.bem.id }}">{{ l.bem.nome }}</a>{{ ', ' if not loop.last }}{% endfor %}.
+  {% if ia_disponivel %}A revisão automática corre uma vez por dia; podes também pedir já na página de cada bem.{% else %}Configura a chave da Claude API para a revisão automática, ou indica o valor à mão.{% endif %}</div>
+{% endif %}
+
+{% if r.casas_por_uso | length > 1 %}
+<section class="cartao">
+  <h2>Casas: principal vs. férias</h2>
+  <div class="kpi-linha">
+    {% for rotulo, custo, n in r.casas_por_uso %}
+    <div class="kpi"><span class="nota">{{ rotulo }}{{ ' (%d)' % n if n > 1 }}</span><strong>{{ custo | eur }}</strong>
+      <span class="nota">{{ (custo / 12) | round | int | eur }}/mês · 12 meses</span></div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<section class="cartao">
+  <h2>Casas</h2>
+  {% if r.casas %}{{ tabela(r.casas, 'casa') }}{% else %}<p class="vazio sem-margem">Sem casas registadas.</p>{% endif %}
+</section>
+<section class="cartao">
+  <h2>Carros</h2>
+  {% if r.carros %}{{ tabela(r.carros, 'carro') }}{% else %}<p class="vazio sem-margem">Sem carros registados.</p>{% endif %}
+</section>
+
+{% if r.linhas %}
+<section class="cartao">
+  <h2>Atribuição das despesas</h2>
+  <p class="nota sem-margem">Cada movimento pode ficar ligado a um bem. A app atribui-os sozinha em cada importação: primeiro pelos
+    textos do extrato de cada bem (ex.: o CPE da EDP ou o condomínio da casa de férias) e depois, para o bem «por omissão» de cada tipo,
+    as despesas de Casa (casas) ou de Transportes (carros) que sobrarem. Também podes escolher o bem na página do movimento ou em
+    «Ações em massa» na lista de movimentos.</p>
+  {% if r.sem_bem %}<p>Há <strong>{{ r.sem_bem }}</strong> despesa{{ 's' if r.sem_bem != 1 }} de Casa/Transportes sem bem nos últimos 12 meses ({{ r.sem_bem_total | eur }}).</p>{% endif %}
+  {% if pode_editar %}
+  <form method="post" action="/patrimonio/atribuir">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="entidade" value="{{ entidade.id }}">
+    <button>Atribuir agora os movimentos sem bem</button>
+  </form>
+  {% endif %}
+</section>
+{% endif %}
+{% endif %}
+{% endblock %}

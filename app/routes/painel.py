@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .. import relatorios as rel
+from .. import patrimonio as pt
 from .. import previsoes, retificacoes, tarefas
 from ..backup import ultimo_backup
 from ..deps import IntOpcional, entidade_escolhida, get_db, render, utilizador_atual
@@ -105,7 +106,8 @@ def painel(request: Request, entidade: IntOpcional = None, periodo: str = "mes",
     por_importar = None
     if tarefas.na_janela(prefs, date.today()) and PAPEIS[papel] >= PAPEIS["editar"]:
         por_importar = sum(b.por_fazer for b in tarefas.do_ciclo(db, ent.id, tarefas.inicio_ciclo(prefs, date.today())))
-    return render(request, "painel.html", visiveis=visiveis, entidade=ent, p=p, por_importar=por_importar, corte=corte, periodos=PERIODOS_PAINEL, ref=ref,
+    bens_valor, n_bens = pt.valor_total(db, ent.id)
+    return render(request, "painel.html", visiveis=visiveis, entidade=ent, p=p, bens_valor=bens_valor, n_bens=n_bens, por_importar=por_importar, corte=corte, periodos=PERIODOS_PAINEL, ref=ref,
                   atual=atual, ha_30=ha_30, grupos_ativos=grupos_ativos, grupos_passivos=grupos_passivos,
                   agrupar=agrupar, ordenar=ordenar, opcoes_agrupar=AGRUPAR, opcoes_ordenar=ORDENAR,
                   avisos=retificacoes.avisos(db, [c.id for c, _ in pat["contas"]]),

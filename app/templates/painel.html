@@ -35,6 +35,10 @@
     </div>
     <div class="kpi"><span class="nota">Ativos</span><strong>{{ atual.ativos | eur }}</strong></div>
     <div class="kpi"><span class="nota">Passivos</span><strong>{{ atual.passivos | eur }}</strong></div>
+    {% if n_bens %}
+    <div class="kpi"><span class="nota"><a href="/patrimonio?entidade={{ entidade.id }}">Casas e carros</a></span><strong>{{ bens_valor | eur }}</strong>
+      <span class="nota">com bens: {{ (atual.liquido + bens_valor) | eur }}</span></div>
+    {% endif %}
   </div>
   <div class="grafico grafico-medio"><canvas data-grafico="patrimonio" aria-label="Evolução do património líquido nos últimos 12 meses" role="img"></canvas></div>
   <p class="nota sem-margem dica-grafico">Clica (ou toca) num ponto para ver o que mudou desde o ponto anterior.</p>

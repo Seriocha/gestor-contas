@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session, selectinload
 from ..deps import (IntOpcional, auditar, entidade_escolhida, exigir_papel, flash, get_db, papel_em, render,
                     utilizador_atual)
 from ..formatos import fmt_montante, parse_data, parse_montante
-from ..models import CORES, PAPEIS, Categoria, Conta, Entidade, Etiqueta, Movimento, RetificacaoSaldo, Utilizador
+from ..models import CORES, PAPEIS, Bem, Categoria, Conta, Entidade, Etiqueta, Movimento, RetificacaoSaldo, Utilizador
 from ..qualificacao import aplicar_regras, arvore_categorias, qualificar_manual, repor
 from ..servicos import normalizar_descricao
 from ..seguranca import ler_form
@@ -258,6 +258,7 @@ def _listar(request: Request, db: Session, u: Utilizador, *, entidade: int | Non
             RetificacaoSaldo.conta_id == conta.id, RetificacaoSaldo.partida))),
         contas=db.scalars(select(Conta).where(Conta.entidade_id == ent.id).order_by(Conta.nome)).all(),
         categorias=arvore_categorias(db), etiquetas=db.scalars(select(Etiqueta).order_by(Etiqueta.nome)).all(),
+        bens=db.scalars(select(Bem).where(Bem.entidade_id == ent.id, Bem.data_venda.is_(None)).order_by(Bem.tipo, Bem.nome)).all(),
         tipos=TIPOS_FILTRO, movimentos=lista, total=total, entradas=entradas, saidas=saidas, n_sem=n_sem,
         pagina=pagina, paginas=max(1, -(-total // POR_PAGINA)), erro=erro, f=filtros,
         query=urlencode({**{k: v for k, v in filtros.items() if v}, **({"ordem": ordem} if ordem != "-data" else {})}),
@@ -456,6 +457,7 @@ def editar_form(request: Request, mov_id: int, voltar: str = "", u: Utilizador =
     return render(request, "movimentos/editar.html", m=m, par=par, categorias=arvore_categorias(db),
                   manual=e_manual(m), candidatos=_candidatos(db, m) if not par and PAPEIS[papel] >= PAPEIS["editar"] else [],
                   etiquetas=db.scalars(select(Etiqueta).order_by(Etiqueta.nome)).all(),
+                  bens=db.scalars(select(Bem).where(Bem.entidade_id == m.conta.entidade_id).order_by(Bem.tipo, Bem.nome)).all(),
                   pode_editar=PAPEIS[papel] >= PAPEIS["editar"], voltar=_voltar_seguro(voltar))
 
 
@@ -607,6 +609,9 @@ async def lote(request: Request, u: Utilizador = Depends(utilizador_atual), db: 
                 qualificar_manual(db, m, transferencia=tipo == "transferencia")
             elif tipo in ("excluir", "incluir"):
                 qualificar_manual(db, m, excluido=tipo == "excluir")
+            elif tipo == "bem":
+                b = db.get(Bem, _int(valor) or 0)
+                m.bem_id, m.bem_manual = (b.id if b and b.entidade_id == m.conta.entidade_id else None), True
             else:
                 raise HTTPException(status_code=400, detail="Ação desconhecida.")
     auditar(db, u, "qualificacao_lote", f"{acao} em {len(movs)} movimentos" + (" (todo o filtro)" if todo_filtro else ""))

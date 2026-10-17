@@ -118,6 +118,16 @@
       <a href="/regras/nova?mov={{ m.id }}">Criar regra a partir deste movimento</a>
     </div>
   </form>
+  {% if bens %}
+  <form method="post" action="/patrimonio/movimento/{{ m.id }}" class="separado formulario">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="voltar" value="/movimentos/{{ m.id }}">
+    <label>Bem (casa / carro) a que diz respeito
+      <select name="bem_id" onchange="this.form.submit()"><option value="">— nenhum —</option>
+        {% for b in bens %}<option value="{{ b.id }}" {% if m.bem_id == b.id %}selected{% endif %}>{{ b.nome }} · {{ b.uso_rotulo }}</option>{% endfor %}
+      </select></label>
+    <noscript><button>Guardar bem</button></noscript>
+  </form>
+  {% endif %}
   {% if manual %}
   <form method="post" action="/movimentos/{{ m.id }}/apagar" class="separado" onsubmit="return confirm('Apagar este movimento?')">
     <input type="hidden" name="csrf" value="{{ csrf_token }}">

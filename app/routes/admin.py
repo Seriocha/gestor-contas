@@ -191,6 +191,8 @@ async def gravar_preferencias(request: Request, admin: Utilizador = Depends(exig
     preferencias.gravar(db, "mostrar_iban_completo", mostrar)
     ativas = "1" if form.get("tarefas_ativas") == "1" else "0"
     preferencias.gravar(db, "tarefas_ativas", ativas)
+    avaliacao = "1" if form.get("avaliacao_automatica") == "1" else "0"
+    preferencias.gravar(db, "avaliacao_automatica", avaliacao)
     dias = {}
     for chave in ("tarefas_dia_ini", "tarefas_dia_fim"):
         v = str(form.get(chave, "")).strip()
@@ -200,7 +202,7 @@ async def gravar_preferencias(request: Request, admin: Utilizador = Depends(exig
                 return RedirectResponse("/admin/utilizadores#preferencias", status_code=303)
             preferencias.gravar(db, chave, str(int(v)))
             dias[chave] = int(v)
-    auditar(db, admin, "preferencias", f"mostrar_iban_completo={mostrar} tarefas_ativas={ativas} {dias}")
+    auditar(db, admin, "preferencias", f"mostrar_iban_completo={mostrar} tarefas_ativas={ativas} avaliacao_automatica={avaliacao} {dias}")
     db.commit()
     request.app.state.prefs = preferencias.carregar(db)
     flash(request, "Preferências guardadas.")

@@ -4,7 +4,7 @@ Gestor financeiro doméstico, multiutilizador e self-hosted, para a NAS QNAP. Es
 importa movimentos de bancos portugueses e gere contas à ordem, cartões, investimentos e
 Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIGN.md).
 
-## Estado: v0.31.0
+## Estado: v0.32.0
 
 - Login com várias pessoas: passwords em argon2, bloqueio ao fim de 5 tentativas falhadas,
   proteção CSRF e invalidação das sessões quando a password muda.
@@ -37,6 +37,14 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.32.0 — Património: casas e carros.** Novo menu «Património». Cada casa guarda uso (habitação principal,
+  férias, arrendada), tipologia, área, localização (freguesia e concelho), ano de construção, estado, compra, venda e
+  o empréstimo associado (dívida e capital próprio); cada carro guarda marca, modelo, ano, km e combustível.
+  Os movimentos ficam ligados a um bem: pelos textos do extrato de cada um e, para o bem «por omissão», as
+  despesas de Casa/Transportes que sobrarem; também à mão (página do movimento, ações em massa). Comparação de
+  custos casa principal vs. férias. Valor com histórico de avaliações: à mão ou por IA (Claude API, com pesquisa
+  web quando disponível; envia só os atributos, nunca nomes, contas nem o preço de compra), com revisão periódica
+  automática (diária, configurável em Administração). O painel mostra o valor das casas e carros.
 - **v0.31.0 — Subscrições e assinaturas.** Novo menu «Subscrições» com um catálogo de ~40 serviços
   comuns em Portugal (streaming, telecomunicações, energia, ginásio, seguros, Via Verde…). Cada subscrição
   guarda valor, periodicidade, dia de pagamento, conta, texto do extrato, data de início, fim da fidelização
