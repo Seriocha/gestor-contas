@@ -43,6 +43,9 @@ class Extrato:
     refeicao: bool = False            # extrato de cartão refeição
     # Extratos com várias subcontas (Revolut: (produto, moeda) → movimentos). `movimentos` é a principal.
     subcontas: dict | None = None
+    # Deduplicação contra importações noutro formato (Revolut PDF vs CSV): mesmo valor e mesmo saldo
+    # até N dias de diferença contam como o mesmo movimento. 0 = desligado.
+    dedup_dias: int = 0
 
 
 # ---------------------------------------------------------------- utilitários
@@ -106,6 +109,28 @@ def verificar_saldos(movs: list[MovimentoBruto]) -> list[str]:
 
 # ---------------------------------------------------------------- leitura de ficheiros
 
+def consertar_texto(valor):
+    """Texto UTF-8 que foi lido como Latin-1/Windows-1252 («CONCLUÃ\\x8dDA», «cartÃ£o») → «CONCLUÍDA», «cartão».
+    Só mexe quando aparecem as marcas típicas (Ã, Â) e a reconversão dá UTF-8 válido."""
+    if not isinstance(valor, str) or ("Ã" not in valor and "Â" not in valor):
+        return valor
+    for codificacao in ("latin-1", "cp1252"):
+        try:
+            return valor.encode(codificacao).decode("utf-8")
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            continue
+    return valor
+
+
+def _csv_numa_coluna(linhas: list[list]) -> list[list] | None:
+    """Excel com o CSV inteiro numa só célula por linha (exportação «Excel» da Revolut): separa as colunas."""
+    preenchidas = [[c for c in l if c not in (None, "")] for l in linhas]
+    preenchidas = [p for p in preenchidas if p]
+    if not preenchidas or any(len(p) > 1 for p in preenchidas) or "," not in str(preenchidas[0][0]):
+        return None
+    return [linha for linha in csv.reader(str(p[0]) for p in preenchidas)]
+
+
 def ler_linhas(nome: str, conteudo: bytes) -> list[list]:
     """Primeira folha de um .xls / .xlsx / .csv como lista de linhas."""
     if conteudo[:8] == b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1":  # OLE2 = .xls antigo
@@ -115,7 +140,10 @@ def ler_linhas(nome: str, conteudo: bytes) -> list[list]:
     if conteudo[:2] == b"PK":  # zip = .xlsx
         import openpyxl
         wb = openpyxl.load_workbook(io.BytesIO(conteudo), read_only=True, data_only=True)
-        return [list(r) for r in wb.worksheets[0].iter_rows(values_only=True)]
+        linhas = [list(r) for r in wb.worksheets[0].iter_rows(values_only=True)]
+        linhas = _csv_numa_coluna(linhas) or linhas
+        # corrige célula a célula (uma linha inteira pode misturar texto estragado com caracteres bons)
+        return [[consertar_texto(c) for c in l] for l in linhas]
     if nome.lower().endswith((".csv", ".txt")):
         for enc in ("utf-8-sig", "cp1252"):
             try:
@@ -135,13 +163,21 @@ def ler_linhas(nome: str, conteudo: bytes) -> list[list]:
 def todos() -> list:
     """Todos os parsers, pela ordem de deteção (o 1.º que reconhecer o ficheiro ganha)."""
     from . import activobank, big, creditoagricola, revolut, santander, santander_cartao, santander_emprestimo
-    from . import santander_refeicao
+    from . import revolut_pdf, santander_refeicao
     return [santander.Parser, santander_cartao.Parser, santander_emprestimo.Parser,
-            santander_refeicao.Parser, activobank.Parser,
+            santander_refeicao.Parser, revolut_pdf.Parser, activobank.Parser,
             creditoagricola.Parser, big.Parser, revolut.Parser]
 
 
 def ler_extrato(nome: str, conteudo: bytes) -> Extrato:
+    if conteudo[:5] == b"%PDF-":
+        from .revolut_pdf import ler_pdf
+        extrato = ler_pdf(conteudo)
+        if extrato is None:
+            raise FormatoDesconhecido("PDF não reconhecido: só se importa o «Extrato personalizado» consolidado da Revolut.")
+        for chave, movs in (extrato.subcontas or {}).items():
+            extrato.avisos += [f"{chave[0]} {chave[1]}: {a}" for a in verificar_saldos(movs)]
+        return extrato
     linhas = ler_linhas(nome, conteudo)
     for parser in todos():
         if parser.detetar(linhas):
@@ -155,4 +191,4 @@ def ler_extrato(nome: str, conteudo: bytes) -> Extrato:
                 extrato.movimentos = para_cronologico(extrato.movimentos)
                 extrato.avisos += verificar_saldos(extrato.movimentos)
             return extrato
-    raise FormatoDesconhecido("Formato de extrato não reconhecido. Bancos suportados: Santander (conta, cartão de crédito, cartão refeição e empréstimo), ActivoBank, Crédito Agrícola, Banco BiG, Revolut. Vê os formatos em Administração › Importadores.")
+    raise FormatoDesconhecido("Formato de extrato não reconhecido. Bancos suportados: Santander (conta, cartão de crédito, cartão refeição e empréstimo), ActivoBank, Crédito Agrícola, Banco BiG, Revolut (CSV ou PDF consolidado). Vê os formatos em Administração › Importadores.")

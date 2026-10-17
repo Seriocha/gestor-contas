@@ -95,6 +95,28 @@ def preparar(db: Session, conta: Conta, extrato: Extrato) -> list[LinhaPrevia]:
         Movimento.conta_id == conta.id, Movimento.hash_dedup.in_([l.hash_dedup for l in linhas]))))
     for l in linhas:
         l.duplicado = l.hash_dedup in existentes
+    if extrato.dedup_dias and linhas:
+        # Mesmo movimento já importado noutro formato (ex.: CSV da Revolut): mesmo valor e mesmo saldo,
+        # com a data até N dias de diferença. Só para linhas com saldo (o saldo torna a coincidência segura).
+        com_saldo = [l for l in linhas if not l.duplicado and l.saldo is not None]
+        if com_saldo:
+            d0 = min(l.data_mov for l in com_saldo) - timedelta(days=extrato.dedup_dias)
+            d1 = max(l.data_mov for l in com_saldo) + timedelta(days=extrato.dedup_dias)
+            candidatos = db.execute(select(Movimento.id, Movimento.data_mov, Movimento.montante, Movimento.saldo_apos,
+                                           Movimento.descricao_original)
+                                    .where(Movimento.conta_id == conta.id, Movimento.data_mov.between(d0, d1),
+                                           Movimento.saldo_apos.is_not(None))).all()
+            usados = set()
+            for l in com_saldo:
+                # o mesmo saldo e o mesmo valor; ou o saldo da linha «Comissão Revolut» que o CSV separava
+                # (o PDF dá o valor já líquido da comissão)
+                par = next((c for c in candidatos if c.id not in usados and c.saldo_apos == l.saldo
+                            and abs((c.data_mov - l.data_mov).days) <= extrato.dedup_dias
+                            and (c.montante == l.montante or (c.descricao_original or "").startswith("Comissão Revolut"))),
+                           None)
+                if par:
+                    usados.add(par.id)
+                    l.duplicado = True
     if extrato.cartao and linhas:
         # Os extratos de cartão vêm em formatos diferentes (Extracto / Consulta Movimentos) que descrevem
         # a mesma compra com textos diferentes: no cartão, a mesma data e o mesmo valor já na conta contam
@@ -167,12 +189,26 @@ def confirmar(db: Session, conta: Conta, extrato: Extrato, nome: str, sha: str,
 # ---------------------------------------------------------------- subcontas (Revolut)
 
 def escolher_subconta(extrato: Extrato, conta: Conta) -> tuple[str | None, list[str]]:
-    """Num extrato com várias subcontas (Revolut), escolhe a da conta de destino:
-    «Depósito» (conta reforçada) para uma conta poupança, «Atual» para as outras,
-    na moeda da conta. Devolve (erro, avisos)."""
+    """Num extrato com várias subcontas (Revolut), escolhe a da conta de destino, na moeda da conta:
+    poupança → cofre com o mesmo nome / «Poupanças» (conta com cofre/poupanças no nome) / «Depósito»
+    (Conta reforçada); investimento → «Investimentos»; as outras → «Todas as moedas» (euros + outras
+    moedas convertidas) ou «Atual». Devolve (erro, avisos)."""
     if not extrato.subcontas:
         return None, []
     produto = "Depósito" if conta.tipo == "POUPANCA" else "Atual"
+    nome = conta.nome.lower()
+    if conta.tipo == "POUPANCA":
+        # um cofre («Poupança Férias») cujo nome aparece no nome da conta (PDF)
+        cofre = next((p for (p, m) in extrato.subcontas if m == conta.moeda and p.startswith("Poupança ")
+                      and p[len("Poupança "):].lower() in nome), None)
+        if not cofre and ("Poupanças", conta.moeda) in extrato.subcontas \
+                and re.search(r"cofre|poupan[çc]as|pocket", nome):
+            cofre = "Poupanças"   # Excel/CSV: todos os cofres juntos
+        produto = cofre or produto
+    elif conta.tipo == "INVESTIMENTO" and ("Investimentos", conta.moeda) in extrato.subcontas:
+        produto = "Investimentos"
+    elif ("Todas as moedas", conta.moeda) in extrato.subcontas:
+        produto = "Todas as moedas"   # conta em euros + outras moedas convertidas pelo próprio extrato
     chave = (produto, conta.moeda)
     disponiveis = ", ".join(f"{p} {m} ({len(v)})" for (p, m), v in extrato.subcontas.items())
     if chave not in extrato.subcontas:

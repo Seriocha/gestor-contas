@@ -97,3 +97,73 @@ def test_importar_subcontas_e_ligar_carregamentos(admin, app):
 def test_ficheiro_revolut_sem_a_subconta(admin):
     previa, r = _importar(admin, "revolut.csv", CSV.replace(b"Dep\xc3\xb3sito", b"Atual"), conta_id="3")
     assert r is None and "não tem movimentos da subconta «Depósito»" in previa.text
+
+
+# ---------------------------------------------------------------- extrato completo (Excel), produtos e moedas
+
+COMPLETO = [
+    "Carregamento,Atual,2026-03-01 10:00:00,2026-03-01 10:00:01,Carregamento com cartão *0267,500.00,0.00,EUR,CONCLUÍDA,500.00",
+    # câmbio EUR → KRW (os dois lados com a mesma data/hora): 100 € = 170.000 KRW
+    "Câmbio,Atual,2026-03-10 01:19:52,2026-03-10 01:19:52,Conversão cambial para KRW,-100.00,0.00,EUR,CONCLUÍDA,400.00",
+    "Câmbio,Atual,2026-03-10 01:19:52,2026-03-10 01:19:52,Conversão cambial para KRW,170000,0,KRW,CONCLUÍDA,170000",
+    "Pagamento com cartão,Atual,2026-03-11 12:00:00,2026-03-11 12:00:01,GS25,-17000,0,KRW,CONCLUÍDA,153000",
+    # cofre e investimentos
+    "Transferência,Poupanças,2026-03-12 09:00:00,2026-03-12 09:00:00,Carregamento de subconta EUR Poupança Férias de EUR,20.00,0.00,EUR,CONCLUÍDA,20.00",
+    "Transferência,Atual,2026-03-12 09:00:00,2026-03-12 09:00:00,Para EUR Poupança Férias,-20.00,0.00,EUR,CONCLUÍDA,380.00",
+    "Câmbio,Atual,2026-03-13 10:00:00,2026-03-13 10:00:00,Conversão cambial para USD,-200.00,0.00,EUR,CONCLUÍDA,180.00",
+    "Câmbio,Investimentos,2026-03-13 10:00:00,2026-03-13 10:00:00,Conversão cambial para USD,220.00,0.00,USD,CONCLUÍDA,220.00",
+    "TRADE,Investimentos,2026-03-13 11:00:00,2026-03-13 11:00:00,Investing money,-200.00,0.00,USD,CONCLUÍDA,20.00",
+    "TRADE,Investimentos,2026-04-01 11:00:00,2026-04-01 11:00:00,Dividends,11.00,0.00,USD,CONCLUÍDA,31.00",
+    "Taxa,Investimentos,2026-04-02 11:00:00,2026-04-02 11:00:00,Custody fees,-1.10,0.00,USD,CONCLUÍDA,29.90",
+    # texto mal codificado como vem no Excel da Revolut
+    "Pagamento com cartÃ£o,Atual,2026-03-14 12:00:00,2026-03-14 12:00:01,Pastelaria,-2.50,0.00,EUR,CONCLUÃ\x8dDA,177.50",
+]
+
+
+def xlsx_csv_numa_coluna(linhas):
+    import io
+    import openpyxl
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    for l in linhas:
+        ws.append([l])
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def test_excel_com_csv_numa_coluna_e_texto_estragado():
+    e = ler_extrato("account-statement.xlsx", xlsx_csv_numa_coluna([CAB.replace("í", "Ã\xad")] + COMPLETO))
+    assert e.parser == "revolut"
+    assert set(e.subcontas) == {("Atual", "EUR"), ("Atual", "KRW"), ("Poupanças", "EUR"), ("Investimentos", "USD"),
+                                ("Todas as moedas", "EUR"), ("Investimentos", "EUR")}
+    atual = e.subcontas[("Atual", "EUR")]
+    assert atual[-1].descricao == "Pastelaria" and atual[-1].saldo == 17750      # «CONCLUÃ\x8dDA» lido como concluída
+    assert not [a for a in e.avisos if "não bate certo" in a]
+    # outras moedas convertidas pelo câmbio do próprio extrato (100 € = 170.000 KRW)
+    todas = {m.descricao: m for m in e.subcontas[("Todas as moedas", "EUR")]}
+    assert todas["GS25 (-17.000 KRW)"].montante == -1000 and not todas["GS25 (-17.000 KRW)"].transferencia
+    assert todas["Conversão cambial para KRW (170.000 KRW)"].transferencia
+    # investimentos como carteira: sem as compras de ações; dividendos e taxas convertidos a euros (200 € = 220 USD)
+    inv = e.subcontas[("Investimentos", "USD")]
+    assert [m.descricao for m in inv] == ["Conversão cambial para USD", "Dividends", "Custody fees"]
+    assert inv[0].transferencia and not inv[1].transferencia and all(m.saldo is None for m in inv)
+    inv_eur = {m.descricao: m.montante for m in e.subcontas[("Investimentos", "EUR")]}
+    assert inv_eur == {"Conversão cambial para USD (220 USD)": 20000, "Dividends (11 USD)": 1000,
+                       "Custody fees (-1,10 USD)": -100}
+    assert any("1 compra(s)/venda(s) de ações" in a for a in e.avisos)
+
+
+def test_cada_conta_recebe_a_sua_subconta(tmp_path):
+    c = TestClient(create_app(tmp_path, backups_automaticos=False))
+    _post(c, "/setup", nome="Admin", login="admin", password=PW, password2=PW)
+    _post(c, "/contas/nova?entidade=1", nome="Revolut", tipo="CARTEIRA_DIGITAL", moeda="EUR", instituicao_id="5")
+    _post(c, "/contas/nova?entidade=1", nome="Revolut cofres", tipo="POUPANCA", moeda="EUR", instituicao_id="5")
+    _post(c, "/contas/nova?entidade=1", nome="Revolut ações", tipo="INVESTIMENTO", moeda="EUR", instituicao_id="5")
+    ficheiro = xlsx_csv_numa_coluna([CAB] + COMPLETO)
+    previa, r = _importar(c, "account-statement.xlsx", ficheiro, conta_id="1")
+    assert "Importar 7 movimentos" in previa.text and "Todas as moedas" in previa.text   # 5 em euros + 2 convertidos
+    previa, _ = _importar(c, "account-statement.xlsx", ficheiro, conta_id="2")
+    assert "Importar 1 movimentos" in previa.text and "Poupanças" in previa.text
+    previa, _ = _importar(c, "account-statement.xlsx", ficheiro, conta_id="3")
+    assert "Importar 3 movimentos" in previa.text and "trocas dentro da carteira" in previa.text

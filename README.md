@@ -4,7 +4,7 @@ Gestor financeiro doméstico, multiutilizador e self-hosted, para a NAS QNAP. Es
 importa movimentos de bancos portugueses e gere contas à ordem, cartões, investimentos e
 Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIGN.md).
 
-## Estado: v0.29.1
+## Estado: v0.30.0
 
 - Login com várias pessoas: passwords em argon2, bloqueio ao fim de 5 tentativas falhadas,
   proteção CSRF e invalidação das sessões quando a password muda.
@@ -37,6 +37,20 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.30.0 — Revolut: extrato completo em Excel e PDF.** O Excel da Revolut (CSV numa só coluna,
+  texto mal codificado) passa a ler-se, com cada produto na sua subconta: Atual (em cada moeda),
+  Conta reforçada, cofres («Poupanças») e Investimentos. A conta Revolut em euros recebe também as
+  outras moedas convertidas pelos câmbios do próprio extrato (a descrição guarda o valor original),
+  uma conta poupança com «cofre»/«poupanças» no nome recebe os cofres e uma conta de Investimento
+  recebe as ações como carteira (sem as compras/vendas; dividendos, impostos e custódia como
+  ganho/perda). Também se importa o «Extrato personalizado» consolidado em PDF da Revolut. Cada conta e moeda é uma subconta: a conta Revolut em euros
+  recebe a conta EUR e as outras moedas (USD, CHF, JPY, KRW, AED…) convertidas a euros pelo valor do
+  próprio extrato, com o valor original na descrição; uma conta numa moeda estrangeira recebe só essa
+  moeda; uma conta poupança recebe o cofre com o mesmo nome ou os juros da Conta reforçada (o PDF não
+  traz as entradas/saídas dela). Câmbios, carregamentos e envios para poupança/investimento são
+  transferências; comissões e impostos são informativos (o saldo já os inclui). Não duplica o que
+  já veio pelo CSV: mesmo saldo (e valor, ou a linha «Comissão Revolut» separada) até 4 dias de
+  diferença. Nova dependência: pdfplumber.
 - **v0.29.1 — novo formato do cartão de crédito Santander:** o importador do cartão passa a ler também
   a exportação «Consulta Movimentos Cartão Crédito» (Data Operação, Descrição, Montante (EUR) com sinal,
   histórico completo, n.º do cartão no cabeçalho). Carregamentos do Revolut pagos com o cartão ficam
