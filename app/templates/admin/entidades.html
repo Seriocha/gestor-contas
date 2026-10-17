@@ -5,10 +5,16 @@
 {% include "admin/_menu.html" %}
 <section class="cartao">
   <h2>Entidades</h2>
-  <p class="nota">Cada entidade é um património separado: as contas de uma entidade nunca entram nos totais de outra.</p>
-  <table class="tabela">
-    {% for e in entidades %}<tr><td><strong>{{ e.nome }}</strong></td><td class="nota">{{ e.descricao or '' }}</td></tr>{% endfor %}
-  </table>
+  <p class="nota">Cada entidade é um património separado: as contas de uma entidade nunca entram nos totais de outra.
+    Numa herança indivisa indica a percentagem que deténs — o painel e o património mostram também a tua parte.</p>
+  <div class="rolar"><table class="tabela">
+    <thead><tr><th>Entidade</th><th>Tipo</th><th>Descrição</th><th></th></tr></thead>
+    {% for e in entidades %}
+    <tr><td><strong>{{ e.nome }}</strong></td>
+      <td>{{ e.tipo_rotulo }}{% if e.heranca and e.quota is not none %} <span class="etiqueta etiqueta-cor">{{ ('%g' % e.quota).replace('.', ',') }}%</span>{% endif %}</td>
+      <td class="nota">{{ e.descricao or '' }}</td><td><a href="/admin/entidades/{{ e.id }}">Editar</a></td></tr>
+    {% endfor %}
+  </table></div>
 </section>
 <section class="cartao">
   <h2>Nova entidade</h2>
@@ -16,6 +22,8 @@
     <input type="hidden" name="csrf" value="{{ csrf_token }}">
     <label>Nome <input name="nome" required></label>
     <label>Descrição <input name="descricao"></label>
+    <label>Tipo <select name="tipo"><option value="pessoal">Pessoal</option><option value="heranca">Herança</option></select></label>
+    <label>Percentagem detida (herança) <input name="quota" inputmode="decimal" placeholder="ex.: 25 ou 33,33"></label>
     <button class="primario">Criar entidade</button>
   </form>
 </section>

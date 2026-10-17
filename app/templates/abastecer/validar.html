@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block titulo %}Abastecimentos por validar{% endblock %}
+{% block conteudo %}
+<div class="titulo-acoes">
+  <h1>Abastecimentos por validar</h1>
+  {% if entidade %}<a href="/patrimonio?entidade={{ entidade.id }}">‹ Património</a>{% endif %}
+</div>
+{% set destino = '/patrimonio/abastecimentos' %}{% include "_entidades.html" %}
+{% if entidade %}
+<section class="cartao">
+  {% if not pendentes %}<p class="vazio sem-margem">Nada por validar.</p>
+  {% else %}
+  <p class="nota sem-margem">Registados na página sem login. Confirma (ou corrige) e valida: passam aos abastecimentos do carro, com a
+    leitura dos km e a ligação ao débito no banco. Rejeitar apaga o registo.</p>
+  {% for p in pendentes %}
+  {% set uk = ultimo_km.get(p.bem_id) %}
+  <form method="post" action="/patrimonio/abastecimentos/{{ p.id }}/validar" class="formulario cartao-interno" style="max-width: none; margin-top: 1rem">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <h3>{{ p.bem.nome }}{{ ' · ' ~ p.bem.matricula if p.bem.matricula }} <span class="nota">· registado {{ p.criado_em | data }}{{ ' por ' ~ p.quem if p.quem }}</span></h3>
+    <div class="linha">
+      <label>Data <input type="date" name="data" value="{{ p.data.isoformat() }}"></label>
+      <label>Hora <input type="time" name="hora" value="{{ p.hora or '' }}"></label>
+      <label>Km <input name="km" value="{{ p.km or '' }}" inputmode="numeric"></label>
+      <label>Litros <input name="litros" value="{{ ('%g' % p.litros).replace('.', ',') }}" inputmode="decimal"></label>
+      <label>Valor <input name="valor" value="{{ montante_para_input(p.valor) if p.valor else '' }}" inputmode="decimal"></label>
+    </div>
+    {% if p.km and uk and p.km < uk %}<p class="neg">Os km ({{ p.km }}) são menos do que a última leitura do carro ({{ uk }}) — confirma.</p>{% endif %}
+    {% if p.valor and p.litros %}<p class="nota">{{ ('%.3f' % (p.valor / 100 / p.litros)).replace('.', ',') }} €/l</p>{% endif %}
+    <div class="linha">
+      <label>Posto <input name="posto" value="{{ p.posto or '' }}" maxlength="120"></label>
+      <label>Nota <input name="notas" value="{{ p.notas or '' }}" maxlength="300"></label>
+    </div>
+    <label class="opcao"><input type="checkbox" name="cheio" value="1" {% if p.cheio %}checked{% endif %}> Depósito cheio</label>
+    {% if pode_editar %}
+    <div class="acoes-form">
+      <button class="primario">Validar</button>
+      <button class="perigo" formaction="/patrimonio/abastecimentos/{{ p.id }}/rejeitar" formnovalidate onclick="return confirm('Rejeitar e apagar este registo?')">Rejeitar</button>
+    </div>
+    {% endif %}
+  </form>
+  {% endfor %}
+  {% endif %}
+</section>
+
+<section class="cartao">
+  <h2>Página de registo sem login</h2>
+  <p class="nota">Uma página simples para registar abastecimentos no telemóvel, sem entrar na app. Funciona só onde a app é acessível
+    (rede de casa / VPN) e com o código secreto do link — guarda-o como atalho no ecrã do telemóvel. Gerar um novo invalida o anterior.</p>
+  {% if link %}<p><a href="{{ link }}" target="_blank" rel="noopener"><code>{{ link }}</code></a></p>
+  {% else %}<p class="nota">Desligada.</p>{% endif %}
+  {% if utilizador.is_admin %}
+  <form method="post" action="/patrimonio/abastecimentos/link" class="acoes-form">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="voltar" value="/patrimonio/abastecimentos?entidade={{ entidade.id }}">
+    <button name="acao" value="gerar" {% if link %}onclick="return confirm('Gerar um link novo? O atual deixa de funcionar.')"{% endif %}>{{ 'Gerar novo link' if link else 'Ligar e gerar link' }}</button>
+    {% if link %}<button name="acao" value="desligar" class="perigo">Desligar</button>{% endif %}
+  </form>
+  {% else %}<p class="nota">Só um administrador liga, desliga ou muda o link.</p>{% endif %}
+</section>
+{% endif %}
+{% endblock %}

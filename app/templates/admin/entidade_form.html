@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block titulo %}Editar {{ e.nome }}{% endblock %}
+{% block conteudo %}
+<h1>Administração</h1>
+{% include "admin/_menu.html" %}
+<section class="cartao">
+  <h2>Editar «{{ e.nome }}»</h2>
+  {% if erros %}<div class="aviso aviso-erro"><ul>{% for x in erros %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
+  <form method="post" class="formulario estreito">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <label>Nome <input name="nome" value="{{ v.nome }}" required maxlength="100"></label>
+    <label>Descrição <input name="descricao" value="{{ v.descricao }}"></label>
+    <label>Tipo
+      <select name="tipo" id="tipo-entidade">{% for k, r in tipos.items() %}<option value="{{ k }}" {% if v.tipo == k %}selected{% endif %}>{{ r }}</option>{% endfor %}</select></label>
+    <label id="quota" {% if v.tipo != 'heranca' %}hidden{% endif %}>Percentagem que detém
+      <input name="quota" value="{{ v.quota }}" inputmode="decimal" placeholder="ex.: 25 ou 33,33"></label>
+    <p class="nota">Herança: património indiviso de que tens uma quota. Os valores continuam a mostrar-se por inteiro, com a tua parte ao lado.</p>
+    <div class="acoes-form"><button class="primario">Guardar</button><a href="/admin/entidades">Cancelar</a></div>
+  </form>
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+  document.getElementById('tipo-entidade').addEventListener('change', e => {
+    document.getElementById('quota').hidden = e.target.value !== 'heranca';
+  });
+</script>
+{% endblock %}

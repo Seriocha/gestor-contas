@@ -1,13 +1,13 @@
 {% extends "base.html" %}
-{% block titulo %}{{ 'Editar ' ~ bem.nome if bem else ('Nova casa' if tipo == 'casa' else 'Novo carro') }}{% endblock %}
+{% block titulo %}{{ 'Editar ' ~ bem.nome if bem else ({'casa': 'Nova casa', 'carro': 'Novo carro', 'rustico': 'Nova propriedade rústica'}[tipo]) }}{% endblock %}
 {% block conteudo %}
-<h1>{{ 'Editar «' ~ bem.nome ~ '»' if bem else ('Nova casa' if tipo == 'casa' else 'Novo carro') }} <span class="nota">· {{ entidade.nome }}</span></h1>
+<h1>{{ 'Editar «' ~ bem.nome ~ '»' if bem else ({'casa': 'Nova casa', 'carro': 'Novo carro', 'rustico': 'Nova propriedade rústica'}[tipo]) }} <span class="nota">· {{ entidade.nome }}</span></h1>
 {% if erros %}<div class="aviso aviso-erro"><ul>{% for e in erros %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
 <form method="post" class="formulario" action="{{ '/patrimonio/' ~ bem.id ~ '/editar' if bem else '/patrimonio/novo?entidade=' ~ entidade.id ~ '&tipo=' ~ tipo }}">
   <input type="hidden" name="csrf" value="{{ csrf_token }}">
   <div class="linha">
     <label>Nome <input name="nome" value="{{ v.nome or '' }}" required maxlength="100"
-      placeholder="{{ 'ex.: Casa de Lisboa, Casa da praia' if tipo == 'casa' else 'ex.: Golf, carro da Ana' }}"></label>
+      placeholder="{{ {'casa': 'ex.: Casa de Lisboa, Casa da praia', 'carro': 'ex.: Golf, carro da Ana', 'rustico': 'ex.: Herdade do Monte, Courela da ribeira'}[tipo] }}"></label>
     <label>Uso
       <select name="uso" id="uso">{% for k, rotulo in usos.items() %}<option value="{{ k }}" {% if v.uso == k %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}</select></label>
   </div>
@@ -16,7 +16,33 @@
   <p class="nota so-empresa" {% if not empresa %}hidden{% endif %}>A viatura da empresa não entra no património (sem valor, dívida nem
     avaliação): serve só para lhe alocar o combustível que pagas, separado do carro próprio.</p>
   <h2>Características <span class="nota so-proprio" {% if empresa %}hidden{% endif %}>· usadas na avaliação por IA</span></h2>
-  {% if tipo == 'casa' %}
+  {% if tipo == 'rustico' %}
+  <div class="linha">
+    <label>Área (hectares) <input name="area_ha" value="{{ v.area_ha or '' }}" inputmode="decimal" placeholder="ex.: 12,5"></label>
+    <label>Artigo matricial <input name="artigo" value="{{ v.artigo or '' }}" maxlength="60" placeholder="ex.: 45 secção B"></label>
+  </div>
+  <label>Localização <input name="localizacao" value="{{ v.localizacao or '' }}" maxlength="200" placeholder="freguesia, concelho (ex.: Santana da Serra, Ourique)"></label>
+  <fieldset><legend>Ocupação do solo</legend>
+    {% for k, r in ocupacoes.items() %}<label class="opcao"><input type="checkbox" name="ocupacao" value="{{ k }}" {% if k in v.ocupacao %}checked{% endif %}> {{ r }}</label>{% endfor %}
+  </fieldset>
+  <fieldset><legend>Água</legend>
+    {% for k, r in aguas.items() %}<label class="opcao"><input type="checkbox" name="agua" value="{{ k }}" {% if k in v.agua %}checked{% endif %}> {{ r }}</label>{% endfor %}
+  </fieldset>
+  <div class="linha">
+    <label>Acesso <select name="acesso"><option value="">—</option>{% for k, r in acessos.items() %}<option value="{{ k }}" {% if v.acesso == k %}selected{% endif %}>{{ r }}</option>{% endfor %}</select></label>
+    <label>Construções e benfeitorias <input name="extras" value="{{ v.extras or '' }}" maxlength="200" placeholder="ex.: monte em ruína, armazém, vedação, eletricidade"></label>
+  </div>
+  <fieldset><legend>Cortiça</legend>
+    <label class="opcao"><input type="checkbox" name="tem_cortica" value="1" id="tem-cortica" {% if v.tem_cortica %}checked{% endif %}> Tem cortiça (montado de sobro em produção)</label>
+    <div class="linha so-cortica" {% if not v.tem_cortica %}hidden{% endif %}>
+      <label>Anos da tiragem <input name="anos_tiragem" value="{{ v.anos_tiragem or '' }}" maxlength="120" placeholder="ex.: 2008, 2017, 2026"></label>
+      <label>Sobreiros em produção (aprox.) <input name="sobreiros" value="{{ v.sobreiros or '' }}" inputmode="numeric"></label>
+      <label>Última produção (arrobas) <input name="producao_arrobas" value="{{ v.producao_arrobas or '' }}" inputmode="numeric"></label>
+    </div>
+    <p class="nota so-cortica" {% if not v.tem_cortica %}hidden{% endif %}>A cortiça tira-se de 9 em 9 anos: a próxima tiragem conta-se a partir da última.
+      Se as parcelas são tiradas em anos diferentes, indica todos os anos.</p>
+  </fieldset>
+  {% elif tipo == 'casa' %}
   <div class="linha">
     <label>Tipologia (assoalhadas) <input name="tipologia" value="{{ v.tipologia or '' }}" maxlength="3" placeholder="ex.: T3 ou 3"></label>
     <label>Área útil (m²) <input name="area_m2" value="{{ v.area_m2 or '' }}" inputmode="numeric"></label>
@@ -74,8 +100,9 @@
     avaliação quando passa esse tempo (0 = só quando pedires ou indicares à mão).</p>
   </div>
 
-  <h2>Despesas deste {{ 'imóvel' if tipo == 'casa' else 'carro' }}</h2>
-  <label>Textos do extrato <textarea name="padroes" rows="3" placeholder="um por linha, ex.: CONDOMINIO PRAIA&#10;EDP 1234567&#10;SEGURO MULTIRRISCOS">{{ v.padroes or '' }}</textarea></label>
+  <h2>Despesas e receitas deste {{ 'carro' if tipo == 'carro' else 'imóvel' if tipo == 'casa' else 'prédio' }}</h2>
+  <label>Textos do extrato <textarea name="padroes" rows="3" placeholder="{{ 'um por linha, ex.: VENDA CORTICA&#10;IMI&#10;LIMPEZA MATO' if tipo == 'rustico' else 'um por linha, ex.: CONDOMINIO PRAIA&#10;EDP 1234567&#10;SEGURO MULTIRRISCOS' }}">{{ v.padroes or '' }}</textarea></label>
+  {% if tipo != 'rustico' %}
   <label class="opcao"><input type="checkbox" name="omissao" value="1" {% if v.omissao %}checked{% endif %}>
     <span class="so-proprio" {% if empresa %}hidden{% endif %}>Por omissão: fica com as despesas de {{ 'Casa' if tipo == 'casa' else 'Transportes (sem transportes públicos)' }} que nenhum texto atribuiu</span>
     <span class="so-empresa" {% if not empresa %}hidden{% endif %}>Por omissão: fica com todo o combustível (Transportes › Combustível) que nenhum texto atribuiu — antes do carro próprio</span></label>
@@ -83,6 +110,7 @@
     {{ 'imóvel' if tipo == 'casa' else 'carro' }} pode ser «por omissão» — normalmente a habitação principal / o carro principal.</p>
   <p class="nota so-empresa" {% if not empresa %}hidden{% endif %}>Só se aloca combustível: os textos (ex.: o cartão de frota ou o posto
     habitual) só apanham movimentos da categoria Combustível ou ainda sem categoria, dentro do período em que usas a viatura.</p>
+  {% endif %}
   <label>Notas <textarea name="notas" rows="2">{{ v.notas or '' }}</textarea></label>
   <div class="acoes-form">
     <button class="primario">Guardar</button>
@@ -97,6 +125,13 @@
 {% endblock %}
 
 {% block scripts %}
+{% if tipo == 'rustico' %}
+<script>
+  document.getElementById('tem-cortica')?.addEventListener('change', e => {
+    document.querySelectorAll('.so-cortica').forEach(el => el.hidden = !e.target.checked);
+  });
+</script>
+{% endif %}
 {% if tipo == 'carro' %}
 <script>
   // Viatura da empresa: mostra só o período de uso (as datas de compra/venda ficam desligadas para não irem duas vezes).

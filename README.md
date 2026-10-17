@@ -4,7 +4,7 @@ Gestor financeiro doméstico, multiutilizador e self-hosted, para a NAS QNAP. Es
 importa movimentos de bancos portugueses e gere contas à ordem, cartões, investimentos e
 Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIGN.md).
 
-## Estado: v0.37.1
+## Estado: v0.39.0
 
 - Login com várias pessoas: passwords em argon2, bloqueio ao fim de 5 tentativas falhadas,
   proteção CSRF e invalidação das sessões quando a password muda.
@@ -37,6 +37,17 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.39.0 — Registo de abastecimentos sem login.** Uma página simples para o telemóvel (/abastecer/<código>) regista
+  abastecimentos (carro, data, hora, km, litros, valor, depósito cheio, posto) sem entrar na app — acessível só na rede/VPN e
+  com o código secreto do link, gerado/mudado/desligado por um administrador em Património › Abastecimentos. Os registos
+  ficam por validar: quem tem acesso à entidade confirma ou corrige (aviso se os km recuam) e valida — passam a
+  abastecimentos como os do Fuelio (km, ligação ao débito no banco, consumo) — ou rejeita.
+- **v0.38.0 — Heranças e propriedades rústicas.** As entidades editam-se em Administração e passam a ser «pessoal» ou
+  «herança» com a percentagem detida: o painel e o património mostram a tua parte ao lado dos valores da herança.
+  Novo tipo de bem «Propriedade rústica»: área (ha), artigo matricial, localização, ocupação do solo (montado de sobro e de
+  azinho, olival, vinha, pinhal, pastagem, regadio…), água, acesso, construções e cortiça (anos de tiragem, sobreiros,
+  produção em arrobas; próxima tiragem pelo ciclo de 9 anos). A avaliação por IA usa estes atributos (preço por hectare,
+  peso da cortiça e dos anos até à próxima tiragem); as receitas (ex.: venda da cortiça) atribuem-se pelos textos do extrato.
 - **v0.37.1** — o formulário de importação do Fuelio aparece sempre a quem pode editar (também em carros vendidos/devolvidos, com aviso).
 - **v0.37.0 — Fuelio.** Na ficha do carro importa-se o ficheiro de sincronização do Fuelio (vehicle-N-sync.csv ou
   o ZIP). Cada abastecimento dá uma leitura de km (média km/mês e previsão da manutenção) e liga-se ao débito do banco

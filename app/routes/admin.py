@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, selectinload
 from .. import preferencias
 from ..backup import fazer_backup, ultimo_backup
 from ..deps import auditar, exigir_admin, flash, get_db, render
-from ..models import PAPEIS, PAPEIS_ROTULO, Auditoria, Entidade, Permissao, Utilizador
+from ..models import PAPEIS, PAPEIS_ROTULO, TIPOS_ENTIDADE, Auditoria, Entidade, Permissao, Utilizador
 from ..seguranca import hash_password, ler_form, validar_password_nova
 
 router = APIRouter(prefix="/admin")
@@ -155,12 +155,11 @@ def entidades(request: Request, admin: Utilizador = Depends(exigir_admin), db: S
 async def nova_entidade(request: Request, admin: Utilizador = Depends(exigir_admin),
                         db: Session = Depends(get_db)):
     form = await ler_form(request)
-    nome = str(form.get("nome", "")).strip()
-    if not nome or db.scalar(select(Entidade).where(func.lower(Entidade.nome) == nome.lower())):
-        flash(request, "Nome em falta ou já existente.", "erro")
+    dados, erros = _ler_entidade(form, db, None)
+    if erros:
+        flash(request, " ".join(erros), "erro")
         return RedirectResponse("/admin/entidades", status_code=303)
-    e = Entidade(nome=nome, descricao=str(form.get("descricao", "")).strip() or None,
-                 ordem=(db.scalar(select(func.max(Entidade.ordem))) or 0) + 1)
+    e = Entidade(**dados, ordem=(db.scalar(select(func.max(Entidade.ordem))) or 0) + 1)
     db.add(e)
     db.flush()
     # Quem cria fica a administrar; os restantes acessos dão-se em Utilizadores.
@@ -168,6 +167,53 @@ async def nova_entidade(request: Request, admin: Utilizador = Depends(exigir_adm
     auditar(db, admin, "entidade_criada", f"{e.id}: {e.nome}")
     db.commit()
     flash(request, f"Entidade «{e.nome}» criada.")
+    return RedirectResponse("/admin/entidades", status_code=303)
+
+
+def _ler_entidade(form, db: Session, atual: Entidade | None) -> tuple[dict, list[str]]:
+    v = {k: str(form.get(k, "")).strip() for k in ("nome", "descricao", "tipo", "quota")}
+    erros = []
+    if not v["nome"]:
+        erros.append("Indica o nome.")
+    elif db.scalar(select(Entidade).where(func.lower(Entidade.nome) == v["nome"].lower(),
+                                          Entidade.id != (atual.id if atual else 0))):
+        erros.append("Já existe uma entidade com esse nome.")
+    tipo = v["tipo"] if v["tipo"] in TIPOS_ENTIDADE else "pessoal"
+    quota = None
+    if tipo == "heranca":
+        try:
+            quota = float(v["quota"].replace("%", "").replace(",", "."))
+            if not 0 < quota <= 100:
+                raise ValueError
+        except ValueError:
+            erros.append("Numa herança indica a percentagem que detém (mais de 0 e até 100).")
+    return {"nome": v["nome"][:100], "descricao": v["descricao"] or None, "tipo": tipo, "quota": quota}, erros
+
+
+@router.get("/entidades/{eid}")
+def editar_entidade_form(request: Request, eid: int, admin: Utilizador = Depends(exigir_admin),
+                         db: Session = Depends(get_db)):
+    e = db.get(Entidade, eid) or _404()
+    v = {"nome": e.nome, "descricao": e.descricao or "", "tipo": e.tipo or "pessoal",
+         "quota": ("%g" % e.quota).replace(".", ",") if e.quota is not None else ""}
+    return render(request, "admin/entidade_form.html", e=e, v=v, tipos=TIPOS_ENTIDADE, erros=[])
+
+
+@router.post("/entidades/{eid}")
+async def editar_entidade(request: Request, eid: int, admin: Utilizador = Depends(exigir_admin),
+                          db: Session = Depends(get_db)):
+    e = db.get(Entidade, eid) or _404()
+    form = await ler_form(request)
+    dados, erros = _ler_entidade(form, db, e)
+    if erros:
+        v = {k: str(form.get(k, "")) for k in ("nome", "descricao", "tipo", "quota")}
+        return render(request, "admin/entidade_form.html", status_code=400, e=e, v=v, tipos=TIPOS_ENTIDADE, erros=erros)
+    antes = f"{e.nome} ({e.tipo}{', %g%%' % e.quota if e.quota else ''})"
+    for k, val in dados.items():
+        setattr(e, k, val)
+    auditar(db, admin, "entidade_editada", f"{e.id}: {antes} → {e.nome} ({e.tipo}{', %g%%' % e.quota if e.quota else ''})")
+    db.commit()
+    flash(request, f"Entidade «{e.nome}» guardada.")
     return RedirectResponse("/admin/entidades", status_code=303)
 
 

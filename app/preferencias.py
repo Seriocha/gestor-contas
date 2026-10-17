@@ -15,6 +15,8 @@ OMISSAO = {
     "tarefas_dia_fim": "5",
     # Património: revisão automática (IA) do valor dos bens quando passa o prazo de cada um.
     "avaliacao_automatica": "1",
+    # Página de registo de abastecimentos sem login: código secreto do link (vazio = desligada).
+    "abastecer_token": "",
 }
 
 

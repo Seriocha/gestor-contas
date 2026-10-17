@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 
 from . import ia
 from . import relatorios as rel
-from .models import COMBUSTIVEIS, ESTADOS_BEM, USOS_BEM, AvaliacaoBem, Bem, Categoria, Conta, Movimento
+from .models import ACESSOS, AGUAS, CICLO_CORTICA, COMBUSTIVEIS, ESTADOS_BEM, OCUPACOES, USOS_BEM, AvaliacaoBem, Bem, Categoria, Conta, Movimento
 
 log = logging.getLogger(__name__)
 
@@ -251,12 +251,13 @@ def resumo(db: Session, entidade_id: int, hoje: date) -> dict:
         por_uso[(l.bem.tipo, l.bem.uso)][1] += 1
     # Despesas de casa/transportes ainda sem bem (para atribuir).
     sem_bem = [m for m in rel.movimentos_reportaveis(db, entidade_id, ini, hoje)
-               if not m.bem_id and m.montante < 0 and _raiz(m) in {RAIZ_POR_TIPO[b.tipo] for b in bens}
+               if not m.bem_id and m.montante < 0 and _raiz(m) in {RAIZ_POR_TIPO[b.tipo] for b in bens if b.tipo in RAIZ_POR_TIPO}
                and m.categoria.nome not in NAO_CARRO]
     return {
         "linhas": linhas,
         "casas": [l for l in linhas if l.bem.tipo == "casa"],
         "carros": [l for l in linhas if l.bem.tipo == "carro"],
+        "rusticos": [l for l in linhas if l.bem.tipo == "rustico"],
         "valor": sum(l.valor or 0 for l in proprios),
         "divida": sum(l.divida for l in proprios),
         "liquido": sum(l.liquido for l in proprios),
@@ -275,20 +276,45 @@ def resumo(db: Session, entidade_id: int, hoje: date) -> dict:
 
 
 # ------------------------------------------------------------------ avaliação por IA
-SISTEMA = """És um avaliador imobiliário e automóvel em Portugal. Estimas o valor de mercado ATUAL \
+SISTEMA = """És um avaliador imobiliário (urbano e rústico) e automóvel em Portugal. Estimas o valor de mercado ATUAL \
 (preço provável de venda entre particulares) de um bem, a partir dos atributos dados. \
 Se tiveres a ferramenta de pesquisa na web, usa-a para preços recentes na zona (ex.: preço mediano \
-por m² do INE, anúncios do idealista/imovirtual, ou anúncios de carros usados no standvirtual) e \
+por m² do INE, anúncios do idealista/imovirtual, preço por hectare de terrenos rústicos da mesma ocupação e \
+região, ou anúncios de carros usados no standvirtual) e \
 indica as páginas consultadas. Tem em conta a tendência face às avaliações anteriores, se as houver, \
 mas não as copies. Valores em euros, números inteiros. Se faltar informação, alarga o intervalo e \
 baixa a confiança — não inventes.
+Nos prédios rústicos com montado de sobro, a cortiça conta: o valor depende dos sobreiros em produção, da \
+produção (arrobas) e de quantos anos faltam para a próxima tiragem (ciclo de 9 anos).
 Responde APENAS com um objeto JSON com as chaves: valor, minimo, maximo, preco_m2 (casas; null nos \
-carros), justificacao (2 a 4 frases em português de Portugal), referencias (lista de URLs), confianca (0 a 1)."""
+outros), preco_ha (prédios rústicos; null nos outros), justificacao (2 a 4 frases em português de Portugal), referencias (lista de URLs), confianca (0 a 1)."""
 
 
 def descricao_para_ia(b: Bem) -> str:
     """Só atributos do bem — nunca o nome que o utilizador lhe deu, contas, movimentos nem o preço de compra."""
     linhas = []
+    if b.tipo == "rustico":
+        linhas.append("Prédio rústico" + (f" com {('%g' % b.area_ha).replace('.', ',')} ha" if b.area_ha else ""))
+        if b.localizacao:
+            linhas.append(f"Localização: {b.localizacao}, Portugal")
+        if b.lista_ocupacao:
+            linhas.append("Ocupação do solo: " + ", ".join(OCUPACOES[x] for x in b.lista_ocupacao))
+        if b.lista_agua:
+            linhas.append("Água: " + ", ".join(AGUAS[x] for x in b.lista_agua))
+        if b.acesso:
+            linhas.append(f"Acesso: {ACESSOS[b.acesso]}")
+        if b.tem_cortica:
+            c = "Cortiça: sim"
+            if b.sobreiros:
+                c += f", cerca de {b.sobreiros} sobreiros em produção"
+            if b.tiragens:
+                c += f"; tiragens em {', '.join(map(str, b.tiragens))} (próxima prevista em {b.proxima_tiragem})"
+            if b.producao_arrobas:
+                c += f"; última produção {b.producao_arrobas} arrobas"
+            linhas.append(c)
+        if b.extras:
+            linhas.append(f"Construções e benfeitorias: {b.extras}")
+        return "\n".join(linhas)
     if b.tipo == "casa":
         linhas.append(f"Imóvel: habitação T{b.tipologia}" if b.tipologia is not None else "Imóvel: habitação")
         if b.area_m2:
@@ -314,6 +340,8 @@ def descricao_para_ia(b: Bem) -> str:
 
 def falta_para_ia(b: Bem) -> list[str]:
     """Atributos mínimos para a IA dar um valor com sentido."""
+    if b.tipo == "rustico":
+        return [n for n, v in (("área", b.area_ha), ("localização", b.localizacao)) if not v]
     if b.tipo == "casa":
         falta = [n for n, v in (("tipologia", b.tipologia), ("localização", b.localizacao)) if v in (None, "")]
         if not b.area_m2 and b.tipologia is None:
@@ -377,6 +405,11 @@ def avaliar_ia(db: Session, b: Bem, hoje: date) -> AvaliacaoBem:
     refs = d.get("referencias") or []
     refs = [str(r)[:300] for r in refs if isinstance(r, str) and r.startswith("http")][:8] if isinstance(refs, list) else []
     justificacao = str(d.get("justificacao") or "")[:1500] or None
+    if d.get("preco_ha") and b.tipo == "rustico":
+        try:
+            justificacao = f"{justificacao or ''} (≈ {int(float(d['preco_ha']))} €/ha)".strip()
+        except (TypeError, ValueError):
+            pass
     if d.get("preco_m2") and b.tipo == "casa":
         try:
             justificacao = f"{justificacao or ''} (≈ {int(float(d['preco_m2']))} €/m²)".strip()
@@ -422,7 +455,7 @@ def serie_valor(b: Bem) -> dict:
 
 
 def categoria_raiz_id(db: Session, tipo: str) -> int | None:
-    return db.scalar(select(Categoria.id).where(Categoria.nome == RAIZ_POR_TIPO[tipo], Categoria.pai_id.is_(None)))
+    return db.scalar(select(Categoria.id).where(Categoria.nome == RAIZ_POR_TIPO.get(tipo), Categoria.pai_id.is_(None)))
 
 
 async def ciclo_revisoes(SessionLocal, prefs) -> None:

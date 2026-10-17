@@ -15,7 +15,7 @@ from .. import patrimonio as pt
 from .. import relatorios as rel
 from ..deps import IntOpcional, auditar, entidade_escolhida, exigir_papel, flash, get_db, render, utilizador_atual
 from ..formatos import fmt_montante, montante_para_input, parse_data, parse_montante
-from ..models import (COMBUSTIVEIS, ESTADOS_BEM, PAPEIS, TIPOS_BEM, USOS_BEM, AvaliacaoBem, Bem, Conta, Manutencao,
+from ..models import (ACESSOS, AGUAS, COMBUSTIVEIS, ESTADOS_BEM, OCUPACOES, PAPEIS, TIPOS_BEM, USOS_BEM, AvaliacaoBem, Bem, Conta, Manutencao,
                       Movimento, RegistoKm, Utilizador, norm_matricula)
 from ..qualificacao import validar_padrao
 from ..seguranca import ler_form
@@ -38,9 +38,14 @@ def lista(request: Request, entidade: IntOpcional = None, u: Utilizador = Depend
         return render(request, "patrimonio/lista.html", entidade=None, visiveis=visiveis)
     hoje = date.today()
     return render(request, "patrimonio/lista.html", visiveis=visiveis, entidade=ent, r=pt.resumo(db, ent.id, hoje),
-                  vvr=vv.resumo(db, ent.id),
+                  vvr=vv.resumo(db, ent.id), por_validar=_n_por_validar(db, ent.id),
                   usos=USOS_BEM, hoje=hoje, ia_disponivel=ia.disponivel(),
                   pode_editar=PAPEIS[papel] >= PAPEIS["editar"])
+
+
+def _n_por_validar(db: Session, entidade_id: int) -> int:
+    from .abastecer import n_pendentes
+    return n_pendentes(db, entidade_id)
 
 
 @router.post("/via-verde")
@@ -91,7 +96,8 @@ async def atribuir(request: Request, u: Utilizador = Depends(utilizador_atual), 
 # ------------------------------------------------------------------ formulário
 CAMPOS = ("nome", "uso", "tipologia", "area_m2", "localizacao", "ano", "estado", "extras", "marca", "modelo", "km",
           "combustivel", "data_aquisicao", "valor_aquisicao", "emprestimo_conta_id", "data_venda", "valor_venda",
-          "revisao_meses", "padroes", "omissao", "notas", "matricula")
+          "revisao_meses", "padroes", "omissao", "notas", "matricula", "area_ha", "artigo", "acesso", "anos_tiragem",
+          "sobreiros", "producao_arrobas")
 
 
 def _form(request, db, ent, tipo, v, bem=None, erros=None, status_code=200):
@@ -99,7 +105,8 @@ def _form(request, db, ent, tipo, v, bem=None, erros=None, status_code=200):
                              .order_by(Conta.nome)).all()
     return render(request, "patrimonio/form.html", status_code=status_code, entidade=ent, tipo=tipo, v=v, bem=bem,
                   erros=erros or [], usos=USOS_BEM[tipo], estados=ESTADOS_BEM, combustiveis=COMBUSTIVEIS,
-                  emprestimos=emprestimos, tipo_rotulo=TIPOS_BEM[tipo])
+                  emprestimos=emprestimos, tipo_rotulo=TIPOS_BEM[tipo], ocupacoes=OCUPACOES, aguas=AGUAS,
+                  acessos=ACESSOS)
 
 
 def _inteiro(v: str, rotulo: str, erros: list, minimo: int = 0, maximo: int = 10**9) -> int | None:
@@ -115,12 +122,15 @@ def _inteiro(v: str, rotulo: str, erros: list, minimo: int = 0, maximo: int = 10
 def _ler(form, db: Session, entidade_id: int, tipo: str) -> tuple[dict, list[str], dict]:
     v = {k: str(form.get(k, "")).strip() for k in CAMPOS}
     v["omissao"] = "1" if form.get("omissao") else ""
+    v["tem_cortica"] = "1" if form.get("tem_cortica") else ""
+    v["ocupacao"] = [x for x in form.getlist("ocupacao") if x in OCUPACOES]
+    v["agua"] = [x for x in form.getlist("agua") if x in AGUAS]
     erros = []
     if not v["nome"]:
         erros.append("Dá um nome ao bem (ex.: «Casa de Lisboa», «Casa da praia», «Golf»).")
     t = v["tipologia"].upper().lstrip("T")
     dados = {
-        "nome": v["nome"][:100], "uso": v["uso"] if v["uso"] in USOS_BEM[tipo] else "principal",
+        "nome": v["nome"][:100], "uso": v["uso"] if v["uso"] in USOS_BEM[tipo] else next(iter(USOS_BEM[tipo])),
         "tipologia": _inteiro(t, "Tipologia (n.º de assoalhadas)", erros, 0, 20),
         "area_m2": _inteiro(v["area_m2"], "Área", erros, 1, 100000),
         "localizacao": v["localizacao"][:200] or None,
@@ -132,8 +142,25 @@ def _ler(form, db: Session, entidade_id: int, tipo: str) -> tuple[dict, list[str
         "matricula": v["matricula"].upper()[:12] or None if tipo == "carro" else None,
         "revisao_meses": _inteiro(v["revisao_meses"], "Periodicidade da revisão", erros, 0, 120) or 0,
         "padroes": "\n".join(p.strip().upper() for p in v["padroes"].splitlines() if p.strip())[:2000] or None,
-        "omissao": bool(v["omissao"]), "notas": v["notas"] or None,
+        "omissao": bool(v["omissao"]) and tipo != "rustico", "notas": v["notas"] or None,
     }
+    if tipo == "rustico":
+        try:
+            area = float(v["area_ha"].replace(" ", "").replace(",", ".")) if v["area_ha"] else None
+            if area is not None and not 0 < area < 100000:
+                raise ValueError
+        except ValueError:
+            area = None
+            erros.append("Área (hectares) inválida.")
+        anos = [x for x in v["anos_tiragem"].replace(";", ",").replace(" ", ",").split(",") if x.strip()]
+        if any(not (a.isdigit() and 1900 < int(a) <= date.today().year + 1) for a in anos):
+            erros.append("Anos de tiragem inválidos (ex.: 2008, 2017, 2026).")
+        anos = sorted({int(a) for a in anos if a.isdigit()})
+        dados.update(area_ha=area, artigo=v["artigo"][:60] or None, ocupacao=",".join(v["ocupacao"]) or None,
+                     agua=",".join(v["agua"]) or None, acesso=v["acesso"] if v["acesso"] in ACESSOS else None,
+                     tem_cortica=bool(v["tem_cortica"]), anos_tiragem=", ".join(map(str, anos)) or None,
+                     sobreiros=_inteiro(v["sobreiros"], "N.º de sobreiros", erros, 0, 10_000_000),
+                     producao_arrobas=_inteiro(v["producao_arrobas"], "Produção (arrobas)", erros, 0, 10_000_000))
     for k, rotulo in (("data_aquisicao", "aquisição"), ("data_venda", "venda")):
         try:
             dados[k] = parse_data(v[k]) if v[k] else None
@@ -188,11 +215,12 @@ def novo(request: Request, entidade: int, tipo: str = "casa", uso: str = "princi
     exigir_papel(db, u, entidade, "editar")
     _, ent, _ = entidade_escolhida(request, db, u, entidade)
     tipo = tipo if tipo in TIPOS_BEM else "casa"
-    uso = uso if uso in USOS_BEM[tipo] else "principal"
+    uso = uso if uso in USOS_BEM[tipo] else next(iter(USOS_BEM[tipo]))
     grupo = "empresa" if tipo == "carro" and uso == "empresa" else tipo
     ja_ha = any(pt.grupo_omissao(b) == grupo for b in db.scalars(select(Bem).where(
         Bem.entidade_id == ent.id, Bem.tipo == tipo, Bem.omissao)))
     v = {"uso": uso, "revisao_meses": "0" if grupo == "empresa" else "6" if tipo == "casa" else "12",
+         "ocupacao": [], "agua": [],
          "omissao": "" if ja_ha else "1"}
     return _form(request, db, ent, tipo, v)
 
@@ -248,6 +276,7 @@ def ficha(request: Request, bid: int, u: Utilizador = Depends(utilizador_atual),
                   valor=valor, divida=divida, c=pt.custos(db, b, ini, hoje), proxima=pt.proxima_revisao(b),
                   pendente=pt.revisao_pendente(b, hoje), falta=pt.falta_para_ia(b), ia_disponivel=ia.disponivel(),
                   descricao_ia=pt.descricao_para_ia(b), estados=ESTADOS_BEM, combustiveis=COMBUSTIVEIS,
+                  ocupacoes=OCUPACOES, aguas=AGUAS, acessos=ACESSOS,
                   graficos={"bem": pt.serie_valor(b)}, pode_editar=PAPEIS[papel] >= PAPEIS["editar"],
                   mr=mt.resumo(b, hoje) if b.tipo == "carro" else None,
                   falta_plano=mt.falta_para_plano(b) if b.tipo == "carro" else [],
@@ -495,7 +524,9 @@ def editar(request: Request, bid: int, u: Utilizador = Depends(utilizador_atual)
     v.update({"data_aquisicao": iso(b.data_aquisicao), "data_venda": iso(b.data_venda),
               "valor_aquisicao": montante_para_input(b.valor_aquisicao) if b.valor_aquisicao else "",
               "valor_venda": montante_para_input(b.valor_venda) if b.valor_venda else "",
-              "omissao": "1" if b.omissao else "", "padroes": b.padroes or "", "notas": b.notas or ""})
+              "omissao": "1" if b.omissao else "", "padroes": b.padroes or "", "notas": b.notas or "",
+              "area_ha": ("%g" % b.area_ha).replace(".", ",") if b.area_ha else "", "ocupacao": b.lista_ocupacao,
+              "agua": b.lista_agua, "tem_cortica": "1" if b.tem_cortica else ""})
     return _form(request, db, ent, b.tipo, v, bem=b)
 
 

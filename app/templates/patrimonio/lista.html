@@ -2,14 +2,16 @@
 {% block titulo %}Património{% endblock %}
 {% macro tabela(linhas, tipo) -%}
   <div class="rolar"><table class="tabela compacta">
-    <thead><tr><th>{{ 'Casa' if tipo == 'casa' else 'Carro' }}</th><th>Uso</th><th class="num">Valor</th><th class="num">Dívida</th>
+    <thead><tr><th>{{ {'casa': 'Casa', 'carro': 'Carro', 'rustico': 'Propriedade'}[tipo] }}</th><th>Uso</th><th class="num">Valor</th><th class="num">Dívida</th>
       <th class="num">Líquido</th><th class="num">Custos 12 meses</th><th>Revisão do valor</th></tr></thead>
     <tbody>
     {% for l in linhas %}{% set b = l.bem %}
     <tr class="{{ 'arquivada' if b.vendido }}">
       <td><a href="/patrimonio/{{ b.id }}"><strong>{{ b.nome }}</strong></a>
         {% if b.omissao %}<span class="etiqueta" title="Fica com as despesas de {{ 'Casa' if tipo == 'casa' else 'Transportes' }} que nenhum padrão atribuiu">por omissão</span>{% endif %}
-        <br><span class="nota">{% if tipo == 'casa' %}{{ 'T%d' % b.tipologia if b.tipologia is not none }}{{ ' · %d m²' % b.area_m2 if b.area_m2 }}{{ ' · ' ~ b.localizacao if b.localizacao }}
+        <br><span class="nota">{% if tipo == 'rustico' %}{{ ('%g ha' % b.area_ha).replace('.', ',') if b.area_ha }}{{ ' · ' ~ b.localizacao if b.localizacao }}
+          {% if b.tem_cortica %}<br>cortiça{% if b.tiragens %}: tirada em {{ b.tiragens[-1] }}, próxima em {{ b.proxima_tiragem }}{% endif %}{% endif %}
+          {% elif tipo == 'casa' %}{{ 'T%d' % b.tipologia if b.tipologia is not none }}{{ ' · %d m²' % b.area_m2 if b.area_m2 }}{{ ' · ' ~ b.localizacao if b.localizacao }}
           {% else %}{{ [b.marca, b.modelo] | select | join(' ') }}{{ ' · %d' % b.ano if b.ano }}{{ ' · %s km' % '{:,}'.format(b.km).replace(',', ' ') if b.km is not none }}{% endif %}</span></td>
       <td>{% if b.vendido %}<span class="etiqueta">vendido {{ b.data_venda | data }}</span>{% else %}{{ b.uso_rotulo }}{% endif %}
         {% set mr = l.manutencao %}{% if mr %}
@@ -34,22 +36,31 @@
   <h1>Património</h1>
   {% if entidade and pode_editar %}<div class="acoes-form">
     <a class="botao primario" href="/patrimonio/novo?entidade={{ entidade.id }}&tipo=casa">+ Casa</a>
+    <a class="botao" href="/patrimonio/novo?entidade={{ entidade.id }}&tipo=rustico">+ Propriedade rústica</a>
     <a class="botao" href="/patrimonio/novo?entidade={{ entidade.id }}&tipo=carro">+ Carro</a>
     <a class="botao" href="/patrimonio/novo?entidade={{ entidade.id }}&tipo=carro&uso=empresa">+ Viatura da empresa</a>
+    <a class="botao" href="/patrimonio/abastecimentos?entidade={{ entidade.id }}">Abastecimentos{{ ' (%d)' % por_validar if por_validar }}</a>
   </div>{% endif %}
 </div>
 {% set destino = '/patrimonio' %}{% include "_entidades.html" %}
 {% if entidade %}
+{% if entidade.heranca %}<div class="aviso">{{ entidade.nome }} é uma herança{% if entidade.quota is not none %} de que detens {{ ('%g' % entidade.quota).replace('.', ',') }}%{% endif %}:
+  os valores são da herança inteira; a tua parte aparece ao lado.</div>{% endif %}
 <section class="kpi-grelha">
   <div class="cartao kpi"><span class="nota">Valor dos bens</span><strong>{{ r.valor | eur }}</strong>
     <span class="nota">última avaliação de cada um</span></div>
   <div class="cartao kpi"><span class="nota">Dívida associada</span><strong>{{ r.divida | eur }}</strong>
     <span class="nota">empréstimos ligados aos bens</span></div>
-  <div class="cartao kpi"><span class="nota">Capital próprio</span><strong>{{ r.liquido | eur }}</strong></div>
+  <div class="cartao kpi"><span class="nota">Capital próprio</span><strong>{{ r.liquido | eur }}</strong>
+    {% if entidade.heranca and entidade.quota is not none %}<span class="nota">a tua parte ({{ ('%g' % entidade.quota).replace('.', ',') }}%): {{ entidade.parte(r.liquido) | eur }}</span>{% endif %}</div>
   <div class="cartao kpi"><span class="nota">Custos em 12 meses</span><strong>{{ r.custo_12m | eur }}</strong>
     <span class="nota">desde {{ r.desde | data }}</span></div>
 </section>
 
+{% if por_validar %}
+<div class="aviso aviso-alerta"><a href="/patrimonio/abastecimentos?entidade={{ entidade.id }}">{{ por_validar }} abastecimento{{ 's' if por_validar != 1 }}
+  por validar</a> (registados na página sem login).</div>
+{% endif %}
 {% if r.oficina %}
 <div class="aviso aviso-alerta">Precisa de ir à oficina: {% for l in r.oficina %}<a href="/patrimonio/{{ l.bem.id }}#manutencao">{{ l.bem.nome }}</a>
   ({{ l.manutencao.atraso | map(attribute='item.item') | join(', ') }}){{ '; ' if not loop.last }}{% endfor %}.</div>
@@ -79,6 +90,12 @@
   <h2>Casas</h2>
   {% if r.casas %}{{ tabela(r.casas, 'casa') }}{% else %}<p class="vazio sem-margem">Sem casas registadas.</p>{% endif %}
 </section>
+{% if r.rusticos %}
+<section class="cartao">
+  <h2>Propriedades rústicas</h2>
+  {{ tabela(r.rusticos, 'rustico') }}
+</section>
+{% endif %}
 <section class="cartao">
   <h2>Carros</h2>
   {% if r.carros %}{{ tabela(r.carros, 'carro') }}{% else %}<p class="vazio sem-margem">Sem carros registados.</p>{% endif %}

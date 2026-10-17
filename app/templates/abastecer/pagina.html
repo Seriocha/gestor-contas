@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block titulo %}Abastecimento{% endblock %}
+{% block classe_main %}cartao-central{% endblock %}
+{% block cabecalho %}<meta name="robots" content="noindex">{% endblock %}
+{% block conteudo %}
+<h1>Abastecimento</h1>
+{% if feito %}
+<div class="aviso aviso-ok">Registado: {{ feito.bem.nome }} · {{ feito.data | data }} · {{ ('%.2f' % feito.litros).replace('.', ',') }} l
+  {%- if feito.valor %} · {{ feito.valor | eur }}{% endif %}{% if feito.km %} · {{ '{:,}'.format(feito.km).replace(',', ' ') }} km{% endif %}.
+  Fica por validar na app.</div>
+{% endif %}
+{% if erros %}<div class="aviso aviso-erro"><ul>{% for e in erros %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
+{% if not carros %}
+<p class="vazio">Não há carros registados na app.</p>
+{% else %}
+<form method="post" class="formulario">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  <label>Carro
+    <select name="bem_id" id="carro" required>
+      {% if carros | length > 1 %}<option value="">— escolher —</option>{% endif %}
+      {% for b in carros %}<option value="{{ b.id }}" data-km="{{ b.km or '' }}" {% if v.bem_id == b.id | string %}selected{% endif %}>{{ b.nome }}{{ ' · ' ~ b.matricula if b.matricula }}</option>{% endfor %}
+    </select></label>
+  <div class="linha">
+    <label>Data <input type="date" name="data" value="{{ v.data or agora.date().isoformat() }}" max="{{ agora.date().isoformat() }}" required></label>
+    <label>Hora <input type="time" name="hora" value="{{ v.hora or agora.strftime('%H:%M') }}"></label>
+  </div>
+  <label>Km no conta-quilómetros <input name="km" value="{{ v.km or '' }}" inputmode="numeric" placeholder="ex.: 18 064"></label>
+  <p class="nota" id="km-ultimo" hidden></p>
+  <div class="linha">
+    <label>Litros <input name="litros" value="{{ v.litros or '' }}" inputmode="decimal" required placeholder="41,04"></label>
+    <label>Valor pago (€) <input name="valor" value="{{ v.valor or '' }}" inputmode="decimal" required placeholder="84,91"></label>
+  </div>
+  <label class="opcao"><input type="checkbox" name="cheio" value="1" {% if not v or v.cheio %}checked{% endif %}> Depósito cheio</label>
+  <label>Posto <input name="posto" value="{{ v.posto or '' }}" maxlength="120" placeholder="ex.: Prio Vialonga"></label>
+  <label>Nota <input name="notas" value="{{ v.notas or '' }}" maxlength="300" placeholder="opcional"></label>
+  <label>Quem registou <input name="quem" value="{{ v.quem or '' }}" maxlength="60" placeholder="opcional" autocomplete="name"></label>
+  <button class="primario">Registar</button>
+</form>
+<p class="nota">O registo fica por validar: só conta na app depois de confirmado por quem a gere.</p>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+  const sel = document.getElementById('carro'), info = document.getElementById('km-ultimo');
+  const mostra = () => {
+    const km = sel && sel.selectedOptions[0] ? sel.selectedOptions[0].dataset.km : '';
+    if (info) { info.hidden = !km; info.textContent = km ? `Última leitura conhecida: ${Number(km).toLocaleString('pt-PT')} km` : ''; }
+  };
+  if (sel) { sel.addEventListener('change', mostra); mostra(); }
+</script>
+{% endblock %}

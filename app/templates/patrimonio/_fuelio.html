@@ -1,6 +1,6 @@
 {# Carros: abastecimentos importados do Fuelio. Contexto: b, consumo (12 meses), consumo_total, ini, pode_editar. #}
 <section class="cartao" id="fuelio">
-  <h2>Abastecimentos <span class="nota">· Fuelio</span></h2>
+  <h2>Abastecimentos <span class="nota">· Fuelio e página de registo · <a href="/patrimonio/abastecimentos?entidade={{ b.entidade_id }}">por validar / link</a></span></h2>
   {% set c = consumo %}{% set t = consumo_total %}
   {% if t.abastecimentos %}
   <div class="kpi-linha">

@@ -118,7 +118,7 @@
     <div class="rolar"><table class="tabela compacta">
       {% for r in (b.registos_km | reverse | list)[:24] %}
       <tr><td class="sem-quebra">{{ r.data | data }}</td><td class="num">{{ km(r.km) }}</td>
-        <td class="nota">{{ {'oficina': 'oficina', 'ficha': 'ficha do carro'}.get(r.origem, '') }}{{ ' · ' if r.nota and r.origem != 'manual' }}{{ r.nota or '' }}</td>
+        <td class="nota">{{ {'oficina': 'oficina', 'ficha': 'ficha do carro', 'fuelio': 'Fuelio', 'abastec': 'abastecimento'}.get(r.origem, '') }}{{ ' · ' if r.nota and r.origem != 'manual' }}{{ r.nota or '' }}</td>
         <td>{% if pode_editar %}<form method="post" action="/patrimonio/{{ b.id }}/km/{{ r.id }}/apagar" onsubmit="return confirm('Apagar esta leitura?')">
           <input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="ligacao">Apagar</button></form>{% endif %}</td></tr>
       {% endfor %}

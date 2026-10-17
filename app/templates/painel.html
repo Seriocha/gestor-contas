@@ -32,12 +32,13 @@
       <strong>{{ atual.liquido | eur }}</strong>
       {% set dif = atual.liquido - ha_30.liquido %}
       <span class="nota {{ 'pos' if dif > 0 else 'neg' if dif < 0 else '' }}">{{ '+' if dif > 0 else '' }}{{ dif | eur }} em 30 dias</span>
+      {% if entidade.heranca and entidade.quota is not none %}<span class="nota">a tua parte ({{ ('%g' % entidade.quota).replace('.', ',') }}%): {{ entidade.parte(atual.liquido) | eur }}</span>{% endif %}
     </div>
     <div class="kpi"><span class="nota">Ativos</span><strong>{{ atual.ativos | eur }}</strong></div>
     <div class="kpi"><span class="nota">Passivos</span><strong>{{ atual.passivos | eur }}</strong></div>
     {% if n_bens %}
     <div class="kpi"><span class="nota"><a href="/patrimonio?entidade={{ entidade.id }}">Casas e carros</a></span><strong>{{ bens_valor | eur }}</strong>
-      <span class="nota">com bens: {{ (atual.liquido + bens_valor) | eur }}</span></div>
+      <span class="nota">com bens: {{ (atual.liquido + bens_valor) | eur }}{% if entidade.heranca and entidade.quota is not none %} · a tua parte {{ entidade.parte(atual.liquido + bens_valor) | eur }}{% endif %}</span></div>
     {% endif %}
   </div>
   <div class="grafico grafico-medio"><canvas data-grafico="patrimonio" aria-label="Evolução do património líquido nos últimos 12 meses" role="img"></canvas></div>

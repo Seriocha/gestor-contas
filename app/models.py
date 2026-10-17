@@ -50,8 +50,11 @@ class Utilizador(Base):
     )
 
 
+TIPOS_ENTIDADE = {"pessoal": "Pessoal", "heranca": "Herança"}
+
+
 class Entidade(Base):
-    """Património cujas contas se somam entre si (Família, Mãe)."""
+    """Património cujas contas se somam entre si (Família, Mãe, uma herança indivisa…)."""
     __tablename__ = "entidade"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -61,8 +64,25 @@ class Entidade(Base):
     # Início da análise: movimentos anteriores ficam fora dos relatórios, do fluxo de caixa e dos
     # gráficos (enquanto não houver extratos antigos de todas as contas). Os saldos não mudam.
     data_inicio: Mapped[date | None] = mapped_column(Date)
+    # Pessoal, ou herança (indivisa) de que se detém uma quota (%): mostra-se a parte de cada valor.
+    tipo: Mapped[str] = mapped_column(String(10), default="pessoal", server_default="pessoal")
+    quota: Mapped[float | None] = mapped_column(Float)
 
     contas: Mapped[list["Conta"]] = relationship(back_populates="entidade")
+
+    @property
+    def heranca(self) -> bool:
+        return self.tipo == "heranca"
+
+    @property
+    def tipo_rotulo(self) -> str:
+        return TIPOS_ENTIDADE.get(self.tipo, self.tipo)
+
+    def parte(self, valor: int | None) -> int | None:
+        """A parte de um valor que cabe ao utilizador (toda, numa entidade pessoal)."""
+        if valor is None:
+            return None
+        return round(valor * self.quota / 100) if self.heranca and self.quota is not None else valor
 
 
 class Permissao(Base):
@@ -477,14 +497,25 @@ class SubscricaoIgnorada(Base):
     padrao: Mapped[str] = mapped_column(String(200))
 
 
-TIPOS_BEM = {"casa": "Casa", "carro": "Carro"}
+TIPOS_BEM = {"casa": "Casa", "carro": "Carro", "rustico": "Propriedade rústica"}
 USOS_BEM = {
     "casa": {"principal": "Habitação principal", "ferias": "Casa de férias", "arrendada": "Arrendada", "outra": "Outra"},
+    "rustico": {"exploracao": "Exploração agrícola / florestal", "lazer": "Lazer / casa de campo",
+                "arrendada": "Arrendada", "sem_uso": "Sem exploração"},
     "carro": {"principal": "Carro principal", "secundario": "Segundo carro", "empresa": "Viatura da empresa",
               "outro": "Outro"},
 }
 ESTADOS_BEM = {"novo": "Novo / como novo", "bom": "Bom estado", "usado": "Precisa de obras / desgaste",
                "recuperar": "Para recuperar"}
+# Propriedades rústicas: o que influencia o valor (ocupação do solo, água, acesso, cortiça).
+OCUPACOES = {"montado_sobro": "Montado de sobro", "montado_azinho": "Montado de azinho", "olival": "Olival",
+             "vinha": "Vinha", "amendoal": "Amendoal", "pomar": "Pomar", "pinhal": "Pinhal", "eucaliptal": "Eucaliptal",
+             "pastagem": "Pastagem", "sequeiro": "Cultura arvense de sequeiro", "regadio": "Regadio",
+             "horta": "Horta", "mato": "Mato / incultos"}
+AGUAS = {"furo": "Furo", "poco": "Poço", "charca": "Charca / barragem", "ribeira": "Ribeira / linha de água",
+         "rede": "Rede pública", "regadio_publico": "Perímetro de rega"}
+ACESSOS = {"alcatrao": "Estrada alcatroada", "terra_bom": "Caminho de terra em bom estado", "terra_mau": "Caminho de terra difícil"}
+CICLO_CORTICA = 9          # anos entre tiragens (mínimo legal em Portugal)
 COMBUSTIVEIS = {"gasolina": "Gasolina", "gasoleo": "Gasóleo", "hibrido": "Híbrido", "hibrido_plugin": "Híbrido plug-in",
                 "eletrico": "Elétrico", "gpl": "GPL"}
 
@@ -511,6 +542,16 @@ class Bem(Base):
     km: Mapped[int | None] = mapped_column(Integer)
     combustivel: Mapped[str | None] = mapped_column(String(16))
     matricula: Mapped[str | None] = mapped_column(String(12))        # liga as portagens/parques da Via Verde ao carro
+    # Propriedade rústica
+    area_ha: Mapped[float | None] = mapped_column(Float)
+    artigo: Mapped[str | None] = mapped_column(String(60))           # artigo matricial / descrição predial
+    ocupacao: Mapped[str | None] = mapped_column(String(300))        # chaves de OCUPACOES separadas por vírgulas
+    agua: Mapped[str | None] = mapped_column(String(120))            # chaves de AGUAS
+    acesso: Mapped[str | None] = mapped_column(String(12))
+    tem_cortica: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    anos_tiragem: Mapped[str | None] = mapped_column(String(120))    # ex.: "2008, 2017, 2026"
+    sobreiros: Mapped[int | None] = mapped_column(Integer)           # n.º aproximado de sobreiros em produção
+    producao_arrobas: Mapped[int | None] = mapped_column(Integer)    # produção da última tiragem (@ = 15 kg)
     # Aquisição, dívida e venda
     data_aquisicao: Mapped[date | None] = mapped_column(Date)
     valor_aquisicao: Mapped[int | None] = mapped_column(BigInteger)   # cêntimos
@@ -555,6 +596,28 @@ class Bem(Base):
     @property
     def vendido(self) -> bool:
         return self.data_venda is not None
+
+    @property
+    def lista_ocupacao(self) -> list[str]:
+        return [x for x in (self.ocupacao or "").split(",") if x in OCUPACOES]
+
+    @property
+    def lista_agua(self) -> list[str]:
+        return [x for x in (self.agua or "").split(",") if x in AGUAS]
+
+    @property
+    def tiragens(self) -> list[int]:
+        """Anos de tiragem da cortiça, por ordem."""
+        anos = set()
+        for x in (self.anos_tiragem or "").replace(";", ",").replace(" ", ",").split(","):
+            if x.strip().isdigit() and 1900 < int(x) < 2200:
+                anos.add(int(x))
+        return sorted(anos)
+
+    @property
+    def proxima_tiragem(self) -> int | None:
+        t = self.tiragens
+        return t[-1] + CICLO_CORTICA if self.tem_cortica and t else None
 
     @property
     def empresa(self) -> bool:
@@ -618,6 +681,27 @@ class Abastecimento(Base):
     movimento_id: Mapped[int | None] = mapped_column(ForeignKey("movimento.id", ondelete="SET NULL"), index=True)
 
     movimento: Mapped["Movimento | None"] = relationship()
+
+
+class AbastecimentoPendente(Base):
+    """Abastecimento registado na página sem login (/abastecer/…): fica à espera de validação por quem tem
+    acesso à entidade do carro; só depois entra nos abastecimentos, nos km e na ligação ao banco."""
+    __tablename__ = "abastecimento_pendente"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    bem_id: Mapped[int] = mapped_column(ForeignKey("bem.id", ondelete="CASCADE"), index=True)
+    data: Mapped[date] = mapped_column(Date)
+    hora: Mapped[str | None] = mapped_column(String(5))
+    km: Mapped[int | None] = mapped_column(Integer)
+    litros: Mapped[float] = mapped_column(Float)
+    cheio: Mapped[bool] = mapped_column(Boolean, default=True)
+    valor: Mapped[int | None] = mapped_column(BigInteger)             # cêntimos
+    posto: Mapped[str | None] = mapped_column(String(120))
+    notas: Mapped[str | None] = mapped_column(String(300))
+    quem: Mapped[str | None] = mapped_column(String(60))              # nome escrito por quem registou (opcional)
+    criado_em: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, server_default=func.now())
+
+    bem: Mapped["Bem"] = relationship()
 
 
 class RegistoKm(Base):

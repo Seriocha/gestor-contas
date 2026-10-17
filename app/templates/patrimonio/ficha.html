@@ -8,7 +8,10 @@
     {% if pode_editar %}<a class="botao" href="/patrimonio/{{ b.id }}/editar">Editar</a>{% endif %}
   </div>
 </div>
-<p class="nota">{% if b.tipo == 'casa' %}{{ 'T%d' % b.tipologia if b.tipologia is not none }}{{ ' · %d m²' % b.area_m2 if b.area_m2 }}{{ ' · ' ~ b.localizacao if b.localizacao }}{{ ' · construída em %d' % b.ano if b.ano }}
+<p class="nota">{% if b.tipo == 'rustico' %}{{ ('%g ha' % b.area_ha).replace('.', ',') if b.area_ha }}{{ ' · ' ~ b.localizacao if b.localizacao }}{{ ' · artigo ' ~ b.artigo if b.artigo }}
+  {% if b.lista_ocupacao %}<br>{% for x in b.lista_ocupacao %}{{ ocupacoes[x] }}{{ ', ' if not loop.last }}{% endfor %}{% endif %}
+  {% if b.lista_agua %}<br>Água: {% for x in b.lista_agua %}{{ aguas[x] }}{{ ', ' if not loop.last }}{% endfor %}{% endif %}{{ ' · ' ~ acessos[b.acesso] if b.acesso }}
+  {% elif b.tipo == 'casa' %}{{ 'T%d' % b.tipologia if b.tipologia is not none }}{{ ' · %d m²' % b.area_m2 if b.area_m2 }}{{ ' · ' ~ b.localizacao if b.localizacao }}{{ ' · construída em %d' % b.ano if b.ano }}
   {% else %}{{ [b.marca, b.modelo] | select | join(' ') }}{{ ' · %d' % b.ano if b.ano }}{{ ' · %s km' % '{:,}'.format(b.km).replace(',', ' ') if b.km is not none }}{{ ' · ' ~ combustiveis[b.combustivel] if b.combustivel }}{% endif %}
   {{ ' · ' ~ estados[b.estado] if b.estado }}{{ ' · ' ~ b.extras if b.extras }}</p>
 {% if b.notas %}<p class="nota">{{ b.notas }}</p>{% endif %}
@@ -34,7 +37,14 @@
     {% else %}<strong>—</strong>{% endif %}</div>
   <div class="cartao kpi"><span class="nota">Dívida</span><strong>{{ divida | eur if divida else '—' }}</strong>
     {% if b.emprestimo_conta %}<span class="nota"><a href="/contas/{{ b.emprestimo_conta.id }}/movimentos">{{ b.emprestimo_conta.nome }}</a></span>{% endif %}</div>
-  <div class="cartao kpi"><span class="nota">Capital próprio</span><strong>{{ ((valor or 0) - divida) | eur }}</strong></div>
+  <div class="cartao kpi"><span class="nota">Capital próprio</span><strong>{{ ((valor or 0) - divida) | eur }}</strong>
+    {% if entidade.heranca and entidade.quota is not none %}<span class="nota">a tua parte ({{ ('%g' % entidade.quota).replace('.', ',') }}%): {{ entidade.parte((valor or 0) - divida) | eur }}</span>{% endif %}</div>
+  {% if b.tipo == 'rustico' and b.tem_cortica %}
+  <div class="cartao kpi"><span class="nota">Cortiça</span>
+    <strong>{% if b.proxima_tiragem %}próxima em {{ b.proxima_tiragem }}{% else %}sem anos de tiragem{% endif %}</strong>
+    <span class="nota">{% if b.tiragens %}tiragens: {{ b.tiragens | join(', ') }}{% if b.proxima_tiragem %} · {% set f = b.proxima_tiragem - hoje.year %}{{ 'este ano' if f == 0 else ('faltam %d anos' % f if f > 0 else 'em atraso %d anos' % -f) }}{% endif %}{% endif %}
+      {% if b.sobreiros %}<br>{{ '{:,}'.format(b.sobreiros).replace(',', ' ') }} sobreiros{% endif %}{% if b.producao_arrobas %} · última produção {{ '{:,}'.format(b.producao_arrobas).replace(',', ' ') }} @{% endif %}</span></div>
+  {% endif %}
   <div class="cartao kpi"><span class="nota">Custos em 12 meses</span><strong>{{ c.liquido | eur }}</strong>
     <span class="nota">{{ (c.liquido / 12) | round | int | eur }}/mês{% if c.receitas %} · despesas {{ c.despesas | eur }}, recebido {{ c.receitas | eur }}{% endif %}</span></div>
   <div class="cartao kpi"><span class="nota">Próxima revisão</span>
