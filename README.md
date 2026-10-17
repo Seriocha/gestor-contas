@@ -4,7 +4,7 @@ Gestor financeiro doméstico, multiutilizador e self-hosted, para a NAS QNAP. Es
 importa movimentos de bancos portugueses e gere contas à ordem, cartões, investimentos e
 Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIGN.md).
 
-## Estado: v0.29.0
+## Estado: v0.29.1
 
 - Login com várias pessoas: passwords em argon2, bloqueio ao fim de 5 tentativas falhadas,
   proteção CSRF e invalidação das sessões quando a password muda.
@@ -37,6 +37,11 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.29.1 — novo formato do cartão de crédito Santander:** o importador do cartão passa a ler também
+  a exportação «Consulta Movimentos Cartão Crédito» (Data Operação, Descrição, Montante (EUR) com sinal,
+  histórico completo, n.º do cartão no cabeçalho). Carregamentos do Revolut pagos com o cartão ficam
+  como transferência. Nos cartões, um movimento com a mesma data e valor já na conta conta como
+  repetido, para os dois formatos (Extracto e Consulta) não duplicarem a mesma compra.
 - **v0.29.0 — dividir a conta:** ao ligar 2 movimentos selecionados (uma saída e uma entrada), a opção
   «÷ Dividir a conta» põe a entrada (a parte que outros pagaram, ex.: MB WAY de um amigo) na categoria
   da saída — ou «Restaurantes e cafés» se a saída ainda não tiver — para abater à despesa: nos

@@ -95,6 +95,20 @@ def preparar(db: Session, conta: Conta, extrato: Extrato) -> list[LinhaPrevia]:
         Movimento.conta_id == conta.id, Movimento.hash_dedup.in_([l.hash_dedup for l in linhas]))))
     for l in linhas:
         l.duplicado = l.hash_dedup in existentes
+    if extrato.cartao and linhas:
+        # Os extratos de cartão vêm em formatos diferentes (Extracto / Consulta Movimentos) que descrevem
+        # a mesma compra com textos diferentes: no cartão, a mesma data e o mesmo valor já na conta contam
+        # como o mesmo movimento (cada um só uma vez).
+        na_conta = Counter(db.execute(select(Movimento.data_mov, Movimento.montante).where(
+            Movimento.conta_id == conta.id, Movimento.data_mov.between(min(l.data_mov for l in linhas),
+                                                                       max(l.data_mov for l in linhas)))).all())
+        for l in linhas:
+            if l.duplicado:
+                na_conta[(l.data_mov, l.montante)] -= 1
+        for l in linhas:
+            if not l.duplicado and na_conta[(l.data_mov, l.montante)] > 0:
+                l.duplicado = True
+                na_conta[(l.data_mov, l.montante)] -= 1
     return linhas
 
 

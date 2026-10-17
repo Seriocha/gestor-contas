@@ -187,3 +187,54 @@ def test_lista_marca_pares_com_mesma_letra_e_cor(admin, app):
     # só a conta à ordem: o outro lado está fora da página → ligação para o detalhe e nome da conta
     conta = admin.get("/contas/1/movimentos").text
     assert 'href="/movimentos/' in conta.split('class="etiqueta-par"')[1][:40] and "· Cartão Santander" in conta
+
+
+def xls_cartao_lista(linhas, cartao="XXXXXXXXXXXX1234") -> bytes:
+    """Formato novo «Consulta Movimentos Cartão Créd»: Data Operação | Descrição | (vazia) | Montante (EUR) com sinal."""
+    wb = xlwt.Workbook()
+    ws = wb.add_sheet("Consulta Movimentos Cartão Créd")
+    for i, t in enumerate(["Sábado, 17 de Outubro de 2026", "TITULAR FICTICIO", "", "Consulta Movimentos Cartão Créd",
+                           f"Nº Cartão {cartao}", f"Nome Favorito {cartao}", "", "Listagem Movimentos"]):
+        ws.write(i, 0, t)
+    for j, t in enumerate(["Data Operação", "Descrição", "", "Montante (EUR)"]):
+        ws.write(8, j, t)
+    for i, (d, desc, v) in enumerate(linhas, start=9):
+        ws.write(i, 0, d)
+        ws.write(i, 1, desc)
+        ws.write(i, 2, "")
+        ws.write(i, 3, v)
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+LISTA = [
+    ("11-10-2026", "COMPRA MBW*1234 LOJA FICTICIA LISBOA", -674.1),
+    ("08-07-2026", "COMPRA TPA*1234 CONTINENTE MODELO LISBOA", -45.10),
+    ("06-07-2026", "PAG.TRANS.BANCARIA", 209.36),
+    ("22-03-2026", "COMPRA ESTRANG*1234 Revolut**9999* IRL", -1000.0),
+]
+
+
+def test_parser_cartao_formato_lista():
+    e = ler_extrato("descarga (22).xls", xls_cartao_lista(LISTA))
+    assert e.parser == "santander_cartao" and e.cartao and e.conta_ref == "cartão …1234"
+    assert [(m.data_mov, m.montante) for m in e.movimentos] == [
+        (date(2026, 3, 22), -100000), (date(2026, 7, 6), 20936), (date(2026, 7, 8), -4510), (date(2026, 10, 11), -67410)]
+    revolut = e.movimentos[0]
+    assert revolut.transferencia and not e.movimentos[2].transferencia
+    # o formato Extracto continua a ser reconhecido
+    assert ler_extrato("CC ext 11.xls", xls_cartao(CARTAO)).parser == "santander_cartao"
+
+
+def test_formatos_diferentes_nao_duplicam(admin, app):
+    previa, r = _importar(admin, "CC ext.xls", xls_cartao(CARTAO), conta_id="2")
+    assert r.status_code == 303
+    # o mesmo pagamento (06/07, 209,36) e a mesma compra (08/07, 45,10 com outro texto) já existem
+    previa, r = _importar(admin, "descarga (22).xls", xls_cartao_lista(LISTA), conta_id="2")
+    assert "Importar 2 movimentos" in previa.text and previa.text.count("já existe") == 2
+    assert "cartão …1234" in previa.text
+    with app.state.SessionLocal() as db:
+        descricoes = {m.descricao_original for m in db.query(Movimento).filter_by(conta_id=2)}
+    assert "COMPRA MBW*1234 LOJA FICTICIA LISBOA" in descricoes
+    assert "COMPRA TPA*1234 CONTINENTE MODELO LISBOA" not in descricoes
