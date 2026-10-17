@@ -338,6 +338,81 @@ class ReceitaPrevista(Base):
     categoria: Mapped["Categoria | None"] = relationship()
 
 
+MOTIVOS_VIAGEM = {"lazer": "Lazer / férias", "trabalho": "Trabalho", "familia": "Família", "outro": "Outro"}
+
+
+class ModeloViagem(Base):
+    """Critérios para encontrar os gastos de uma viagem, reutilizáveis e afinados com o uso."""
+    __tablename__ = "modelo_viagem"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    nome: Mapped[str] = mapped_column(String(80), unique=True)
+    dias_antes: Mapped[int] = mapped_column(Integer, default=90)     # reservas (voos, alojamento) antes da partida
+    dias_depois: Mapped[int] = mapped_column(Integer, default=3)
+    tipos_conta: Mapped[str] = mapped_column(String(200), default="")  # CSV de TIPOS_CONTA usados em viagem
+    contas: Mapped[str] = mapped_column(String(200), default="")       # CSV de ids de contas (além dos tipos)
+    incluir: Mapped[str] = mapped_column(Text, default="")             # um padrão por linha (texto da descrição)
+    excluir: Mapped[str] = mapped_column(Text, default="")
+    categorias: Mapped[str] = mapped_column(String(300), default="")   # CSV de ids de categorias típicas
+    valor_min: Mapped[int | None] = mapped_column(BigInteger)          # cêntimos (valor absoluto)
+    criado_em: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, server_default=func.now())
+
+    padroes: Mapped[list["ModeloPadrao"]] = relationship(back_populates="modelo", cascade="all, delete-orphan",
+                                                         order_by="ModeloPadrao.padrao")
+
+
+class ModeloPadrao(Base):
+    """O que se aprendeu: quantas vezes um padrão de descrição foi confirmado / rejeitado como gasto de viagem."""
+    __tablename__ = "modelo_padrao"
+    __table_args__ = (UniqueConstraint("modelo_id", "padrao"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    modelo_id: Mapped[int] = mapped_column(ForeignKey("modelo_viagem.id", ondelete="CASCADE"), index=True)
+    padrao: Mapped[str] = mapped_column(String(200))
+    positivos: Mapped[int] = mapped_column(Integer, default=0)
+    negativos: Mapped[int] = mapped_column(Integer, default=0)
+
+    modelo: Mapped[ModeloViagem] = relationship(back_populates="padroes")
+
+
+class Viagem(Base):
+    __tablename__ = "viagem"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entidade_id: Mapped[int] = mapped_column(ForeignKey("entidade.id", ondelete="CASCADE"), index=True)
+    nome: Mapped[str] = mapped_column(String(100))
+    destino: Mapped[str | None] = mapped_column(String(120))
+    pais: Mapped[str | None] = mapped_column(String(80))
+    data_ini: Mapped[date] = mapped_column(Date)
+    data_fim: Mapped[date] = mapped_column(Date)
+    pessoas: Mapped[int] = mapped_column(Integer, default=1)
+    motivo: Mapped[str] = mapped_column(String(20), default="lazer")
+    orcamento: Mapped[int | None] = mapped_column(BigInteger)          # cêntimos
+    moeda: Mapped[str | None] = mapped_column(String(3))               # moeda local (informativa)
+    notas: Mapped[str | None] = mapped_column(Text)
+    modelo_id: Mapped[int | None] = mapped_column(ForeignKey("modelo_viagem.id", ondelete="SET NULL"))
+    etiqueta_id: Mapped[int | None] = mapped_column(ForeignKey("etiqueta.id", ondelete="SET NULL"))
+    criado_em: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, server_default=func.now())
+
+    entidade: Mapped["Entidade"] = relationship()
+    modelo: Mapped[ModeloViagem | None] = relationship()
+    etiqueta: Mapped["Etiqueta | None"] = relationship()
+
+    @property
+    def dias(self) -> int:
+        return (self.data_fim - self.data_ini).days + 1
+
+
+class ViagemRejeitado(Base):
+    """Movimento sugerido que o utilizador disse não ser desta viagem (não volta a ser sugerido)."""
+    __tablename__ = "viagem_rejeitado"
+    __table_args__ = (UniqueConstraint("viagem_id", "movimento_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    viagem_id: Mapped[int] = mapped_column(ForeignKey("viagem.id", ondelete="CASCADE"), index=True)
+    movimento_id: Mapped[int] = mapped_column(ForeignKey("movimento.id", ondelete="CASCADE"))
+
+
 class ParIgnorado(Base):
     """Sugestão de ligação (débito ↔ crédito) que o utilizador disse não ser o mesmo dinheiro."""
     __tablename__ = "par_ignorado"

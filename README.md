@@ -4,7 +4,7 @@ Gestor financeiro doméstico, multiutilizador e self-hosted, para a NAS QNAP. Es
 importa movimentos de bancos portugueses e gere contas à ordem, cartões, investimentos e
 Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIGN.md).
 
-## Estado: v0.27.0
+## Estado: v0.28.0
 
 - Login com várias pessoas: passwords em argon2, bloqueio ao fim de 5 tentativas falhadas,
   proteção CSRF e invalidação das sessões quando a password muda.
@@ -37,6 +37,15 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.28.0 — viagens:** novo menu **Viagens**. Cada viagem regista-se com nome, destino, país, datas,
+  pessoas, motivo, orçamento, moeda local e notas, e marca os seus movimentos com uma etiqueta própria
+  («Viagem: …»). A ficha da viagem sugere os movimentos que podem ser gastos dela — reservas antes da
+  partida (AIRBNB, RYANAIR, HOTEL…), gastos durante as datas nas contas de viagem (Revolut, cartão) —
+  com pontos e razões; associa-se ou rejeita-se em lote. Mostra o gasto total, por dia, por pessoa,
+  antes da partida, por categoria e por conta, face ao orçamento. Os **modelos de viagem** guardam os
+  critérios (dias antes/depois, tipos de conta e contas, textos a incluir/excluir, categorias típicas,
+  valor mínimo), copiam-se e aprendem: cada confirmação/rejeição conta para o padrão da descrição e
+  pesa nas viagens seguintes (migração 0014).
 - **v0.27.0 — calendário nos movimentos:** no topo dos filtros (lista geral e de cada conta), o
   calendário do mês mostra em cada dia o número de movimentos e o saldo do dia, com os outros
   filtros aplicados; clicar num dia filtra esse dia (clicar outra vez limpa), as setas mudam de

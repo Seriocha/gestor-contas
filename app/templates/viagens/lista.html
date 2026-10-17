@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block titulo %}Viagens{% endblock %}
+{% block conteudo %}
+<div class="titulo-acoes">
+  <h1>Viagens</h1>
+  {% if entidade and pode_editar %}<a class="botao primario" href="/viagens/nova?entidade={{ entidade.id }}">+ Nova viagem</a>{% endif %}
+</div>
+{% set destino = '/viagens' %}{% include "_entidades.html" %}
+{% if entidade %}
+<section class="cartao">
+  {% if not viagens %}
+  <p class="vazio sem-margem">Ainda sem viagens. Regista uma (nome, destino, datas, pessoas…) e a app sugere os movimentos que
+    podem ser gastos dela — voos e alojamento reservados antes, e os gastos durante a viagem nas contas que usas para viajar.</p>
+  {% else %}
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th>Viagem</th><th>Datas</th><th class="num">Pessoas</th><th class="num">Gasto</th><th class="num">Orçamento</th><th class="num">Mov.</th><th>Modelo</th></tr></thead>
+    <tbody>
+    {% for v, r in viagens %}
+    <tr>
+      <td><a href="/viagens/{{ v.id }}"><strong>{{ v.nome }}</strong></a>{% if v.destino or v.pais %}<br><span class="nota">{{ v.destino or '' }}{{ ', ' if v.destino and v.pais }}{{ v.pais or '' }}</span>{% endif %}</td>
+      <td class="sem-quebra">{{ v.data_ini | data }} – {{ v.data_fim | data }}<br><span class="nota">{{ v.dias }} dia{{ 's' if v.dias != 1 }}</span></td>
+      <td class="num">{{ v.pessoas }}</td>
+      <td class="num"><strong>{{ r.total | eur }}</strong></td>
+      <td class="num">{% if v.orcamento %}<span class="{{ 'neg' if r.total > v.orcamento else 'pos' }}">{{ v.orcamento | eur }}</span>{% else %}—{% endif %}</td>
+      <td class="num">{{ r.movimentos | length }}</td>
+      <td class="nota">{{ v.modelo.nome if v.modelo else '—' }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% endif %}
+</section>
+
+<section class="cartao">
+  <div class="cartao-cabecalho">
+    <h2>Modelos de viagem</h2>
+  </div>
+  <p class="nota sem-margem">Cada modelo diz onde procurar os gastos (contas usadas em viagem, dias antes e depois, textos típicos como
+    AIRBNB ou RYANAIR, o que excluir) e vai aprendendo com o que confirmas ou rejeitas em cada viagem.</p>
+  <ul class="lista-simples">
+    {% for m in modelos %}
+    <li><a href="/viagens/modelos/{{ m.id }}">{{ m.nome }}</a>
+      <span class="nota">· {{ m.dias_antes }} dias antes, {{ m.dias_depois }} depois · {{ m.padroes | length }} padrões aprendidos</span></li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+{% endblock %}

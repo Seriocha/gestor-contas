@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block titulo %}{{ viagem.nome }}{% endblock %}
+{% block conteudo %}
+<div class="titulo-acoes">
+  <h1>{{ viagem.nome }}</h1>
+  <div class="acoes-form">
+    <a href="/viagens?entidade={{ viagem.entidade_id }}">‹ Viagens</a>
+    {% if pode_editar %}<a class="botao" href="/viagens/{{ viagem.id }}/editar">Editar</a>{% endif %}
+  </div>
+</div>
+<p class="nota">{{ viagem.destino or '' }}{{ ', ' if viagem.destino and viagem.pais }}{{ viagem.pais or '' }}
+  {% if viagem.destino or viagem.pais %}·{% endif %} {{ viagem.data_ini | data }} – {{ viagem.data_fim | data }} ({{ viagem.dias }} dias)
+  · {{ viagem.pessoas }} pessoa{{ 's' if viagem.pessoas != 1 }} · {{ motivos.get(viagem.motivo, viagem.motivo) }}
+  {% if viagem.moeda %}· moeda local {{ viagem.moeda }}{% endif %}
+  · modelo <a href="/viagens/modelos/{{ viagem.modelo_id }}">{{ viagem.modelo.nome if viagem.modelo else '—' }}</a>
+  {% if viagem.etiqueta %}· etiqueta <a href="/movimentos?entidade={{ viagem.entidade_id }}&etiqueta={{ viagem.etiqueta_id }}">#{{ viagem.etiqueta.nome }}</a>{% endif %}</p>
+{% if viagem.notas %}<p class="nota">{{ viagem.notas }}</p>{% endif %}
+
+<section class="kpi-grelha">
+  <div class="cartao kpi"><span class="nota">Gasto total</span><strong>{{ r.total | eur }}</strong>
+    {% if viagem.orcamento %}<span class="nota {{ 'neg' if r.total > viagem.orcamento else 'pos' }}">orçamento {{ viagem.orcamento | eur }}</span>{% endif %}</div>
+  <div class="cartao kpi"><span class="nota">Por dia</span><strong>{{ (r.por_dia | round(0) | int) | eur }}</strong></div>
+  <div class="cartao kpi"><span class="nota">Por pessoa</span><strong>{{ (r.por_pessoa | round(0) | int) | eur }}</strong></div>
+  <div class="cartao kpi"><span class="nota">Antes da partida (reservas)</span><strong>{{ r.antes | eur }}</strong></div>
+</section>
+
+{% if r.movimentos %}
+<div class="grelha-2">
+  <section class="cartao">
+    <h2>Por categoria</h2>
+    <table class="tabela compacta">
+      {% for nome, cor, valor in r.por_categoria %}
+      <tr><td><span class="pastilha" style="background: {{ cor }}"></span>{{ nome }}</td><td class="num">{{ valor | eur }}</td>
+        <td class="num nota">{{ '%.0f' % (valor / r.total * 100) if r.total else 0 }}%</td></tr>
+      {% endfor %}
+    </table>
+  </section>
+  <section class="cartao">
+    <h2>Por conta</h2>
+    <table class="tabela compacta">
+      {% for nome, valor in r.por_conta %}<tr><td>{{ nome }}</td><td class="num">{{ valor | eur }}</td></tr>{% endfor %}
+    </table>
+  </section>
+</div>
+{% endif %}
+
+<section class="cartao" id="sugestoes">
+  <div class="cartao-cabecalho">
+    <h2>Sugestões <span class="nota">· {{ sugestoes | length }} movimento{{ 's' if sugestoes | length != 1 }} que podem ser desta viagem</span></h2>
+    {% if viagem.modelo %}<a href="/viagens/modelos/{{ viagem.modelo_id }}">afinar o modelo</a>{% endif %}
+  </div>
+  {% if not sugestoes %}
+  <p class="vazio sem-margem">Sem sugestões{% if r.movimentos %} novas{% endif %}. Se faltar algo, ajusta o modelo (contas, dias antes/depois, textos a incluir)
+    ou importa os extratos do período.</p>
+  {% else %}
+  <form method="post" action="/viagens/{{ viagem.id }}/associar">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    {% if pode_editar %}
+    <div class="barra-lote ativa">
+      <label class="opcao"><input type="checkbox" id="marcar-sug"> todas</label>
+      <button class="primario" name="acao" value="associar">Associar à viagem</button>
+      <button name="acao" value="rejeitar">Não é desta viagem</button>
+      <label class="opcao"><input type="checkbox" name="aprender" value="1" checked> o modelo aprende com esta escolha</label>
+    </div>
+    {% endif %}
+    <div class="rolar"><table class="tabela compacta tabela-sugestoes">
+      <thead><tr>{% if pode_editar %}<th></th>{% endif %}<th>Data</th><th>Conta</th><th>Descrição</th><th class="num">Montante</th><th>Porquê</th></tr></thead>
+      <tbody>
+      {% for s in sugestoes %}
+      <tr class="fase-{{ s.fase }}">
+        {% if pode_editar %}<td><input type="checkbox" name="ids" value="{{ s.mov.id }}" class="sel-sug" {% if s.marcar %}checked{% endif %} aria-label="Selecionar"></td>{% endif %}
+        <td class="sem-quebra">{{ s.mov.data_mov | data }}{% if s.fase != 'durante' %}<br><span class="etiqueta">{{ s.fase }}</span>{% endif %}</td>
+        <td class="nota">{{ s.mov.conta.nome }}</td>
+        <td><a href="/movimentos/{{ s.mov.id }}">{{ s.mov.descricao_original }}</a>
+          {% if s.mov.categoria %}<br><span class="nota">{{ s.mov.categoria.nome_completo }}</span>{% endif %}</td>
+        <td class="num {{ 'pos' if s.mov.montante > 0 else '' }}">{{ s.mov.montante | eur }}</td>
+        <td class="nota"><span class="etiqueta {{ 'etiqueta-ok' if s.marcar else '' }}">{{ s.pontos }} pts</span> {{ s.razoes | join(' · ') }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+  </form>
+  {% endif %}
+</section>
+
+<section class="cartao">
+  <h2>Movimentos da viagem <span class="nota">· {{ r.movimentos | length }}</span></h2>
+  {% if not r.movimentos %}<p class="vazio sem-margem">Ainda nenhum. Associa as sugestões acima.</p>{% else %}
+  <form method="post" action="/viagens/{{ viagem.id }}/desassociar">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <div class="rolar"><table class="tabela compacta">
+      <thead><tr>{% if pode_editar %}<th></th>{% endif %}<th>Data</th><th>Conta</th><th>Descrição</th><th>Categoria</th><th class="num">Montante</th></tr></thead>
+      {% for m in r.movimentos %}
+      <tr>
+        {% if pode_editar %}<td><input type="checkbox" name="ids" value="{{ m.id }}" aria-label="Selecionar"></td>{% endif %}
+        <td class="sem-quebra">{{ m.data_mov | data }}</td><td class="nota">{{ m.conta.nome }}</td>
+        <td><a href="/movimentos/{{ m.id }}">{{ m.descricao_original }}</a></td>
+        <td class="nota">{{ m.categoria.nome_completo if m.categoria else '—' }}</td>
+        <td class="num">{{ m.montante | eur }}</td>
+      </tr>
+      {% endfor %}
+    </table></div>
+    {% if pode_editar %}<div class="acoes-form"><button>Retirar selecionados da viagem</button></div>{% endif %}
+  </form>
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.getElementById('marcar-sug')?.addEventListener('change', e =>
+    document.querySelectorAll('.sel-sug').forEach(c => { c.checked = e.target.checked; }));
+</script>
+{% endblock %}

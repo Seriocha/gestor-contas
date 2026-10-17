@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block titulo %}{{ 'Editar viagem' if viagem else 'Nova viagem' }}{% endblock %}
+{% block conteudo %}
+<h1>{{ 'Editar «' ~ viagem.nome ~ '»' if viagem else 'Nova viagem' }} <span class="nota">· {{ entidade.nome }}</span></h1>
+{% if erros %}<div class="aviso aviso-erro"><ul>{% for e in erros %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
+<form method="post" class="formulario" action="{{ '/viagens/' ~ viagem.id ~ '/editar' if viagem else '/viagens/nova?entidade=' ~ entidade.id }}">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  <label>Nome <input name="nome" value="{{ v.nome or '' }}" required maxlength="100" placeholder="ex.: Maurícias — férias de verão 2026"></label>
+  <div class="linha">
+    <label>Destino (cidade / região) <input name="destino" value="{{ v.destino or '' }}" maxlength="120" placeholder="ex.: Grand Baie"></label>
+    <label>País <input name="pais" value="{{ v.pais or '' }}" maxlength="80" placeholder="ex.: Maurícias"></label>
+  </div>
+  <div class="linha">
+    <label>Partida <input type="date" name="data_ini" value="{{ v.data_ini or '' }}" required></label>
+    <label>Regresso <input type="date" name="data_fim" value="{{ v.data_fim or '' }}" required></label>
+  </div>
+  <div class="linha">
+    <label>Pessoas <input type="number" name="pessoas" min="1" max="50" value="{{ v.pessoas or 1 }}"></label>
+    <label>Motivo
+      <select name="motivo">{% for k, r in motivos.items() %}<option value="{{ k }}" {% if v.motivo == k %}selected{% endif %}>{{ r }}</option>{% endfor %}</select>
+    </label>
+  </div>
+  <div class="linha">
+    <label>Orçamento (EUR) <input name="orcamento" value="{{ v.orcamento or '' }}" inputmode="decimal" placeholder="opcional"></label>
+    <label>Moeda local <input name="moeda" value="{{ v.moeda or '' }}" maxlength="3" placeholder="ex.: MUR, USD"></label>
+  </div>
+  <label>Modelo para encontrar os gastos
+    <select name="modelo_id">{% for m in modelos %}<option value="{{ m.id }}" {% if v.modelo_id == m.id|string %}selected{% endif %}>{{ m.nome }}</option>{% endfor %}</select>
+  </label>
+  <label>Notas <textarea name="notas" rows="3" placeholder="alojamento, companhia, observações…">{{ v.notas or '' }}</textarea></label>
+  <div class="acoes-form">
+    <button class="primario">{{ 'Guardar' if viagem else 'Registar e ver sugestões' }}</button>
+    <a href="{{ '/viagens/' ~ viagem.id if viagem else '/viagens?entidade=' ~ entidade.id }}">Cancelar</a>
+  </div>
+</form>
+{% if viagem %}
+<form method="post" action="/viagens/{{ viagem.id }}/apagar" onsubmit="return confirm('Apagar esta viagem? Os movimentos ficam, só perdem a marca da viagem.')">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="perigo">Apagar viagem</button>
+</form>
+{% endif %}
+{% endblock %}

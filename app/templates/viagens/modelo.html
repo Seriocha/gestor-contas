@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block titulo %}Modelo de viagem{% endblock %}
+{% block conteudo %}
+<div class="titulo-acoes">
+  <h1>Modelo «{{ m.nome }}»</h1>
+  <div class="acoes-form">
+    <a href="/viagens">‹ Viagens</a>
+    <form method="post" action="/viagens/modelos/{{ m.id }}/copiar">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}"><button>Copiar para um modelo novo</button>
+    </form>
+  </div>
+</div>
+
+<form method="post" class="formulario cartao">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  <div class="linha">
+    <label>Nome <input name="nome" value="{{ m.nome }}" maxlength="80"></label>
+    <label>Dias antes da partida <input type="number" name="dias_antes" min="0" max="365" value="{{ m.dias_antes }}"></label>
+    <label>Dias depois do regresso <input type="number" name="dias_depois" min="0" max="365" value="{{ m.dias_depois }}"></label>
+  </div>
+  <p class="nota sem-margem">Antes da partida e depois do regresso só entram reservas: movimentos com um texto da lista «incluir» ou
+    um padrão já confirmado. Durante a viagem entra o que foi gasto, com mais peso nas contas de viagem.</p>
+
+  <fieldset>
+    <legend>Contas usadas em viagem</legend>
+    <div class="opcoes-grelha">
+      {% for k, rotulo in tipos.items() %}<label class="opcao"><input type="checkbox" name="tipos_conta" value="{{ k }}" {% if k in sel_tipos %}checked{% endif %}> {{ rotulo }}</label>{% endfor %}
+    </div>
+    <p class="nota sem-margem">… e estas contas em particular:</p>
+    <div class="opcoes-grelha">
+      {% for c in contas %}<label class="opcao"><input type="checkbox" name="contas" value="{{ c.id }}" {% if c.id in sel_contas %}checked{% endif %}> {{ c.nome }} <span class="nota">· {{ c.entidade.nome }}</span></label>{% endfor %}
+    </div>
+  </fieldset>
+
+  <div class="linha">
+    <label>Textos de viagem a incluir <span class="nota">(um por linha)</span>
+      <textarea name="incluir" rows="10">{{ m.incluir }}</textarea></label>
+    <label>Textos a excluir <span class="nota">(um por linha)</span>
+      <textarea name="excluir" rows="10">{{ m.excluir }}</textarea></label>
+  </div>
+
+  <fieldset>
+    <legend>Categorias típicas de viagem <span class="nota">(+1 ponto)</span></legend>
+    <div class="opcoes-grelha">
+      {% for raiz in categorias if raiz.natureza == 'DESPESA' %}
+        <label class="opcao"><input type="checkbox" name="categorias" value="{{ raiz.id }}" {% if raiz.id in sel_cats %}checked{% endif %}> {{ raiz.nome }}</label>
+        {% for c in raiz.filhas %}<label class="opcao recuo-leve"><input type="checkbox" name="categorias" value="{{ c.id }}" {% if c.id in sel_cats %}checked{% endif %}> {{ c.nome }}</label>{% endfor %}
+      {% endfor %}
+    </div>
+  </fieldset>
+  <label>Valor mínimo <span class="nota">(abaixo disto perde 1 ponto)</span>
+    <input name="valor_min" value="{{ valor_min }}" inputmode="decimal" placeholder="opcional"></label>
+  <div class="acoes-form"><button class="primario">Guardar modelo</button></div>
+</form>
+
+<section class="cartao" id="aprendido">
+  <h2>O que o modelo aprendeu <span class="nota">· {{ padroes | length }} padrões</span></h2>
+  <p class="nota">Cada movimento confirmado numa viagem soma um ✓ ao padrão da sua descrição; cada rejeitado soma um ✗.
+    Padrões com mais ✓ do que ✗ valem +2 pontos e entram como reservas antes/depois da viagem; com 2+ ✗ e nenhum ✓ deixam de ser sugeridos.
+    {% if est.viagens %}Usado em {{ est.viagens }} viagem(ns), {{ est.movimentos }} movimentos confirmados.{% endif %}</p>
+  {% if est.por_conta %}
+  <p class="nota sem-margem">Onde caíram os gastos confirmados:
+    {% for (nome, tipo), n in est.por_conta %}{{ nome }} ({{ n }}){{ ', ' if not loop.last }}{% endfor %}</p>
+  {% endif %}
+  {% if padroes %}
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th>Padrão</th><th class="num">✓</th><th class="num">✗</th><th>Efeito</th><th></th></tr></thead>
+    {% for p in padroes %}
+    <tr>
+      <td><code>{{ p.padrao }}</code></td><td class="num pos">{{ p.positivos }}</td><td class="num neg">{{ p.negativos }}</td>
+      <td class="nota">{% if p.positivos > p.negativos %}+2 pontos{% elif p.negativos >= 2 and not p.positivos %}nunca sugerido{% else %}neutro{% endif %}</td>
+      <td class="acoes"><form method="post" action="/viagens/modelos/{{ m.id }}/padroes/{{ p.id }}/apagar">
+        <input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="ligacao">Esquecer</button></form></td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% endif %}
+</section>
+{% endblock %}
