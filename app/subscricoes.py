@@ -221,7 +221,7 @@ def _periodicidade(datas: list[date]) -> str:
 
 def detetar(db: Session, entidade_id: int, hoje: date, meses: int = 18) -> list[Sugestao]:
     contas = {c.id: c for c in db.scalars(select(Conta).where(Conta.entidade_id == entidade_id))}
-    validas = [cid for cid, c in contas.items() if c.tipo not in ("EMPRESTIMO", "INVESTIMENTO", "AFORRO")]
+    validas = [cid for cid, c in contas.items() if c.tipo not in ("EMPRESTIMO", "INVESTIMENTO", "AFORRO", "PENSOES")]
     if not validas:
         return []
     desde = somar_meses(hoje.replace(day=1), -meses)

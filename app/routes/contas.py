@@ -44,9 +44,14 @@ def _ler_campos(form, db: Session, entidade_id: int, conta_id: int | None) -> tu
     erros = []
     v = {k: str(form.get(k, "")).strip() for k in (
         "nome", "tipo", "moeda", "iban", "instituicao_id", "saldo_inicial", "data_saldo_inicial",
-        "conta_pagamento_id", "dia_fecho", "dia_pagamento", "notas")}
+        "conta_pagamento_id", "dia_fecho", "dia_pagamento", "notas", "data_contrato")}
     dados: dict = {"nome": v["nome"], "tipo": v["tipo"], "moeda": (v["moeda"] or "EUR").upper(),
                    "iban": normalizar_iban(v["iban"]), "notas": v["notas"] or None}
+    try:
+        dados["data_contrato"] = parse_data(v["data_contrato"]) if v["data_contrato"] else None
+    except ValueError:
+        dados["data_contrato"] = None
+        erros.append("Data de início do contrato inválida.")
     if not dados["nome"]:
         erros.append("O nome é obrigatório.")
     if dados["tipo"] not in TIPOS_CONTA:
@@ -168,6 +173,7 @@ def _valores_form(c: Conta) -> dict:
         "data_saldo_inicial": c.data_saldo_inicial.isoformat() if c.data_saldo_inicial else "",
         "conta_pagamento_id": c.conta_pagamento_id, "dia_fecho": c.dia_fecho or "",
         "dia_pagamento": c.dia_pagamento or "", "notas": c.notas or "",
+        "data_contrato": c.data_contrato.isoformat() if c.data_contrato else "",
         "titulares": {t.id for t in c.titulares},
     }
 

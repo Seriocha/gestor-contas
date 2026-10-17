@@ -34,6 +34,8 @@ TIPOS_CONTA_CORRENTE = {"ORDEM", "POUPANCA", "CARTEIRA_DIGITAL"}
 MANUAL = {
     "INVESTIMENTO": "Importa o extrato da conta de liquidez da carteira (BiG: movimentos da «FA …» em CSV) ou insere "
                     "aplicações/resgates com «+ Movimento»; depois acerta o valor total da carteira com «Retificar saldo».",
+    "PENSOES": "Consulta o saldo do fundo de pensões / PPR no site da gestora e acerta com «Retificar saldo» "
+               "(ou atualiza a cotação das posições).",
     "AFORRO": "Consulta o valor no AforroNet e acerta com «Retificar saldo» (juros entram como ganho).",
     "CARTAO_REFEICAO": "Sem exportação de movimentos: consulta o saldo na app do banco e acerta com «Retificar saldo».",
 }

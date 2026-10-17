@@ -22,6 +22,7 @@ TIPOS_CONTA = {
     "CARTAO_CREDITO": "Cartão de crédito",
     "INVESTIMENTO": "Investimento",
     "AFORRO": "Certificados de Aforro",
+    "PENSOES": "Fundo de pensões / PPR",
     "CARTEIRA_DIGITAL": "Carteira digital (Revolut)",
     "CARTAO_REFEICAO": "Cartão refeição",
     "EMPRESTIMO": "Empréstimo (habitação)",
@@ -137,9 +138,13 @@ class Conta(Base):
     data_saldo_inicial: Mapped[date | None] = mapped_column(Date)
     ativa: Mapped[bool] = mapped_column(Boolean, default=True)
     notas: Mapped[str | None] = mapped_column(Text)
+    # Investimento / pensões: início do contrato e liquidez (saldo contabilístico fora dos fundos).
+    data_contrato: Mapped[date | None] = mapped_column(Date)
+    liquidez: Mapped[int | None] = mapped_column(BigInteger)
     criado_em: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, server_default=func.now())
 
     entidade: Mapped[Entidade] = relationship(back_populates="contas")
+    posicoes: Mapped[list["Posicao"]] = relationship(cascade="all, delete-orphan", order_by="Posicao.nome")
     instituicao: Mapped[Instituicao] = relationship()
     conta_pagamento: Mapped["Conta | None"] = relationship(remote_side="Conta.id")
     titulares: Mapped[list[Utilizador]] = relationship(secondary=conta_titular)
@@ -149,6 +154,36 @@ class Conta(Base):
     @property
     def tipo_rotulo(self) -> str:
         return TIPOS_CONTA.get(self.tipo, self.tipo)
+
+
+class Posicao(Base):
+    """Fundo (ou título) numa conta de investimento / pensões: unidades de participação × cotação = valor;
+    valias = valor − valor de aquisição."""
+    __tablename__ = "posicao"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    conta_id: Mapped[int] = mapped_column(ForeignKey("conta.id", ondelete="CASCADE"), index=True)
+    nome: Mapped[str] = mapped_column(String(120))
+    gestora: Mapped[str | None] = mapped_column(String(80))
+    categoria: Mapped[str | None] = mapped_column(String(60))          # Imobiliário, Ações, Obrigações, PPR…
+    isin: Mapped[str | None] = mapped_column(String(12))
+    risco: Mapped[int | None] = mapped_column(Integer)                 # 1 a 7 (indicador sintético de risco)
+    unidades: Mapped[float] = mapped_column(Float, default=0)
+    cotacao: Mapped[float | None] = mapped_column(Float)              # € por unidade
+    data_cotacao: Mapped[date | None] = mapped_column(Date)
+    valor_aquisicao: Mapped[int | None] = mapped_column(BigInteger)   # cêntimos
+
+    @property
+    def valor(self) -> int:
+        return round(self.unidades * (self.cotacao or 0) * 100)
+
+    @property
+    def valias(self) -> int | None:
+        return self.valor - self.valor_aquisicao if self.valor_aquisicao else None
+
+    @property
+    def valias_pct(self) -> float | None:
+        return self.valias / self.valor_aquisicao * 100 if self.valor_aquisicao else None
 
 
 TIPOS_TAXA = {"variavel": "Variável", "fixa": "Fixa", "mista": "Mista"}
@@ -322,7 +357,7 @@ class Regra(Base):
 
 
 # Contas cujo saldo se pode retificar à data (valor real da carteira / dos certificados).
-TIPOS_RETIFICAVEIS = {"AFORRO", "INVESTIMENTO", "CARTAO_REFEICAO"}
+TIPOS_RETIFICAVEIS = {"AFORRO", "INVESTIMENTO", "PENSOES", "CARTAO_REFEICAO"}
 
 
 class RetificacaoSaldo(Base):

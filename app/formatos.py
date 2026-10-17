@@ -68,6 +68,8 @@ def normalizar_iban(texto: str | None) -> str | None:
         return None
     if "•" in t:
         return (texto or "").strip()  # já vem truncado (registos antigos)
+    if not (re.fullmatch(r"[A-Z]{2}\d{2}[A-Z0-9]+", t) or (t.isdigit() and len(t) >= 19)):
+        return t[:40]                 # n.º de conta / contrato curto: como foi escrito
     return " ".join(t[i:i + 4] for i in range(0, len(t), 4))[:40]
 
 

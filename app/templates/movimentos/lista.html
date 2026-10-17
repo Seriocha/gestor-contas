@@ -11,8 +11,8 @@
   <h1>{{ conta.nome }} <span class="nota">· {{ conta.instituicao.nome }} · {{ conta.entidade.nome }}</span></h1>
   {% if conta.tipo == 'EMPRESTIMO' %}<a class="botao primario" href="/contas/{{ conta.id }}/emprestimo">Ver empréstimo</a>
   {% elif pode_editar %}<div class="acoes-form">
-    <a class="botao {{ 'primario' if conta.tipo in ('POUPANCA', 'INVESTIMENTO', 'AFORRO') else '' }}" href="/contas/{{ conta.id }}/movimentos/novo">+ Movimento</a>
-    <a class="botao {{ '' if conta.tipo in ('POUPANCA', 'INVESTIMENTO', 'AFORRO') else 'primario' }}" href="/importar?conta={{ conta.id }}">Importar extrato</a>
+    <a class="botao {{ 'primario' if conta.tipo in ('POUPANCA', 'INVESTIMENTO', 'AFORRO', 'PENSOES') else '' }}" href="/contas/{{ conta.id }}/movimentos/novo">+ Movimento</a>
+    <a class="botao {{ '' if conta.tipo in ('POUPANCA', 'INVESTIMENTO', 'AFORRO', 'PENSOES') else 'primario' }}" href="/importar?conta={{ conta.id }}">Importar extrato</a>
   </div>{% endif %}
 </div>
 {% if saldo.diferenca %}
@@ -52,6 +52,7 @@
   O saldo mostrado é o real; insere os movimentos em falta (reforços, resgates, juros, valorizações) e a diferença diminui sozinha.
 </div>
 {% endif %}
+{% if pz %}{% include "movimentos/_posicoes.html" %}{% endif %}
 {% if desempenho %}
 {% set d = desempenho %}
 <section class="cartao desempenho">
@@ -98,7 +99,7 @@
       <label>Saldo real ({{ conta.moeda }}) <input name="saldo" inputmode="decimal" required placeholder="valor da carteira / dos certificados"></label>
     </div>
     <label>Nota <input name="nota" maxlength="500" placeholder="ex.: valor do AforroNet a 30-09"></label>
-    {% if conta.tipo in ('INVESTIMENTO', 'AFORRO') and not tem_partida %}
+    {% if conta.tipo in ('INVESTIMENTO', 'AFORRO', 'PENSOES') and not tem_partida %}
     <label class="opcao"><input type="checkbox" name="partida" value="1">
       É o <strong>valor de partida</strong>: não sei quanto foi investido antes — a diferença conta como capital investido
       e o ganho/perda passa a contar a partir desta data</label>
@@ -364,7 +365,7 @@
   <summary>Limpar a conta (para reimportar)</summary>
   <p>Apaga <strong>todos</strong> os movimentos, importações e retificações de «{{ conta.nome }}». A conta, as regras e as categorias
     ficam; os movimentos ligados noutras contas perdem a ligação. Antes é feito um backup da base de dados.
-    {% if conta.tipo in ('INVESTIMENTO', 'AFORRO') %}Depois reimporta o extrato (subscrições e resgates de fundos são ignorados) e usa
+    {% if conta.tipo in ('INVESTIMENTO', 'AFORRO', 'PENSOES') %}Depois reimporta o extrato (subscrições e resgates de fundos são ignorados) e usa
     «Retificar saldo» com o valor total da carteira.{% endif %}</p>
   <form method="post" action="/contas/{{ conta.id }}/limpar" class="formulario-linha">
     <input type="hidden" name="csrf" value="{{ csrf_token }}">

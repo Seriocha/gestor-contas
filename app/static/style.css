@@ -581,3 +581,13 @@ button.pequeno { min-height: 32px; padding: .3rem .8rem; font-size: .85rem; }
 .linha-dupla { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 1.5rem; }
 .ponto { display: inline-block; width: .6rem; height: .6rem; border-radius: 50%; margin-right: .2rem; }
 .etiqueta-bem { background: var(--destaque-suave); border-color: transparent; }
+
+/* ------------------------------------------------------------------ fundos (posições) */
+.posicao { display: flex; flex-direction: column; gap: .45rem; margin-top: .8rem; }
+.posicao-topo { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; flex-wrap: wrap; }
+.posicao-valor { font-size: 1.45rem; font-family: var(--fonte-titulo); }
+.posicao .acoes-form { gap: 1rem; flex-wrap: wrap; align-items: flex-start; }
+.risco { display: inline-flex; align-items: center; gap: .25rem; vertical-align: middle; }
+.risco .ponto-risco { width: .45rem; height: .45rem; border-radius: 50%; background: var(--linha-forte); }
+.risco .atual { width: 1.4rem; height: 1.4rem; border-radius: 50%; background: var(--pos); color: #fff; font-size: .75rem;
+  font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }

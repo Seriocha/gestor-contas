@@ -29,7 +29,7 @@ from .formatos import fmt_montante
 from .models import Categoria, Conta, Movimento
 from .relatorios import HistoricoConta, fim_do_mes, rotulo_mes, somar_meses
 
-TIPOS = {"INVESTIMENTO", "AFORRO"}
+TIPOS = {"INVESTIMENTO", "AFORRO", "PENSOES"}
 TROCA_INTERNA = re.compile(r"^(SUBSCRI[ÇC][ÃA]O|RESGATE)\s+DE\b", re.IGNORECASE)
 TRANSF_CARTEIRA = re.compile(r"CONTA LIQUIDEZ|\bP/ A FA\b|\bDA FA\b", re.IGNORECASE)
 CATEGORIA = "Rendimentos de investimento"   # categoria (receita) dos ganhos/perdas inseridos à mão

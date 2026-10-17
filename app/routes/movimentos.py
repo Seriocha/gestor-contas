@@ -17,7 +17,7 @@ from ..models import CORES, PAPEIS, Bem, Categoria, Conta, Entidade, Etiqueta, M
 from ..qualificacao import aplicar_regras, arvore_categorias, qualificar_manual, repor
 from ..servicos import normalizar_descricao
 from ..seguranca import ler_form
-from .. import investimentos, retificacoes, servicos
+from .. import investimentos, retificacoes, servicos, posicoes
 from .. import relatorios as rel
 from ..servicos import resumo_cartao, saldo_conta
 
@@ -252,6 +252,8 @@ def _listar(request: Request, db: Session, u: Utilizador, *, entidade: int | Non
         cartao=resumo_cartao(db, conta, date.today()) if conta and conta.tipo == "CARTAO_CREDITO" else None,
         retificaveis=conta is not None and retificacoes.retificavel(conta),
         desempenho=investimentos.desempenho(db, conta, date.today()) if investimentos.e_investimento(conta) else None,
+        pz=posicoes.resumo(conta) if posicoes.tem_posicoes(conta) else None, categorias_fundo=posicoes.CATEGORIAS,
+        today_iso=date.today().isoformat(),
         naturezas_inv={m.id: investimentos.natureza(m) for m in lista} if investimentos.e_investimento(conta) else {},
         retificacoes=retificacoes.estados(db, conta) if conta and retificacoes.retificavel(conta) else [],
         tem_partida=bool(conta and db.scalar(select(RetificacaoSaldo.id).where(

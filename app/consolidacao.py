@@ -23,7 +23,7 @@ PASSOS = {
     "via_verde": ("Via Verde", "liga as linhas da Via Verde aos débitos do banco; a repartição pelos carros segue as matrículas"),
     "retificacoes": ("Saldos retificados", "recalcula os acertos das contas de investimento, aforro e cartão refeição"),
 }
-SEM_REGRAS = {"EMPRESTIMO", "INVESTIMENTO", "AFORRO"}
+SEM_REGRAS = {"EMPRESTIMO", "INVESTIMENTO", "AFORRO", "PENSOES"}
 
 
 @dataclass

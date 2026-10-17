@@ -1,0 +1,75 @@
+{# Conta de investimento / pensões: posições (fundos) com unidades, cotação, valor, aquisição, valias e risco.
+   Contexto: conta, pz (posicoes.Resumo), categorias_fundo, pode_editar. #}
+{% macro num(v, casas=4) %}{{ (('%.' ~ casas ~ 'f') % v).replace('.', ',') }}{% endmacro %}
+{% macro risco(n) %}<span class="risco" title="Risco {{ n }} de 7">{% for i in range(1, 8) %}<span class="{{ 'atual' if i == n else 'ponto-risco' }}">{{ n if i == n else '' }}</span>{% endfor %}</span>{% endmacro %}
+<section class="cartao" id="posicoes">
+  <div class="cartao-cabecalho">
+    <h2>{{ 'Fundos' if conta.tipo == 'INVESTIMENTO' else 'Fundo de pensões' }} <span class="nota">· {{ pz.posicoes | selectattr('unidades') | list | length }} ativo{{ 's' if pz.posicoes | selectattr('unidades') | list | length != 1 }}</span></h2>
+    <div class="kpi"><span class="nota">Saldo total</span><strong>{{ pz.total | eur }}</strong></div>
+  </div>
+  <p class="nota">{% if conta.iban %}Conta / contrato {{ conta.iban | iban }}{% endif %}{% if conta.data_contrato %} · início {{ conta.data_contrato | data }}{% endif %}
+    {% if pz.liquidez is not none %} · saldo contabilístico (liquidez) {{ pz.liquidez | eur }}{% endif %}</p>
+
+  {% for p in pz.posicoes %}
+  <div class="cartao-interno posicao {{ 'arquivada' if not p.unidades }}">
+    <div class="posicao-topo">
+      <div><strong>{{ p.nome }}</strong>{% if p.gestora %} <span class="nota">{{ p.gestora }}</span>{% endif %}
+        {% if p.categoria or p.isin %}<br><span class="nota">{{ (p.categoria or '') | upper }}{{ ' · ' if p.categoria and p.isin }}{{ p.isin or '' }}</span>{% endif %}</div>
+      <div class="num"><strong class="posicao-valor">{{ p.valor | eur }}</strong>
+        <br><span class="nota">Cotação: {{ num(p.cotacao or 0) }} € · {{ num(p.unidades, 4).rstrip('0').rstrip(',') }} U.P.</span></div>
+    </div>
+    <div class="posicao-topo">
+      <div>{% if p.risco %}<span class="nota">Risco:</span> {{ risco(p.risco) }}{% endif %}</div>
+      <div class="num nota">{% if p.valor_aquisicao %}Valor de aquisição: {{ p.valor_aquisicao | eur }}{% endif %}</div>
+    </div>
+    <div class="posicao-topo">
+      <span class="nota">{% if p.data_cotacao %}Atualizado a {{ p.data_cotacao | data }}{% endif %}</span>
+      {% if p.valias is not none %}<span class="{{ 'pos' if p.valias >= 0 else 'neg' }}"><span class="nota">Valias:</span> <strong>{{ p.valias | eur }}</strong>
+        {{ '▲' if p.valias >= 0 else '▼' }} {{ ('%.2f' % p.valias_pct).replace('.', ',') }} %</span>{% endif %}
+    </div>
+    {% if pode_editar %}
+    <div class="acoes-form">
+      <details><summary class="ligacao">Atualizar cotação</summary>
+        <form method="post" action="/contas/{{ conta.id }}/posicoes" class="formulario">
+          <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="id" value="{{ p.id }}"><input type="hidden" name="so_cotacao" value="1">
+          <div class="linha">
+            <label>Cotação (€) <input name="cotacao" inputmode="decimal" required value="{{ num(p.cotacao or 0) }}"></label>
+            <label>Data <input type="date" name="data_cotacao" value="{{ today_iso }}"></label>
+          </div>
+          <button class="primario">Atualizar</button>
+        </form>
+      </details>
+      <details><summary class="ligacao">Editar</summary>
+        {% set v = p %}{% include "movimentos/_posicao_form.html" %}
+      </details>
+      <form method="post" action="/contas/{{ conta.id }}/posicoes/{{ p.id }}/apagar" onsubmit="return confirm('Apagar «{{ p.nome }}»?')">
+        <input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="ligacao">Apagar</button>
+      </form>
+    </div>
+    {% endif %}
+  </div>
+  {% else %}
+  <p class="vazio sem-margem">Sem posições. Regista cada fundo com as unidades de participação, a cotação e o valor de aquisição — o valor e as
+    valias calculam-se e o saldo da conta acompanha.</p>
+  {% endfor %}
+
+  {% if pz.posicoes | length > 1 and pz.valias is not none %}
+  <p><strong>Total dos fundos:</strong> {{ pz.valor | eur }} · aquisição {{ pz.aquisicao | eur }} ·
+    <span class="{{ 'pos' if pz.valias >= 0 else 'neg' }}">valias {{ pz.valias | eur }} ({{ ('%.2f' % pz.valias_pct).replace('.', ',') }} %)</span></p>
+  {% endif %}
+
+  {% if pode_editar %}
+  <div class="pat-acoes">
+    <details class="cartao-interno"><summary><strong>+ Adicionar fundo</strong></summary>
+      {% set v = none %}{% include "movimentos/_posicao_form.html" %}
+    </details>
+    <form method="post" action="/contas/{{ conta.id }}/posicoes/liquidez" class="formulario cartao-interno">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
+      <label>Saldo contabilístico / liquidez (€) <input name="liquidez" inputmode="decimal" value="{{ (pz.liquidez / 100) | string | replace('.', ',') if pz.liquidez is not none else '' }}" placeholder="opcional"></label>
+      <button>Guardar liquidez</button>
+    </form>
+  </div>
+  <p class="nota">Cada atualização acerta o saldo real da conta para fundos + liquidez («Valor das posições»), por isso o património e o
+    desempenho seguem o valor de mercado. Reforços e resgates entram como movimentos (aplicações / resgates).</p>
+  {% endif %}
+</section>

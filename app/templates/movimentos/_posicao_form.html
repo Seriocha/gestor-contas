@@ -1,0 +1,22 @@
+{# Formulário de posição (nova ou edição). Contexto: conta, v (Posicao ou none), categorias_fundo, today_iso. #}
+<form method="post" action="/contas/{{ conta.id }}/posicoes" class="formulario">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  {% if v %}<input type="hidden" name="id" value="{{ v.id }}">{% endif %}
+  <div class="linha">
+    <label>Fundo <input name="nome" required maxlength="120" value="{{ v.nome if v else '' }}" placeholder="ex.: CA Património Crescente Classe B"></label>
+    <label>Gestora <input name="gestora" maxlength="80" value="{{ v.gestora or '' if v else '' }}" placeholder="ex.: Square Asset Management"></label>
+  </div>
+  <div class="linha">
+    <label>Categoria <input name="categoria" maxlength="60" list="categorias-fundo" value="{{ v.categoria or '' if v else '' }}" placeholder="ex.: Imobiliário"></label>
+    <label>ISIN <input name="isin" maxlength="12" value="{{ v.isin or '' if v else '' }}" placeholder="opcional"></label>
+    <label>Risco (1 a 7) <select name="risco"><option value="">—</option>{% for i in range(1, 8) %}<option value="{{ i }}" {% if v and v.risco == i %}selected{% endif %}>{{ i }}</option>{% endfor %}</select></label>
+  </div>
+  <datalist id="categorias-fundo">{% for c in categorias_fundo %}<option value="{{ c }}">{% endfor %}</datalist>
+  <div class="linha">
+    <label>Unidades de participação <input name="unidades" inputmode="decimal" required value="{{ ('%g' % v.unidades).replace('.', ',') if v else '' }}" placeholder="810"></label>
+    <label>Cotação (€) <input name="cotacao" inputmode="decimal" required value="{{ ('%g' % v.cotacao).replace('.', ',') if v and v.cotacao else '' }}" placeholder="24,9230"></label>
+    <label>Data da cotação <input type="date" name="data_cotacao" value="{{ v.data_cotacao.isoformat() if v and v.data_cotacao else today_iso }}"></label>
+  </div>
+  <label>Valor de aquisição (€) <input name="valor_aquisicao" inputmode="decimal" value="{{ (v.valor_aquisicao / 100) | string | replace('.', ',') if v and v.valor_aquisicao else '' }}" placeholder="14.947,72"></label>
+  <button class="primario">{{ 'Guardar' if v else 'Adicionar' }}</button>
+</form>
