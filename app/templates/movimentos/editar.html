@@ -118,6 +118,17 @@
       <a href="/regras/nova?mov={{ m.id }}">Criar regra a partir deste movimento</a>
     </div>
   </form>
+  {% if via_verde %}
+  <h3>Detalhe Via Verde <span class="nota">· {{ via_verde | length }} linhas</span></h3>
+  <div class="rolar"><table class="tabela compacta">
+    {% for l in via_verde %}
+    <tr><td class="sem-quebra">{{ l.data | data }} {{ l.hora or '' }}</td><td>{{ l.matricula_fmt }}</td>
+      <td>{{ (l.entrada ~ ' → ') if l.entrada }}{{ l.saida or '' }}<br><span class="nota">{{ l.servico or '' }} · {{ l.operador or '' }}</span></td>
+      <td class="num">{{ l.valor | eur }}</td></tr>
+    {% endfor %}
+  </table></div>
+  <p class="nota">Nos custos de cada carro, este débito reparte-se pela matrícula de cada linha.</p>
+  {% endif %}
   {% if bens %}
   <form method="post" action="/patrimonio/movimento/{{ m.id }}" class="separado formulario">
     <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="voltar" value="/movimentos/{{ m.id }}">

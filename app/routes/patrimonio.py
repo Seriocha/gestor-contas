@@ -9,12 +9,13 @@ from sqlalchemy.orm import Session
 
 from .. import ia
 from .. import manutencao as mt
+from .. import viaverde as vv
 from .. import patrimonio as pt
 from .. import relatorios as rel
 from ..deps import IntOpcional, auditar, entidade_escolhida, exigir_papel, flash, get_db, render, utilizador_atual
 from ..formatos import fmt_montante, montante_para_input, parse_data, parse_montante
 from ..models import (COMBUSTIVEIS, ESTADOS_BEM, PAPEIS, TIPOS_BEM, USOS_BEM, AvaliacaoBem, Bem, Conta, Manutencao,
-                      Movimento, RegistoKm, Utilizador)
+                      Movimento, RegistoKm, Utilizador, norm_matricula)
 from ..qualificacao import validar_padrao
 from ..seguranca import ler_form
 
@@ -36,8 +37,40 @@ def lista(request: Request, entidade: IntOpcional = None, u: Utilizador = Depend
         return render(request, "patrimonio/lista.html", entidade=None, visiveis=visiveis)
     hoje = date.today()
     return render(request, "patrimonio/lista.html", visiveis=visiveis, entidade=ent, r=pt.resumo(db, ent.id, hoje),
+                  vvr=vv.resumo(db, ent.id),
                   usos=USOS_BEM, hoje=hoje, ia_disponivel=ia.disponivel(),
                   pode_editar=PAPEIS[papel] >= PAPEIS["editar"])
+
+
+@router.post("/via-verde")
+async def importar_via_verde(request: Request, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
+    """Extratos Via Verde (CSV ou ZIP, vários de uma vez): grava as linhas e liga-as aos débitos do banco."""
+    form = await ler_form(request)
+    ent_id = int(form["entidade"]) if str(form.get("entidade", "")).isdigit() else 0
+    exigir_papel(db, u, ent_id, "editar")
+    voltar = f"/patrimonio?entidade={ent_id}#via-verde"
+    ficheiros = [f for f in form.getlist("ficheiros") if getattr(f, "filename", "")]
+    if not ficheiros:
+        flash(request, "Escolhe os ficheiros do extrato Via Verde (CSV ou ZIP).", "erro")
+        return RedirectResponse(voltar, status_code=303)
+    ext = vv.Extrato()
+    try:
+        for f in ficheiros:
+            conteudo = await f.read(5 * 1024 * 1024 + 1)
+            if len(conteudo) > 5 * 1024 * 1024:
+                raise ValueError(f"«{f.filename}» é demasiado grande.")
+            vv.ler(f.filename, conteudo, ext)
+    except Exception as e:   # zip/csv corrompido ou de outro tipo
+        flash(request, f"Não foi possível ler: {e}", "erro")
+        return RedirectResponse(voltar, status_code=303)
+    novas, rep = vv.importar(db, ent_id, ext)
+    ligados = vv.ligar(db, ent_id)
+    auditar(db, u, "via_verde", f"{ext.ficheiros} ficheiros, {novas} linhas novas, {ligados} débitos ligados")
+    db.commit()
+    flash(request, f"Via Verde: {novas} linha{'s' if novas != 1 else ''} nova{'s' if novas != 1 else ''} de {ext.ficheiros} "
+                   f"extrato{'s' if ext.ficheiros != 1 else ''}" + (f" ({rep} já existiam)" if rep else "")
+                   + f"; {ligados} débito{'s' if ligados != 1 else ''} do banco ligado{'s' if ligados != 1 else ''}.")
+    return RedirectResponse(voltar, status_code=303)
 
 
 @router.post("/atribuir")
@@ -46,6 +79,7 @@ async def atribuir(request: Request, u: Utilizador = Depends(utilizador_atual), 
     ent_id = int(form["entidade"]) if str(form.get("entidade", "")).isdigit() else 0
     exigir_papel(db, u, ent_id, "editar")
     n = pt.atribuir(db, ent_id)
+    vv.ligar(db, ent_id)
     auditar(db, u, "bens_atribuidos", f"{n} movimentos")
     db.commit()
     flash(request, f"{n} movimento{'s' if n != 1 else ''} atribuído{'s' if n != 1 else ''} aos bens." if n
@@ -56,7 +90,7 @@ async def atribuir(request: Request, u: Utilizador = Depends(utilizador_atual), 
 # ------------------------------------------------------------------ formulário
 CAMPOS = ("nome", "uso", "tipologia", "area_m2", "localizacao", "ano", "estado", "extras", "marca", "modelo", "km",
           "combustivel", "data_aquisicao", "valor_aquisicao", "emprestimo_conta_id", "data_venda", "valor_venda",
-          "revisao_meses", "padroes", "omissao", "notas")
+          "revisao_meses", "padroes", "omissao", "notas", "matricula")
 
 
 def _form(request, db, ent, tipo, v, bem=None, erros=None, status_code=200):
@@ -94,6 +128,7 @@ def _ler(form, db: Session, entidade_id: int, tipo: str) -> tuple[dict, list[str
         "marca": v["marca"][:60] or None, "modelo": v["modelo"][:60] or None,
         "km": _inteiro(v["km"], "Quilómetros", erros, 0, 5_000_000),
         "combustivel": v["combustivel"] if v["combustivel"] in COMBUSTIVEIS else None,
+        "matricula": v["matricula"].upper()[:12] or None if tipo == "carro" else None,
         "revisao_meses": _inteiro(v["revisao_meses"], "Periodicidade da revisão", erros, 0, 120) or 0,
         "padroes": "\n".join(p.strip().upper() for p in v["padroes"].splitlines() if p.strip())[:2000] or None,
         "omissao": bool(v["omissao"]), "notas": v["notas"] or None,
@@ -110,6 +145,8 @@ def _ler(form, db: Session, entidade_id: int, tipo: str) -> tuple[dict, list[str
         except ValueError as e:
             dados[k] = None
             erros.append(f"{rotulo}: {e}")
+    if dados["matricula"] and len(norm_matricula(dados["matricula"])) not in (6, 7, 8):
+        erros.append("Matrícula inválida (ex.: AA-00-AA).")
     for p in (dados["padroes"] or "").splitlines():
         erro = validar_padrao(p, "contem")
         if erro:
@@ -214,7 +251,8 @@ def ficha(request: Request, bid: int, u: Utilizador = Depends(utilizador_atual),
                   mr=mt.resumo(b, hoje) if b.tipo == "carro" else None,
                   falta_plano=mt.falta_para_plano(b) if b.tipo == "carro" else [],
                   descricao_carro=mt.descricao_carro(b, hoje) if b.tipo == "carro" else "",
-                  oficina=_movs_oficina(db, b, hoje) if b.tipo == "carro" else [])
+                  oficina=_movs_oficina(db, b, hoje) if b.tipo == "carro" else [],
+                  via_verde=vv.do_carro(db, b, ini, hoje) if b.tipo == "carro" else [])
 
 
 def _movs_oficina(db: Session, b: Bem, hoje: date) -> list[Movimento]:

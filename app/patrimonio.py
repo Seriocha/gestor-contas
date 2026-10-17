@@ -154,26 +154,43 @@ class Custos:
     por_categoria: list = field(default_factory=list)    # [(nome, cor, total)]
     por_mes: list = field(default_factory=list)          # [(rótulo, total)]
     movimentos: list = field(default_factory=list)
+    partes: dict = field(default_factory=dict)          # {movimento_id: montante deste bem} (débitos repartidos)
 
     @property
     def liquido(self) -> int:
         return self.despesas - self.receitas
 
 
+def por_bem(db: Session, entidade_id: int, movs: list[Movimento]) -> list[tuple[Movimento, int | None, int]]:
+    """(movimento, bem, montante com sinal) — os débitos Via Verde repartem-se pelos carros (matrícula)."""
+    from . import viaverde
+    partes = viaverde.partes(db, entidade_id, movs)
+    r = []
+    for m in movs:
+        if m.id in partes:
+            r += [(m, bid, -v) for bid, v in partes[m.id].items()]
+        else:
+            r.append((m, m.bem_id, m.montante))
+    return r
+
+
 def custos(db: Session, b: Bem, ini: date, fim: date) -> Custos:
-    movs = [m for m in rel.movimentos_reportaveis(db, b.entidade_id, ini, fim) if m.bem_id == b.id]
+    linhas = [(m, v) for m, bid, v in por_bem(db, b.entidade_id, rel.movimentos_reportaveis(db, b.entidade_id, ini, fim))
+              if bid == b.id]
+    movs = [m for m, _ in linhas]
     c = Custos(movimentos=sorted(movs, key=lambda m: (m.data_mov, m.id), reverse=True))
+    c.partes = {m.id: v for m, v in linhas if v != m.montante}
     cats, meses = defaultdict(int), defaultdict(int)
     cores = {}
-    for m in movs:
-        if m.montante < 0:
-            c.despesas += -m.montante
+    for m, v in linhas:
+        if v < 0:
+            c.despesas += -v
             nome = m.categoria.nome_completo if m.categoria else "Sem categoria"
-            cats[nome] += -m.montante
+            cats[nome] += -v
             cores[nome] = m.categoria.cor_efetiva if m.categoria else "#8a8a85"
         else:
-            c.receitas += m.montante
-        meses[m.data_mov.replace(day=1)] += -m.montante
+            c.receitas += v
+        meses[m.data_mov.replace(day=1)] += -v
     c.por_categoria = sorted(((n, cores[n], t) for n, t in cats.items()), key=lambda x: -x[2])
     d, ultimo = ini.replace(day=1), fim.replace(day=1)
     while d <= ultimo:
@@ -211,13 +228,14 @@ class LinhaBem:
 def resumo(db: Session, entidade_id: int, hoje: date) -> dict:
     bens = db.scalars(select(Bem).where(Bem.entidade_id == entidade_id).order_by(Bem.tipo, Bem.nome)).all()
     ini = rel.somar_meses(hoje.replace(day=1), -11)
-    movs = [m for m in rel.movimentos_reportaveis(db, entidade_id, ini, hoje) if m.bem_id]
     gastos, recebido = defaultdict(int), defaultdict(int)
-    for m in movs:
-        if m.montante < 0:
-            gastos[m.bem_id] += -m.montante
+    for m, bid, v in por_bem(db, entidade_id, rel.movimentos_reportaveis(db, entidade_id, ini, hoje)):
+        if not bid:
+            continue
+        if v < 0:
+            gastos[bid] += -v
         else:
-            recebido[m.bem_id] += m.montante
+            recebido[bid] += v
     linhas = [LinhaBem(b, valor_atual(b), divida(db, b, hoje), gastos[b.id], recebido[b.id], proxima_revisao(b),
                        revisao_pendente(b, hoje)) for b in bens]
     from . import manutencao as mt

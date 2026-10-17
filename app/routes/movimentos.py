@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session, selectinload
 from ..deps import (IntOpcional, auditar, entidade_escolhida, exigir_papel, flash, get_db, papel_em, render,
                     utilizador_atual)
 from ..formatos import fmt_montante, parse_data, parse_montante
-from ..models import CORES, PAPEIS, Bem, Categoria, Conta, Entidade, Etiqueta, Movimento, RetificacaoSaldo, Utilizador
+from ..models import CORES, PAPEIS, Bem, Categoria, Conta, Entidade, Etiqueta, Movimento, RetificacaoSaldo, Utilizador, ViaVerde
 from ..qualificacao import aplicar_regras, arvore_categorias, qualificar_manual, repor
 from ..servicos import normalizar_descricao
 from ..seguranca import ler_form
@@ -458,6 +458,8 @@ def editar_form(request: Request, mov_id: int, voltar: str = "", u: Utilizador =
                   manual=e_manual(m), candidatos=_candidatos(db, m) if not par and PAPEIS[papel] >= PAPEIS["editar"] else [],
                   etiquetas=db.scalars(select(Etiqueta).order_by(Etiqueta.nome)).all(),
                   bens=db.scalars(select(Bem).where(Bem.entidade_id == m.conta.entidade_id).order_by(Bem.tipo, Bem.nome)).all(),
+                  via_verde=db.scalars(select(ViaVerde).where(ViaVerde.movimento_id == m.id)
+                                       .order_by(ViaVerde.data, ViaVerde.hora)).all(),
                   pode_editar=PAPEIS[papel] >= PAPEIS["editar"], voltar=_voltar_seguro(voltar))
 
 

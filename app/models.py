@@ -510,6 +510,7 @@ class Bem(Base):
     modelo: Mapped[str | None] = mapped_column(String(60))
     km: Mapped[int | None] = mapped_column(Integer)
     combustivel: Mapped[str | None] = mapped_column(String(16))
+    matricula: Mapped[str | None] = mapped_column(String(12))        # liga as portagens/parques da Via Verde ao carro
     # Aquisição, dívida e venda
     data_aquisicao: Mapped[date | None] = mapped_column(Date)
     valor_aquisicao: Mapped[int | None] = mapped_column(BigInteger)   # cêntimos
@@ -560,6 +561,41 @@ class Bem(Base):
         """Viatura da empresa: não é património (sem valor, dívida nem avaliação) — serve só para
         lhe alocar o combustível."""
         return self.tipo == "carro" and self.uso == "empresa"
+
+
+def norm_matricula(m: str | None) -> str:
+    return "".join(ch for ch in (m or "").upper() if ch.isalnum())
+
+
+class ViaVerde(Base):
+    """Linha do extrato Via Verde (portagem, parque, estacionamento…), ligada ao débito no banco que a pagou.
+    Não se guardam nome, NIF nem morada do extrato."""
+    __tablename__ = "via_verde"
+    __table_args__ = (UniqueConstraint("entidade_id", "hash"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entidade_id: Mapped[int] = mapped_column(ForeignKey("entidade.id", ondelete="CASCADE"), index=True)
+    contrato: Mapped[str | None] = mapped_column(String(20))
+    matricula: Mapped[str] = mapped_column(String(12))               # normalizada (AC71ZE)
+    data: Mapped[date] = mapped_column(Date, index=True)               # data de saída (ou da transação)
+    hora: Mapped[str | None] = mapped_column(String(5))
+    entrada: Mapped[str | None] = mapped_column(String(80))
+    saida: Mapped[str | None] = mapped_column(String(80))
+    valor: Mapped[int] = mapped_column(BigInteger)                    # cêntimos, positivo
+    operador: Mapped[str | None] = mapped_column(String(80))
+    servico: Mapped[str | None] = mapped_column(String(60))           # Portagens | Parques de estacionamento | …
+    documento: Mapped[str | None] = mapped_column(String(40))
+    data_pagamento: Mapped[date | None] = mapped_column(Date)
+    hash: Mapped[str] = mapped_column(String(40))
+    movimento_id: Mapped[int | None] = mapped_column(ForeignKey("movimento.id", ondelete="SET NULL"), index=True)
+    criado_em: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, server_default=func.now())
+
+    movimento: Mapped["Movimento | None"] = relationship()
+
+    @property
+    def matricula_fmt(self) -> str:
+        m = self.matricula
+        return f"{m[:2]}-{m[2:4]}-{m[4:]}" if len(m) == 6 else m
 
 
 class RegistoKm(Base):

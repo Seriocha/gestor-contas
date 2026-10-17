@@ -4,7 +4,7 @@ Gestor financeiro doméstico, multiutilizador e self-hosted, para a NAS QNAP. Es
 importa movimentos de bancos portugueses e gere contas à ordem, cartões, investimentos e
 Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIGN.md).
 
-## Estado: v0.34.0
+## Estado: v0.35.0
 
 - Login com várias pessoas: passwords em argon2, bloqueio ao fim de 5 tentativas falhadas,
   proteção CSRF e invalidação das sessões quando a password muda.
@@ -37,6 +37,11 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.35.0 — Via Verde.** Em Património › Via Verde carregam-se os extratos mensais (CSV, ou os ZIP tal como
+  vêm, vários de uma vez). Cada portagem, parque ou estacionamento fica guardado (sem nome, NIF nem morada) e o grupo
+  com a mesma data de pagamento (ou o mesmo dia, sem data) liga-se ao débito «Via Verde» do banco do mesmo valor
+  (até 7 dias depois). Com a matrícula de cada carro, os débitos repartem-se pelos carros nos custos de cada um,
+  mesmo quando um débito junta os dois; a ficha do carro e a página do débito mostram o detalhe.
 - **v0.34.0 — Manutenção dos carros.** Registo periódico dos km (com lembrete quando a última leitura tem mais
   de um mês) e média de km/mês. A IA (Claude API, com pesquisa web quando disponível) dá o plano de manutenção do
   fabricante para a marca, modelo, ano, combustível e versão — operações com intervalo em km e/ou meses e custo

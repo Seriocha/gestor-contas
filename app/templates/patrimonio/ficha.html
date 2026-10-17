@@ -101,6 +101,27 @@
 
 {% if mr %}{% include "patrimonio/_manutencao.html" %}{% endif %}
 
+{% if via_verde %}
+<section class="cartao" id="via-verde">
+  <h2>Via Verde <span class="nota">· {{ b.matricula }} · desde {{ ini | data }}</span></h2>
+  {% set servicos = via_verde | groupby('servico') %}
+  <div class="kpi-linha">
+    {% for s, ls in servicos %}<div class="kpi"><span class="nota">{{ s or 'Outros' }}</span><strong>{{ ls | sum(attribute='valor') | eur }}</strong>
+      <span class="nota">{{ ls | length }} registo{{ 's' if ls | length != 1 }}</span></div>{% endfor %}
+  </div>
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th>Data</th><th>Percurso / local</th><th>Serviço</th><th class="num">Valor</th><th>Débito</th></tr></thead>
+    {% for l in via_verde[:60] %}
+    <tr><td class="sem-quebra">{{ l.data | data }} <span class="nota">{{ l.hora or '' }}</span></td>
+      <td>{{ (l.entrada ~ ' → ') if l.entrada }}{{ l.saida or '' }}<br><span class="nota">{{ l.operador or '' }}</span></td>
+      <td class="nota">{{ l.servico or '' }}</td><td class="num">{{ l.valor | eur }}</td>
+      <td class="nota sem-quebra">{% if l.movimento %}<a href="/movimentos/{{ l.movimento.id }}">{{ l.movimento.data_mov | data }}</a>{% else %}por ligar{% endif %}</td></tr>
+    {% endfor %}
+  </table></div>
+  {% if via_verde | length > 60 %}<p class="nota">Mostrados os 60 mais recentes de {{ via_verde | length }}.</p>{% endif %}
+</section>
+{% endif %}
+
 <section class="cartao">
   <h2>{{ 'Combustível' if b.empresa else 'Despesas e receitas' }} <span class="nota">· desde {{ ini | data }}</span></h2>
   {% if c.movimentos %}
@@ -127,7 +148,8 @@
     <tr><td class="sem-quebra">{{ m.data_mov | data }}</td><td class="nota">{{ m.conta.nome }}</td>
       <td><a href="/movimentos/{{ m.id }}">{{ m.descricao_original }}</a></td>
       <td class="nota">{{ m.categoria.nome_completo if m.categoria else '—' }}</td>
-      <td class="num {{ 'neg' if m.montante < 0 else 'pos' }}">{{ m.montante | eur }}</td></tr>
+      {% set v = c.partes.get(m.id, m.montante) %}
+      <td class="num {{ 'neg' if v < 0 else 'pos' }}">{{ v | eur }}{% if v != m.montante %}<br><span class="nota">de {{ m.montante | eur }}</span>{% endif %}</td></tr>
     {% endfor %}
   </table></div>
   {% if c.movimentos | length > 50 %}<p class="nota">Mostrados os 50 mais recentes de {{ c.movimentos | length }}.</p>{% endif %}

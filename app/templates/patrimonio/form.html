@@ -31,6 +31,7 @@
   </div>
   {% else %}
   <div class="linha">
+    <label>Matrícula <input name="matricula" value="{{ v.matricula or '' }}" maxlength="12" placeholder="AA-00-AA"></label>
     <label>Marca <input name="marca" value="{{ v.marca or '' }}" maxlength="60"></label>
     <label>Modelo <input name="modelo" value="{{ v.modelo or '' }}" maxlength="60"></label>
     <label>Ano <input name="ano" value="{{ v.ano or '' }}" inputmode="numeric" maxlength="4"></label>
