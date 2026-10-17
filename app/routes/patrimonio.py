@@ -115,24 +115,33 @@ def _ler(form, db: Session, entidade_id: int, tipo: str) -> tuple[dict, list[str
             erros.append(f"Padrão «{p}»: {erro}")
     conta = db.get(Conta, int(v["emprestimo_conta_id"])) if v["emprestimo_conta_id"].isdigit() else None
     dados["emprestimo_conta_id"] = conta.id if conta and conta.entidade_id == entidade_id else None
+    if tipo == "carro" and dados["uso"] == "empresa":
+        # Não é património: só as datas (período em que a usas) contam, para alocar o combustível.
+        dados.update(valor_aquisicao=None, valor_venda=None, emprestimo_conta_id=None, revisao_meses=0)
     return v, erros, dados
 
 
 def _um_por_omissao(db: Session, b: Bem) -> None:
-    """Só um bem de cada tipo fica com as despesas «por omissão»."""
+    """Só um bem de cada grupo (casa, carro, viatura da empresa) fica com as despesas «por omissão»."""
     if b.omissao:
-        db.execute(update(Bem).where(Bem.entidade_id == b.entidade_id, Bem.tipo == b.tipo, Bem.id != b.id)
-                   .values(omissao=False))
+        for o in db.scalars(select(Bem).where(Bem.entidade_id == b.entidade_id, Bem.tipo == b.tipo,
+                                              Bem.id != b.id, Bem.omissao)):
+            if pt.grupo_omissao(o) == pt.grupo_omissao(b):
+                o.omissao = False
 
 
 @router.get("/novo")
-def novo(request: Request, entidade: int, tipo: str = "casa", u: Utilizador = Depends(utilizador_atual),
-         db: Session = Depends(get_db)):
+def novo(request: Request, entidade: int, tipo: str = "casa", uso: str = "principal",
+         u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
     exigir_papel(db, u, entidade, "editar")
     _, ent, _ = entidade_escolhida(request, db, u, entidade)
     tipo = tipo if tipo in TIPOS_BEM else "casa"
-    ja_ha = db.scalar(select(Bem.id).where(Bem.entidade_id == ent.id, Bem.tipo == tipo, Bem.omissao))
-    v = {"uso": "principal", "revisao_meses": "6" if tipo == "casa" else "12", "omissao": "" if ja_ha else "1"}
+    uso = uso if uso in USOS_BEM[tipo] else "principal"
+    grupo = "empresa" if tipo == "carro" and uso == "empresa" else tipo
+    ja_ha = any(pt.grupo_omissao(b) == grupo for b in db.scalars(select(Bem).where(
+        Bem.entidade_id == ent.id, Bem.tipo == tipo, Bem.omissao)))
+    v = {"uso": uso, "revisao_meses": "0" if grupo == "empresa" else "6" if tipo == "casa" else "12",
+         "omissao": "" if ja_ha else "1"}
     return _form(request, db, ent, tipo, v)
 
 

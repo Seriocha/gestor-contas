@@ -13,6 +13,15 @@
   {{ ' · ' ~ estados[b.estado] if b.estado }}{{ ' · ' ~ b.extras if b.extras }}</p>
 {% if b.notas %}<p class="nota">{{ b.notas }}</p>{% endif %}
 
+{% if b.empresa %}
+<div class="aviso">Viatura da empresa: não conta no património (sem valor nem avaliação). Aqui fica só o combustível alocado a ela{% if b.data_aquisicao or b.data_venda %},
+  {% if b.data_aquisicao %}desde {{ b.data_aquisicao | data }}{% endif %}{% if b.data_venda %} até {{ b.data_venda | data }}{% endif %}{% endif %}.</div>
+<section class="kpi-grelha">
+  <div class="cartao kpi"><span class="nota">Combustível em 12 meses</span><strong>{{ c.liquido | eur }}</strong></div>
+  <div class="cartao kpi"><span class="nota">Por mês</span><strong>{{ (c.liquido / 12) | round | int | eur }}</strong></div>
+  <div class="cartao kpi"><span class="nota">Abastecimentos</span><strong>{{ c.movimentos | length }}</strong></div>
+</section>
+{% else %}
 <section class="kpi-grelha">
   <div class="cartao kpi"><span class="nota">Valor atual</span><strong>{{ valor | eur if valor is not none else '—' }}</strong>
     {% set a = b.avaliacoes[-1] if b.avaliacoes else none %}
@@ -32,7 +41,9 @@
     <strong>{% if b.vendido %}—{% elif pendente %}agora{% elif proxima %}{{ proxima | data }}{% else %}só à mão{% endif %}</strong>
     <span class="nota">{% if b.revisao_meses and not b.vendido %}a cada {{ b.revisao_meses }} meses{% endif %}</span></div>
 </section>
+{% endif %}
 
+{% if not b.empresa %}
 <section class="cartao" id="avaliacoes">
   <div class="cartao-cabecalho"><h2>Histórico do valor</h2></div>
   {% if (b.avaliacoes | length) + (1 if b.valor_aquisicao and b.data_aquisicao else 0) > 1 %}
@@ -86,9 +97,10 @@
   </div>
   {% endif %}
 </section>
+{% endif %}
 
 <section class="cartao">
-  <h2>Despesas e receitas <span class="nota">· desde {{ ini | data }}</span></h2>
+  <h2>{{ 'Combustível' if b.empresa else 'Despesas e receitas' }} <span class="nota">· desde {{ ini | data }}</span></h2>
   {% if c.movimentos %}
   <div class="linha-dupla">
     <div>
@@ -122,7 +134,7 @@
     {% if not b.lista_padroes and not b.omissao %}Indica os textos do extrato ou marca-o «por omissão» (Editar).{% endif %}</p>
   {% endif %}
   {% if b.lista_padroes %}<p class="nota">Textos do extrato: {{ b.lista_padroes | join(' · ') }}{{ ' · por omissão' if b.omissao }}</p>
-  {% elif b.omissao %}<p class="nota">Por omissão: fica com as despesas de {{ 'Casa' if b.tipo == 'casa' else 'Transportes' }} sem outro bem.</p>{% endif %}
+  {% elif b.omissao %}<p class="nota">Por omissão: fica com {{ 'o combustível' if b.empresa else 'as despesas de ' ~ ('Casa' if b.tipo == 'casa' else 'Transportes') }} sem outro bem.</p>{% endif %}
 </section>
 {% endblock %}
 

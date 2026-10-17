@@ -164,3 +164,34 @@ def test_avaliacao_manual_e_sem_chave(admin, app, monkeypatch):
     _post(admin, f"/patrimonio/{bid}", f"/patrimonio/{bid}/avaliacoes/{aid}/apagar")
     with app.state.SessionLocal() as db:
         assert db.get(AvaliacaoBem, aid) is None
+
+
+def test_viatura_da_empresa_so_combustivel(admin, app):
+    _mov(admin, 1, "2026-09-12", "300,00", "OFICINA BOSCH", sentido="saida")
+    _categorizar(app, "OFICINA BOSCH", "Manutenção automóvel")
+    _mov(admin, 1, "2026-09-15", "55,00", "PRIO CARTAO FROTA", sentido="saida")   # sem categoria
+    proprio = _criar(admin, "carro")
+    emp = _criar(admin, "carro", nome="Carro da empresa", uso="empresa", marca="", modelo="", ano="", km="",
+                 valor_aquisicao="20.000,00", padroes="CARTAO FROTA", data_aquisicao="2026-09-01")
+    with app.state.SessionLocal() as db:
+        b, p = db.get(Bem, emp), db.get(Bem, proprio)
+        assert b.empresa and b.omissao and p.omissao          # grupos diferentes: ambos por omissão
+        assert b.valor_aquisicao is None and b.revisao_meses == 0
+        assert pt.valor_atual(b) is None and pt.proxima_revisao(b) is None
+    m = _bens(app)
+    assert m["PRIO CARTAO FROTA"] == "Carro da empresa"     # padrão, ainda sem categoria
+    assert m["OFICINA BOSCH"] == "Golf"                     # manutenção não vai para a viatura da empresa
+    with app.state.SessionLocal() as db:
+        setembro = db.scalar(select(Movimento).where(Movimento.descricao_original == "GALP ALVALADE",
+                                                     Movimento.data_mov == date(2026, 9, 10)))
+        assert setembro.bem.nome == "Carro da empresa"      # combustível: a viatura da empresa tem prioridade
+        agosto = db.scalar(select(Movimento).where(Movimento.descricao_original == "GALP ALVALADE",
+                                                   Movimento.data_mov == date(2026, 8, 10)))
+        assert agosto.bem.nome == "Golf"                    # antes de ter a viatura da empresa
+        r = pt.resumo(db, 1, HOJE)
+        assert r["valor"] == 0 and pt.valor_total(db, 1) == (0, 1)
+        with pytest.raises(ia.ErroIA):
+            pt.avaliar_ia(db, db.get(Bem, emp), HOJE)
+    p = admin.get(f"/patrimonio/{emp}").text
+    assert "Combustível em 12 meses" in p and "Histórico do valor" not in p
+    assert "+ Viatura da empresa" in admin.get("/patrimonio?entidade=1").text

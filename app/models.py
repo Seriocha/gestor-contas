@@ -480,7 +480,8 @@ class SubscricaoIgnorada(Base):
 TIPOS_BEM = {"casa": "Casa", "carro": "Carro"}
 USOS_BEM = {
     "casa": {"principal": "Habitação principal", "ferias": "Casa de férias", "arrendada": "Arrendada", "outra": "Outra"},
-    "carro": {"principal": "Carro principal", "secundario": "Segundo carro", "outro": "Outro"},
+    "carro": {"principal": "Carro principal", "secundario": "Segundo carro", "empresa": "Viatura da empresa",
+              "outro": "Outro"},
 }
 ESTADOS_BEM = {"novo": "Novo / como novo", "bom": "Bom estado", "usado": "Precisa de obras / desgaste",
                "recuperar": "Para recuperar"}
@@ -543,6 +544,12 @@ class Bem(Base):
     @property
     def vendido(self) -> bool:
         return self.data_venda is not None
+
+    @property
+    def empresa(self) -> bool:
+        """Viatura da empresa: não é património (sem valor, dívida nem avaliação) — serve só para
+        lhe alocar o combustível."""
+        return self.tipo == "carro" and self.uso == "empresa"
 
 
 class AvaliacaoBem(Base):

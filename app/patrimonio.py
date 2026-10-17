@@ -30,6 +30,8 @@ log = logging.getLogger(__name__)
 RAIZ_POR_TIPO = {"casa": "Casa", "carro": "Transportes"}
 # Subcategorias de Transportes que não são do carro (o passe, a Uber…).
 NAO_CARRO = {"Transportes públicos"}
+# O que se aloca à viatura da empresa.
+COMBUSTIVEL = {"Combustível"}
 
 
 # ------------------------------------------------------------------ atribuição das despesas
@@ -42,19 +44,37 @@ def _no_periodo(b: Bem, d: date) -> bool:
     return (not b.data_aquisicao or d >= b.data_aquisicao) and (not b.data_venda or d <= b.data_venda)
 
 
+def e_combustivel(m: Movimento) -> bool:
+    return bool(m.categoria and m.categoria.nome in COMBUSTIVEL)
+
+
+def grupo_omissao(b: Bem) -> str:
+    """Cada grupo tem no máximo um bem «por omissão»: casa, carro e viatura da empresa."""
+    return "empresa" if b.empresa else b.tipo
+
+
 def bem_para(m: Movimento, padroes: list, omissao: dict) -> int | None:
-    """O bem a que o movimento pertence pelas regras de atribuição (ou None)."""
+    """O bem a que o movimento pertence pelas regras de atribuição (ou None).
+
+    A viatura da empresa só recebe combustível (pelos padrões, também combustível ainda sem
+    categoria) e, sendo «por omissão», tem prioridade sobre o carro próprio no combustível."""
     if m.transferencia:
         return None
     desc = (m.descricao_norm or m.descricao_original or "").upper()
     for p, b in padroes:
-        if p in desc and _no_periodo(b, m.data_mov):
+        if p in desc and _no_periodo(b, m.data_mov) and (not b.empresa or e_combustivel(m) or not m.categoria):
             return b.id
-    if m.montante < 0:
-        raiz = _raiz(m)
-        for tipo, b in omissao.items():
-            if raiz == RAIZ_POR_TIPO[tipo] and not (tipo == "carro" and m.categoria.nome in NAO_CARRO)                     and _no_periodo(b, m.data_mov):
-                return b.id
+    if m.montante >= 0:
+        return None
+    b = omissao.get("empresa")
+    if b and e_combustivel(m) and _no_periodo(b, m.data_mov):
+        return b.id
+    raiz = _raiz(m)
+    for grupo in ("casa", "carro"):
+        b = omissao.get(grupo)
+        if b and raiz == RAIZ_POR_TIPO[grupo] and _no_periodo(b, m.data_mov) \
+                and not (grupo == "carro" and m.categoria.nome in NAO_CARRO):
+            return b.id
     return None
 
 
@@ -73,7 +93,7 @@ def atribuir(db: Session, entidade_id: int, movs: list[Movimento] | None = None)
         movs = db.scalars(select(Movimento).join(Conta).where(
             Conta.entidade_id == entidade_id, ~Movimento.bem_manual)).all()
     padroes = [(p, b) for b in bens for p in b.lista_padroes]
-    omissao = {b.tipo: b for b in bens if b.omissao}
+    omissao = {grupo_omissao(b): b for b in bens if b.omissao}
     n = 0
     for m in movs:
         if m.bem_manual:
@@ -92,6 +112,8 @@ def ultima_avaliacao(b: Bem) -> AvaliacaoBem | None:
 
 
 def valor_atual(b: Bem) -> int | None:
+    if b.empresa:
+        return None
     if b.vendido:
         return 0
     a = ultima_avaliacao(b)
@@ -100,7 +122,7 @@ def valor_atual(b: Bem) -> int | None:
 
 def proxima_revisao(b: Bem) -> date | None:
     """Data em que o valor deve ser revisto (None = revisão só à mão ou bem vendido)."""
-    if b.vendido or not b.revisao_meses:
+    if b.vendido or b.empresa or not b.revisao_meses:
         return None
     a = ultima_avaliacao(b)
     return somar_meses_dia(a.data, b.revisao_meses) if a else date.min
@@ -119,7 +141,7 @@ def revisao_pendente(b: Bem, hoje: date) -> bool:
 
 def divida(db: Session, b: Bem, hoje: date) -> int:
     """Capital em dívida do empréstimo associado (positivo), ou 0."""
-    if not b.emprestimo_conta or b.vendido:
+    if not b.emprestimo_conta or b.vendido or b.empresa:
         return 0
     s = rel.HistoricoConta(db, b.emprestimo_conta).saldo_em(hoje)
     return -s if s and s < 0 else 0
@@ -198,6 +220,7 @@ def resumo(db: Session, entidade_id: int, hoje: date) -> dict:
     linhas = [LinhaBem(b, valor_atual(b), divida(db, b, hoje), gastos[b.id], recebido[b.id], proxima_revisao(b),
                        revisao_pendente(b, hoje)) for b in bens]
     ativos = [l for l in linhas if not l.bem.vendido]
+    proprios = [l for l in ativos if not l.bem.empresa]
     por_uso = defaultdict(lambda: [0, 0])          # (tipo, uso) → [custo 12m, n.º de bens]
     for l in ativos:
         por_uso[(l.bem.tipo, l.bem.uso)][0] += l.custo_12m - l.receitas_12m
@@ -210,9 +233,9 @@ def resumo(db: Session, entidade_id: int, hoje: date) -> dict:
         "linhas": linhas,
         "casas": [l for l in linhas if l.bem.tipo == "casa"],
         "carros": [l for l in linhas if l.bem.tipo == "carro"],
-        "valor": sum(l.valor or 0 for l in ativos),
-        "divida": sum(l.divida for l in ativos),
-        "liquido": sum(l.liquido for l in ativos),
+        "valor": sum(l.valor or 0 for l in proprios),
+        "divida": sum(l.divida for l in proprios),
+        "liquido": sum(l.liquido for l in proprios),
         "custo_12m": sum(l.custo_12m - l.receitas_12m for l in ativos),
         "por_uso": dict(por_uso),
         # Comparação casa principal vs. férias (só interessa com mais de um uso).
@@ -299,6 +322,8 @@ PESQUISA_WEB = [{"type": "web_search_20250305", "name": "web_search", "max_uses"
 
 def avaliar_ia(db: Session, b: Bem, hoje: date) -> AvaliacaoBem:
     """Pede à IA o valor atual do bem e guarda-o no histórico."""
+    if b.empresa:
+        raise ia.ErroIA("A viatura da empresa não entra no património — não tem avaliação.")
     if not ia.disponivel():
         raise ia.ErroIA("A chave da Claude API não está configurada (ANTHROPIC_API_KEY).")
     falta = falta_para_ia(b)
@@ -393,5 +418,6 @@ async def ciclo_revisoes(SessionLocal, prefs) -> None:
 
 def valor_total(db: Session, entidade_id: int) -> tuple[int, int]:
     """(valor dos bens não vendidos, n.º de bens) — para o painel."""
-    bens = [b for b in db.scalars(select(Bem).where(Bem.entidade_id == entidade_id)) if not b.vendido]
+    bens = [b for b in db.scalars(select(Bem).where(Bem.entidade_id == entidade_id))
+            if not b.vendido and not b.empresa]
     return sum(valor_atual(b) or 0 for b in bens), len(bens)

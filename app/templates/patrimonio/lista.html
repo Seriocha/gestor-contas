@@ -15,10 +15,10 @@
       <td class="num">{{ l.valor | eur if l.valor is not none else '—' }}
         {% if l.variacao is not none %}<br><span class="nota {{ 'pos' if l.variacao > 0 else 'neg' if l.variacao < 0 }}">{{ '+' if l.variacao > 0 }}{{ l.variacao | eur }} vs. compra</span>{% endif %}</td>
       <td class="num">{{ l.divida | eur if l.divida else '—' }}</td>
-      <td class="num"><strong>{{ l.liquido | eur }}</strong></td>
+      <td class="num">{% if b.empresa %}<span class="nota">não conta</span>{% else %}<strong>{{ l.liquido | eur }}</strong>{% endif %}</td>
       <td class="num">{{ l.custo_12m | eur }}<br><span class="nota">{{ l.custo_mensal | eur }}/mês{% if l.receitas_12m %} · recebeu {{ l.receitas_12m | eur }}{% endif %}</span></td>
       <td class="sem-quebra">{% if b.vendido %}—{% elif l.pendente %}<span class="etiqueta etiqueta-erro">em atraso</span>
-        {% elif l.proxima %}{{ l.proxima | data }}{% else %}<span class="nota">só à mão</span>{% endif %}</td>
+        {% elif l.proxima %}{{ l.proxima | data }}{% elif b.empresa %}—{% else %}<span class="nota">só à mão</span>{% endif %}</td>
     </tr>
     {% endfor %}
     </tbody>
@@ -30,6 +30,7 @@
   {% if entidade and pode_editar %}<div class="acoes-form">
     <a class="botao primario" href="/patrimonio/novo?entidade={{ entidade.id }}&tipo=casa">+ Casa</a>
     <a class="botao" href="/patrimonio/novo?entidade={{ entidade.id }}&tipo=carro">+ Carro</a>
+    <a class="botao" href="/patrimonio/novo?entidade={{ entidade.id }}&tipo=carro&uso=empresa">+ Viatura da empresa</a>
   </div>{% endif %}
 </div>
 {% set destino = '/patrimonio' %}{% include "_entidades.html" %}

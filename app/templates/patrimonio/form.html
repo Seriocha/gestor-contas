@@ -9,10 +9,13 @@
     <label>Nome <input name="nome" value="{{ v.nome or '' }}" required maxlength="100"
       placeholder="{{ 'ex.: Casa de Lisboa, Casa da praia' if tipo == 'casa' else 'ex.: Golf, carro da Ana' }}"></label>
     <label>Uso
-      <select name="uso">{% for k, rotulo in usos.items() %}<option value="{{ k }}" {% if v.uso == k %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}</select></label>
+      <select name="uso" id="uso">{% for k, rotulo in usos.items() %}<option value="{{ k }}" {% if v.uso == k %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}</select></label>
   </div>
 
-  <h2>Características <span class="nota">· usadas na avaliação por IA</span></h2>
+  {% set empresa = tipo == 'carro' and v.uso == 'empresa' %}
+  <p class="nota so-empresa" {% if not empresa %}hidden{% endif %}>A viatura da empresa não entra no património (sem valor, dívida nem
+    avaliação): serve só para lhe alocar o combustível que pagas, separado do carro próprio.</p>
+  <h2>Características <span class="nota so-proprio" {% if empresa %}hidden{% endif %}>· usadas na avaliação por IA</span></h2>
   {% if tipo == 'casa' %}
   <div class="linha">
     <label>Tipologia (assoalhadas) <input name="tipologia" value="{{ v.tipologia or '' }}" maxlength="3" placeholder="ex.: T3 ou 3"></label>
@@ -42,9 +45,17 @@
   <label>Versão / equipamento <input name="extras" value="{{ v.extras or '' }}" maxlength="200" placeholder="ex.: 1.6 TDI Highline, caixa automática"></label>
   {% endif %}
 
+  <div class="so-empresa" {% if not empresa %}hidden{% endif %}>
+  <h2>Período em que a usas</h2>
+  <div class="linha">
+    <label>Desde <input type="date" name="data_aquisicao" value="{{ v.data_aquisicao or '' }}" {% if not empresa %}disabled{% endif %}></label>
+    <label>Até (devolvida) <input type="date" name="data_venda" value="{{ v.data_venda or '' }}" {% if not empresa %}disabled{% endif %}></label>
+  </div>
+  </div>
+  <div class="so-proprio" {% if empresa %}hidden{% endif %}>
   <h2>Compra, dívida e venda</h2>
   <div class="linha">
-    <label>Data de compra <input type="date" name="data_aquisicao" value="{{ v.data_aquisicao or '' }}"></label>
+    <label>Data de compra <input type="date" name="data_aquisicao" value="{{ v.data_aquisicao or '' }}" {% if empresa %}disabled{% endif %}></label>
     <label>Valor de compra <input name="valor_aquisicao" value="{{ v.valor_aquisicao or '' }}" inputmode="decimal" placeholder="0,00"></label>
     {% if tipo == 'casa' or emprestimos %}
     <label>Empréstimo associado
@@ -54,19 +65,23 @@
     {% endif %}
   </div>
   <div class="linha">
-    <label>Data de venda <input type="date" name="data_venda" value="{{ v.data_venda or '' }}"></label>
+    <label>Data de venda <input type="date" name="data_venda" value="{{ v.data_venda or '' }}" {% if empresa %}disabled{% endif %}></label>
     <label>Valor de venda <input name="valor_venda" value="{{ v.valor_venda or '' }}" inputmode="decimal" placeholder="0,00"></label>
     <label>Rever o valor a cada (meses) <input type="number" name="revisao_meses" min="0" max="120" value="{{ v.revisao_meses or '0' }}"></label>
   </div>
   <p class="nota">O valor de compra é o ponto de partida do histórico e nunca é enviado à IA. Com revisão a cada N meses, a app pede uma nova
     avaliação quando passa esse tempo (0 = só quando pedires ou indicares à mão).</p>
+  </div>
 
   <h2>Despesas deste {{ 'imóvel' if tipo == 'casa' else 'carro' }}</h2>
   <label>Textos do extrato <textarea name="padroes" rows="3" placeholder="um por linha, ex.: CONDOMINIO PRAIA&#10;EDP 1234567&#10;SEGURO MULTIRRISCOS">{{ v.padroes or '' }}</textarea></label>
   <label class="opcao"><input type="checkbox" name="omissao" value="1" {% if v.omissao %}checked{% endif %}>
-    Por omissão: fica com as despesas de {{ 'Casa' if tipo == 'casa' else 'Transportes (sem transportes públicos)' }} que nenhum texto atribuiu</label>
-  <p class="nota">Os movimentos cuja descrição contém um destes textos ficam ligados a este bem (a partir da data de compra). Só um
+    <span class="so-proprio" {% if empresa %}hidden{% endif %}>Por omissão: fica com as despesas de {{ 'Casa' if tipo == 'casa' else 'Transportes (sem transportes públicos)' }} que nenhum texto atribuiu</span>
+    <span class="so-empresa" {% if not empresa %}hidden{% endif %}>Por omissão: fica com todo o combustível (Transportes › Combustível) que nenhum texto atribuiu — antes do carro próprio</span></label>
+  <p class="nota so-proprio" {% if empresa %}hidden{% endif %}>Os movimentos cuja descrição contém um destes textos ficam ligados a este bem (a partir da data de compra). Só um
     {{ 'imóvel' if tipo == 'casa' else 'carro' }} pode ser «por omissão» — normalmente a habitação principal / o carro principal.</p>
+  <p class="nota so-empresa" {% if not empresa %}hidden{% endif %}>Só se aloca combustível: os textos (ex.: o cartão de frota ou o posto
+    habitual) só apanham movimentos da categoria Combustível ou ainda sem categoria, dentro do período em que usas a viatura.</p>
   <label>Notas <textarea name="notas" rows="2">{{ v.notas or '' }}</textarea></label>
   <div class="acoes-form">
     <button class="primario">Guardar</button>
@@ -77,5 +92,18 @@
 <form method="post" action="/patrimonio/{{ bem.id }}/apagar" onsubmit="return confirm('Apagar este bem e o histórico de avaliações? Os movimentos ficam, sem bem.')">
   <input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="perigo">Apagar</button>
 </form>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if tipo == 'carro' %}
+<script>
+  // Viatura da empresa: mostra só o período de uso (as datas de compra/venda ficam desligadas para não irem duas vezes).
+  document.getElementById('uso')?.addEventListener('change', e => {
+    const empresa = e.target.value === 'empresa';
+    document.querySelectorAll('.so-empresa').forEach(el => { el.hidden = !empresa; el.querySelectorAll('input').forEach(i => i.disabled = !empresa); });
+    document.querySelectorAll('.so-proprio').forEach(el => { el.hidden = empresa; el.querySelectorAll('input, select').forEach(i => i.disabled = empresa); });
+  });
+</script>
 {% endif %}
 {% endblock %}
