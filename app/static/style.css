@@ -599,3 +599,20 @@ button.pequeno { min-height: 32px; padding: .3rem .8rem; font-size: .85rem; }
   padding: .35rem; color: var(--suave); cursor: pointer; line-height: 0; min-height: 0; }
 .botao-data:hover { color: var(--texto); }
 .data-nativa { position: absolute; right: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; border: 0; padding: 0; }
+
+/* ------------------------------------------------------------------ ficha do bem: recolher, separadores, barras */
+details.recolher > summary { display: flex; align-items: baseline; gap: .6rem; cursor: pointer; list-style: none; }
+details.recolher > summary::-webkit-details-marker { display: none; }
+details.recolher > summary h2 { margin: 0; }
+details.recolher > summary::before { content: "▸"; color: var(--suave); transition: transform .15s; }
+details.recolher[open] > summary::before { transform: rotate(90deg); }
+details.recolher[open] > summary { margin-bottom: 1rem; }
+.tabs-bem { margin: 1.25rem 0 .75rem; flex-wrap: wrap; }
+.barras-categoria { list-style: none; padding: 0; margin: 1rem 0; display: grid; gap: .45rem; }
+.barras-categoria li { display: grid; grid-template-columns: minmax(8rem, 16rem) 1fr auto; gap: .75rem; align-items: center; }
+.barras-categoria .barra { height: .55rem; background: var(--superficie-2); border-radius: 99px; overflow: hidden; }
+.barras-categoria .barra span { display: block; height: 100%; border-radius: 99px; }
+@media (max-width: 600px) {
+  .barras-categoria li { grid-template-columns: 1fr auto; }
+  .barras-categoria .barra { grid-column: 1 / -1; grid-row: 2; }
+}

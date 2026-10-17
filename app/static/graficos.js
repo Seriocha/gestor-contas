@@ -120,6 +120,19 @@
       });
     },
 
+    despesas_bem(canvas) {
+      // Despesas de um bem por mês, empilhadas pelas maiores categorias.
+      const d = dados.despesas_bem;
+      new Chart(canvas, {
+        type: 'bar',
+        data: { labels: d.rotulos, datasets: d.series.map(s => ({ label: s.nome, data: s.valores, backgroundColor: s.cor,
+          borderRadius: 3, maxBarThickness: 26, stack: 'despesas' })) },
+        options: { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+          plugins: { legend: { position: 'top', align: 'end', labels: { boxWidth: 10, boxHeight: 10 } } },
+          scales: { x: { ...eixos.x, stacked: true }, y: { ...eixos.y, stacked: true } } },
+      });
+    },
+
     tendencia(canvas) {
       const d = dados.tendencia;
       const barra = { borderRadius: 4, borderSkipped: 'start', maxBarThickness: 22, categoryPercentage: 0.7, barPercentage: 0.9 };

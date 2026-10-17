@@ -163,6 +163,8 @@ class Custos:
     por_mes: list = field(default_factory=list)          # [(rótulo, total)]
     movimentos: list = field(default_factory=list)
     partes: dict = field(default_factory=dict)          # {movimento_id: montante deste bem} (débitos repartidos)
+    matriz: dict = field(default_factory=dict)          # {(1.º dia do mês, categoria): despesa}
+    meses: list = field(default_factory=list)           # 1.º dia de cada mês do período
 
     @property
     def liquido(self) -> int:
@@ -196,6 +198,8 @@ def custos(db: Session, b: Bem, ini: date, fim: date) -> Custos:
             nome = m.categoria.nome_completo if m.categoria else "Sem categoria"
             cats[nome] += -v
             cores[nome] = m.categoria.cor_efetiva if m.categoria else "#8a8a85"
+            chave = (m.data_mov.replace(day=1), nome)
+            c.matriz[chave] = c.matriz.get(chave, 0) + -v
         else:
             c.receitas += v
         meses[m.data_mov.replace(day=1)] += -v
@@ -203,8 +207,25 @@ def custos(db: Session, b: Bem, ini: date, fim: date) -> Custos:
     d, ultimo = ini.replace(day=1), fim.replace(day=1)
     while d <= ultimo:
         c.por_mes.append((rel.rotulo_mes(d), meses.get(d, 0)))
+        c.meses.append(d)
         d = rel.somar_meses(d, 1)
     return c
+
+
+def serie_despesas(c: Custos, max_categorias: int = 5) -> dict | None:
+    """Gráfico condensado: despesa por mês, empilhada pelas maiores categorias (o resto em «Outras»)."""
+    if not c.despesas:
+        return None
+    principais = c.por_categoria[:max_categorias]
+    nomes = {n for n, _, _ in principais}
+    from .models import CORES
+    # Cores da paleta por posição (as subcategorias herdam a cor da categoria-mãe e ficariam iguais).
+    series = [{"nome": n.split(" › ")[-1], "cor": CORES[i % len(CORES)],
+               "valores": [c.matriz.get((d, n), 0) / 100 for d in c.meses]} for i, (n, cor, _) in enumerate(principais)]
+    if len(c.por_categoria) > max_categorias:
+        series.append({"nome": "Outras", "cor": "#8a8a85", "valores": [
+            sum(v for (d2, n), v in c.matriz.items() if d2 == d and n not in nomes) / 100 for d in c.meses]})
+    return {"rotulos": [rel.rotulo_mes(d) for d in c.meses], "series": series}
 
 
 @dataclass

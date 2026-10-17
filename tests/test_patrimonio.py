@@ -269,3 +269,10 @@ def test_lembrar_km_e_sem_plano(admin, app, monkeypatch):
     with app.state.SessionLocal() as db:
         b = db.get(Bem, bid)
         assert b.km == 86000 and not mt.lembrar_km(b, HOJE)
+
+
+def test_movimentos_filtrados_por_bem(admin, app):
+    golf = _criar(admin, "carro")
+    t = admin.get(f"/movimentos?entidade=1&bem={golf}").text
+    assert "Só os movimentos de" in t and "GALP ALVALADE" in t and "EDP COMERCIAL" not in t
+    assert 'name="f_bem" value="%d"' % golf in t

@@ -28,6 +28,10 @@
 {% set destino = "/movimentos" %}{% include "_entidades.html" %}
 {% endif %}
 {% if erro %}<div class="aviso aviso-erro">{{ erro }}</div>{% endif %}
+{% if bem_filtro %}
+<div class="aviso">Só os movimentos de <a href="/patrimonio/{{ bem_filtro.id }}"><strong>{{ bem_filtro.nome }}</strong></a>.
+  <a href="/movimentos?entidade={{ entidade.id }}">Ver todos</a></div>
+{% endif %}
 {% if entidade and corte and ocultos %}
 <div class="aviso aviso-alerta aviso-corte">
   {% if anteriores %}
@@ -183,7 +187,7 @@
     <span class="nota"><span class="ver">Mostrar</span><span class="esconder">Esconder</span></span></summary>
   <form method="get" class="filtros">
     {% if not conta %}
-    <input type="hidden" name="entidade" value="{{ entidade.id }}">
+    <input type="hidden" name="entidade" value="{{ entidade.id }}">{% if f.bem %}<input type="hidden" name="bem" value="{{ f.bem }}">{% endif %}
     <label>Conta
       <select name="conta">
         <option value="">Todas</option>
@@ -233,7 +237,7 @@
     {# Filtro atual, para as ações aplicadas a todos os movimentos do filtro (todas as páginas). #}
     <input type="hidden" name="f_entidade" value="{{ entidade.id }}">
     <input type="hidden" name="f_conta" value="{{ conta.id if conta else '' }}">
-    {% for k in ['categoria', 'etiqueta', 'tipo', 'q', 'de', 'ate', 'vmin', 'vmax', 'anteriores'] %}<input type="hidden" name="f_{{ k }}" value="{{ f[k] }}">{% endfor %}
+    {% for k in ['categoria', 'etiqueta', 'tipo', 'q', 'de', 'ate', 'vmin', 'vmax', 'anteriores', 'bem'] %}<input type="hidden" name="f_{{ k }}" value="{{ f[k] }}">{% endfor %}
     <button type="button" class="abrir-lote" id="abrir-lote">Ações em massa…</button>
     <div class="barra-lote" id="barra-lote">
       <fieldset class="ambito">

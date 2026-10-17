@@ -57,8 +57,9 @@
 {% if not b.empresa %}
 {% if b.tipo == 'rustico' %}{% include "patrimonio/_construcoes.html" %}{% endif %}
 
-<section class="cartao" id="avaliacoes">
-  <div class="cartao-cabecalho"><h2>Histórico do valor</h2></div>
+<details class="cartao recolher" id="avaliacoes" {% if b.tipo != 'carro' %}open{% endif %}>
+  <summary><h2>Histórico do valor</h2>
+    <span class="nota">{{ b.avaliacoes | length }} avaliaç{{ 'ões' if b.avaliacoes | length != 1 else 'ão' }}{% if valor is not none %} · {{ valor | eur }}{% endif %}</span></summary>
   {% if (b.avaliacoes | length) + (1 if b.valor_aquisicao and b.data_aquisicao else 0) > 1 %}
   <div class="grafico grafico-medio"><canvas data-grafico="bem" aria-label="Evolução do valor estimado" role="img"></canvas></div>
   {% endif %}
@@ -109,9 +110,17 @@
     </form>
   </div>
   {% endif %}
-</section>
+</details>
 {% endif %}
 
+{% if b.tipo == 'carro' %}
+<nav class="separadores tabs-bem" id="tabs-bem" aria-label="Secções do carro">
+  {% if mr %}<a href="#manutencao" data-tab="manutencao">Manutenção</a>{% endif %}
+  <a href="#fuelio" data-tab="fuelio">Abastecimentos</a>
+  {% if via_verde %}<a href="#via-verde" data-tab="via-verde">Via Verde</a>{% endif %}
+  <a href="#despesas" data-tab="despesas">{{ 'Combustível' if b.empresa else 'Despesas e receitas' }}</a>
+</nav>
+{% endif %}
 {% if mr %}{% include "patrimonio/_manutencao.html" %}{% endif %}
 
 {% if b.tipo == 'carro' %}{% include "patrimonio/_fuelio.html" %}{% endif %}
@@ -137,9 +146,25 @@
 </section>
 {% endif %}
 
-<section class="cartao">
+<section class="cartao" id="despesas">
   <h2>{{ 'Combustível' if b.empresa else 'Despesas e receitas' }} <span class="nota">· desde {{ ini | data }}</span></h2>
-  {% if c.movimentos %}
+  {% if c.movimentos and b.tipo == 'carro' %}
+  <div class="kpi-linha">
+    <div class="kpi"><span class="nota">Despesas em 12 meses</span><strong>{{ c.despesas | eur }}</strong>
+      <span class="nota">{{ (c.despesas / 12) | round | int | eur }}/mês</span></div>
+    {% if c.receitas %}<div class="kpi"><span class="nota">Recebido</span><strong>{{ c.receitas | eur }}</strong></div>{% endif %}
+  </div>
+  {% if graficos.despesas_bem %}<div class="grafico grafico-medio"><canvas data-grafico="despesas_bem" aria-label="Despesas por mês e categoria" role="img"></canvas></div>{% endif %}
+  {% set maximo = (c.por_categoria | map(attribute=2) | max) if c.por_categoria else 0 %}
+  <ul class="barras-categoria">
+    {% for nome, cor, total in c.por_categoria %}
+    {% set series = graficos.despesas_bem.series if graficos.despesas_bem else [] %}
+    <li><span class="nome">{{ nome }}</span><span class="barra"><span style="width: {{ (total / maximo * 100) | round(1) if maximo else 0 }}%; background: {{ series[loop.index0].cor if loop.index0 < series | length and series[loop.index0].nome != 'Outras' else '#8a8a85' }}"></span></span>
+      <span class="num">{{ total | eur }}</span></li>
+    {% endfor %}
+  </ul>
+  <p><a class="botao" href="/movimentos?entidade={{ b.entidade_id }}&bem={{ b.id }}&de={{ ini.isoformat() }}">Ver os movimentos deste carro →</a></p>
+  {% elif c.movimentos %}
   <div class="linha-dupla">
     <div>
       <h3>Por categoria</h3>
@@ -178,7 +203,35 @@
 {% endblock %}
 
 {% block scripts %}
-{% if (b.avaliacoes | length) + (1 if b.valor_aquisicao and b.data_aquisicao else 0) > 1 %}
+{% if b.tipo == 'carro' %}
+<script>
+  // Separadores do carro: mostra uma secção de cada vez; o #endereço (ex.: #km, #manutencao) escolhe a secção.
+  (() => {
+    const tabs = [...document.querySelectorAll('#tabs-bem a')];
+    const ids = tabs.map(a => a.dataset.tab).filter(id => document.getElementById(id));
+    if (!ids.length) return;
+    const mostra = id => {
+      ids.forEach(x => { document.getElementById(x).hidden = x !== id; });
+      tabs.forEach(a => a.classList.toggle('ativo', a.dataset.tab === id));
+    };
+    const peloEndereco = () => {
+      const h = decodeURIComponent(location.hash.slice(1));
+      const el = h && document.getElementById(h);
+      const alvo = (el && ids.find(x => document.getElementById(x).contains(el))) || ids[0];
+      mostra(alvo);
+      if (el && h !== alvo) el.scrollIntoView({ block: 'start' });
+    };
+    tabs.forEach(a => a.addEventListener('click', e => {
+      e.preventDefault();
+      history.replaceState(null, '', '#' + a.dataset.tab);
+      mostra(a.dataset.tab);
+    }));
+    window.addEventListener('hashchange', peloEndereco);
+    peloEndereco();
+  })();
+</script>
+{% endif %}
+{% if graficos.despesas_bem or (b.avaliacoes | length) + (1 if b.valor_aquisicao and b.data_aquisicao else 0) > 1 %}
 <script type="application/json" id="dados-graficos">{{ graficos | tojson }}</script>
 <script src="/static/vendor/chart.umd.min.js?v={{ versao }}"></script>
 <script src="/static/graficos.js?v={{ versao }}"></script>

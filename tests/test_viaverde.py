@@ -102,7 +102,8 @@ def test_importar_ligar_e_repartir(admin, app):
         assert c_clio.despesas == 140 + 210 + 199
         assert vv.resumo(db, 1)["sem_carro"] == [] and vv.resumo(db, 1)["soltas"] == 0
     ficha = admin.get(f"/patrimonio/{clio}").text
-    assert "Via Verde" in ficha and "PQ Colombo" in ficha and "de -12,00" in ficha
+    assert "Via Verde" in ficha and "PQ Colombo" in ficha and 'data-tab="via-verde"' in ficha
+    assert f"bem={clio}" in ficha and 'data-grafico="despesas_bem"' in ficha     # despesas condensadas + link
     m15 = admin.get("/movimentos/1").text
     assert "Detalhe Via Verde" in m15 and "AA-11-BB" in m15
 

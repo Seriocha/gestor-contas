@@ -182,7 +182,8 @@ def _calendario(db: Session, base, *, conta_id, categoria, etiqueta, tipo, q, vm
 
 def _listar(request: Request, db: Session, u: Utilizador, *, entidade: int | None, conta: Conta | None,
             categoria: int, etiqueta: int, tipo: str, q: str, de: str, ate: str, pagina: int,
-            vmin: str = "", vmax: str = "", ordem: str = "-data", anteriores: int = 0, mes: str = ""):
+            vmin: str = "", vmax: str = "", ordem: str = "-data", anteriores: int = 0, mes: str = "",
+            bem: int | None = None):
     if conta:
         papel = exigir_papel(db, u, conta.entidade_id, "ver")
         visiveis, ent, _ = entidade_escolhida(request, db, u, conta.entidade_id)
@@ -203,6 +204,12 @@ def _listar(request: Request, db: Session, u: Utilizador, *, entidade: int | Non
         v_min = v_max = None
         erro = str(e)
     base = select(Movimento).join(Conta).where(Conta.entidade_id == ent.id)
+    # Movimentos de um bem (casa, carro…): o filtro vai na base, para valer em tudo (calendário, totais, lote).
+    bem_obj = db.get(Bem, bem) if bem else None
+    if bem_obj and bem_obj.entidade_id == ent.id:
+        base = base.where(Movimento.bem_id == bem_obj.id)
+    else:
+        bem_obj = None
     # Cobertura dos dados: por omissão só se veem os movimentos desde o início da análise.
     corte = ent.data_inicio
     ocultos = 0
@@ -229,7 +236,8 @@ def _listar(request: Request, db: Session, u: Utilizador, *, entidade: int | Non
     n_sem = db.scalar(_filtrar(base.with_only_columns(func.count()), conta_id=conta.id if conta else None,
                                categoria=0, etiqueta=0, tipo="sem", texto="", d_de=None, d_ate=None))
     filtros = {"categoria": categoria or "", "etiqueta": etiqueta or "", "tipo": tipo, "q": q, "de": de, "ate": ate,
-               "vmin": vmin, "vmax": vmax, "anteriores": 1 if anteriores and corte else ""}
+               "vmin": vmin, "vmax": vmax, "anteriores": 1 if anteriores and corte else "",
+               "bem": bem_obj.id if bem_obj else ""}
     if not conta:
         filtros["entidade"] = ent.id
     # Títulos das colunas: clicar ordena por essa coluna; clicar outra vez inverte.
@@ -247,7 +255,7 @@ def _listar(request: Request, db: Session, u: Utilizador, *, entidade: int | Non
                              tipo=tipo, q=q, vmin=v_min, vmax=v_max, mes=mes, d_de=d_de, d_ate=d_ate,
                              base_q={**base_q, **({"ordem": ordem} if ordem != "-data" else {})})
     return render(
-        request, "movimentos/lista.html", visiveis=visiveis, entidade=ent, conta=conta,
+        request, "movimentos/lista.html", visiveis=visiveis, entidade=ent, conta=conta, bem_filtro=bem_obj,
         saldo=saldo_conta(db, conta) if conta else None,
         cartao=resumo_cartao(db, conta, date.today()) if conta and conta.tipo == "CARTAO_CREDITO" else None,
         retificaveis=conta is not None and retificacoes.retificavel(conta),
@@ -273,7 +281,7 @@ def _listar(request: Request, db: Session, u: Utilizador, *, entidade: int | Non
 def movimentos(request: Request, entidade: IntOpcional = None, conta: IntOpcional = None, categoria: IntOpcional = None,
                etiqueta: IntOpcional = None, tipo: str = "", q: str = "", de: str = "", ate: str = "", pagina: IntOpcional = 1,
                vmin: str = "", vmax: str = "", ordem: str = "-data", anteriores: IntOpcional = 0, mes: str = "",
-               u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
+               bem: IntOpcional = None, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
     if conta:
         return RedirectResponse(f"/contas/{conta}/movimentos?" + urlencode(
             {k: v for k, v in {"categoria": categoria or "", "etiqueta": etiqueta or "", "tipo": tipo, "q": q, "de": de,
@@ -282,7 +290,7 @@ def movimentos(request: Request, entidade: IntOpcional = None, conta: IntOpciona
              if v}), status_code=303)
     return _listar(request, db, u, entidade=entidade, conta=None, categoria=categoria, etiqueta=etiqueta,
                    tipo=tipo if tipo in TIPOS_FILTRO else "", q=q, de=de, ate=ate, pagina=pagina,
-                   vmin=vmin, vmax=vmax, ordem=ordem, anteriores=anteriores or 0, mes=mes)
+                   vmin=vmin, vmax=vmax, ordem=ordem, anteriores=anteriores or 0, mes=mes, bem=bem)
 
 
 @router.get("/contas/{conta_id}/movimentos")
@@ -512,6 +520,8 @@ def _ids_do_filtro(db: Session, u: Utilizador, form) -> list[int]:
         raise HTTPException(status_code=400, detail="Datas do filtro inválidas.")
     tipo = str(form.get("f_tipo", ""))
     base = select(Movimento.id).join(Conta).where(Conta.entidade_id == entidade_id)
+    if _int(form.get("f_bem")):
+        base = base.where(Movimento.bem_id == _int(form.get("f_bem")))
     corte = db.get(Entidade, entidade_id).data_inicio
     if corte and form.get("f_anteriores") != "1":
         base = base.where(Movimento.data_mov >= corte)

@@ -281,13 +281,15 @@ def ficha(request: Request, bid: int, u: Utilizador = Depends(utilizador_atual),
     hoje = date.today()
     ini = rel.somar_meses(hoje.replace(day=1), -11)
     valor, divida = pt.valor_atual(b), pt.divida(db, b, hoje)
+    c = pt.custos(db, b, ini, hoje)
     return render(request, "patrimonio/ficha.html", visiveis=visiveis, entidade=ent, b=b, hoje=hoje, ini=ini,
-                  valor=valor, divida=divida, c=pt.custos(db, b, ini, hoje), proxima=pt.proxima_revisao(b),
+                  valor=valor, divida=divida, c=c, proxima=pt.proxima_revisao(b),
                   pendente=pt.revisao_pendente(b, hoje), falta=pt.falta_para_ia(b), ia_disponivel=ia.disponivel(),
                   descricao_ia=pt.descricao_para_ia(b), estados=ESTADOS_BEM, combustiveis=COMBUSTIVEIS,
                   ocupacoes=OCUPACOES, aguas=AGUAS, acessos=ACESSOS, tipos_construcao=TIPOS_CONSTRUCAO,
                   construcoes=pt.construcoes_por_artigo(b) if b.tipo == "rustico" else None,
-                  graficos={"bem": pt.serie_valor(b)}, pode_editar=PAPEIS[papel] >= PAPEIS["editar"],
+                  graficos={"bem": pt.serie_valor(b),
+                            "despesas_bem": pt.serie_despesas(c) if b.tipo == "carro" else None}, pode_editar=PAPEIS[papel] >= PAPEIS["editar"],
                   mr=mt.resumo(b, hoje) if b.tipo == "carro" else None,
                   falta_plano=mt.falta_para_plano(b) if b.tipo == "carro" else [],
                   descricao_carro=mt.descricao_carro(b, hoje) if b.tipo == "carro" else "",
