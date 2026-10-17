@@ -28,7 +28,7 @@ from datetime import date, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from .models import (Categoria, Conta, Etiqueta, ModeloPadrao, ModeloViagem, Movimento, Viagem,
+from .models import (Categoria, Conta, Etiqueta, ModeloPadrao, ModeloViagem, Movimento, Viagem, ViagemConfirmado,
                      ViagemRejeitado)
 from .qualificacao import compilar
 from .sugestoes import padrao_de
@@ -92,11 +92,23 @@ def modelo_omissao(db: Session) -> ModeloViagem:
     return m
 
 
+def etiquetas_livres(db: Session, v: Viagem | None = None) -> list[Etiqueta]:
+    """Etiquetas que não estão ligadas a outra viagem (para escolher como etiqueta desta)."""
+    usadas = set(db.scalars(select(Viagem.etiqueta_id).where(Viagem.etiqueta_id.is_not(None),
+                                                             Viagem.id != (v.id if v and v.id else 0))))
+    return [e for e in db.scalars(select(Etiqueta).order_by(Etiqueta.nome)) if e.id not in usadas]
+
+
 def etiqueta_da(db: Session, v: Viagem) -> Etiqueta:
-    """A etiqueta que marca os movimentos desta viagem (criada na 1.ª vez)."""
+    """A etiqueta que marca os movimentos desta viagem. Na 1.ª vez reutiliza uma etiqueta com o
+    nome «Viagem: <nome>» que ainda não seja de outra viagem; senão cria-a."""
     if v.etiqueta_id and db.get(Etiqueta, v.etiqueta_id):
         return db.get(Etiqueta, v.etiqueta_id)
     base = f"Viagem: {v.nome}"[:44]
+    livres = {e.nome: e for e in etiquetas_livres(db, v)}
+    if base in livres:
+        v.etiqueta_id = livres[base].id
+        return livres[base]
     nome, n = base, 1
     while db.scalar(select(Etiqueta.id).where(Etiqueta.nome == nome)):
         n += 1
@@ -207,6 +219,19 @@ def _aprender(db: Session, modelo: ModeloViagem, movs: list[Movimento], positivo
             p.negativos += 1
 
 
+def _ensinar_confirmados(db: Session, v: Viagem, movs: list[Movimento]) -> int:
+    """Ensina ao modelo da viagem os movimentos confirmados que ele ainda não conhecia desta viagem."""
+    modelo = v.modelo or modelo_omissao(db)
+    ja = set(db.scalars(select(ViagemConfirmado.movimento_id).where(
+        ViagemConfirmado.viagem_id == v.id, ViagemConfirmado.modelo_id == modelo.id)))
+    novos = [m for m in movs if m.id not in ja]
+    if novos:
+        _aprender(db, modelo, novos, True)
+        db.add_all(ViagemConfirmado(viagem_id=v.id, movimento_id=m.id, modelo_id=modelo.id) for m in novos)
+        db.flush()
+    return len(novos)
+
+
 def associar(db: Session, v: Viagem, movs: list[Movimento], aprender: bool = True) -> int:
     et = etiqueta_da(db, v)
     n = 0
@@ -215,8 +240,16 @@ def associar(db: Session, v: Viagem, movs: list[Movimento], aprender: bool = Tru
             m.etiquetas.append(et)
             n += 1
     if aprender and movs:
-        _aprender(db, v.modelo or modelo_omissao(db), movs, True)
+        _ensinar_confirmados(db, v, movs)
     return n
+
+
+def sincronizar(db: Session, v: Viagem) -> int:
+    """Recalcular: todos os movimentos com a etiqueta da viagem fazem parte dela (mesmo os etiquetados
+    à mão, ou antes de a viagem existir) e são ensinados ao modelo. Devolve quantos o modelo aprendeu agora."""
+    etiqueta_da(db, v)
+    movs = db.scalars(select(Movimento).where(Movimento.etiquetas.any(id=v.etiqueta_id))).all()
+    return _ensinar_confirmados(db, v, movs)
 
 
 def rejeitar(db: Session, v: Viagem, movs: list[Movimento], aprender: bool = True) -> int:
@@ -230,11 +263,26 @@ def rejeitar(db: Session, v: Viagem, movs: list[Movimento], aprender: bool = Tru
 
 
 def desassociar(db: Session, v: Viagem, movs: list[Movimento]) -> int:
+    """Retira os movimentos da viagem e desfaz o que os modelos aprenderam com eles nesta viagem."""
     n = 0
     for m in movs:
         antes = len(m.etiquetas)
         m.etiquetas = [e for e in m.etiquetas if e.id != v.etiqueta_id]
         n += antes != len(m.etiquetas)
+    ids = [m.id for m in movs]
+    if ids:
+        confirmados = db.scalars(select(ViagemConfirmado).where(ViagemConfirmado.viagem_id == v.id,
+                                                                ViagemConfirmado.movimento_id.in_(ids))).all()
+        por_modelo = defaultdict(list)
+        for c in confirmados:
+            por_modelo[c.modelo_id].append(next(m for m in movs if m.id == c.movimento_id))
+            db.delete(c)
+        for modelo_id, ms in por_modelo.items():
+            padroes = {p.padrao: p for p in db.scalars(select(ModeloPadrao).where(ModeloPadrao.modelo_id == modelo_id))}
+            for padrao in {padrao_de(m.descricao_norm or m.descricao_original) for m in ms}:
+                if padrao in padroes and padroes[padrao].positivos > 0:
+                    padroes[padrao].positivos -= 1
+        db.flush()
     return n
 
 

@@ -4,7 +4,7 @@ Gestor financeiro doméstico, multiutilizador e self-hosted, para a NAS QNAP. Es
 importa movimentos de bancos portugueses e gere contas à ordem, cartões, investimentos e
 Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIGN.md).
 
-## Estado: v0.28.1
+## Estado: v0.28.2
 
 - Login com várias pessoas: passwords em argon2, bloqueio ao fim de 5 tentativas falhadas,
   proteção CSRF e invalidação das sessões quando a password muda.
@@ -37,6 +37,12 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.28.2 — movimentos já etiquetados entram na viagem e no modelo:** todos os movimentos com a
+  etiqueta da viagem (mesmo marcados à mão em Movimentos, ou antes de a viagem existir) fazem parte
+  dela; «↻ Recalcular», guardar o modelo e criar/editar a viagem ensinam-nos ao modelo — cada
+  movimento uma só vez por modelo (migração 0015) — e retirar um movimento da viagem desfaz essa
+  aprendizagem. Ao criar uma viagem pode escolher-se uma etiqueta já existente (ou é reutilizada a
+  «Viagem: <nome>» livre); apagar a viagem só apaga etiquetas criadas por ela.
 - **v0.28.1 — gestão dos modelos de viagem:** em Viagens, cada modelo mostra quantas viagens o usam e
   pode ser renomeado (sem nomes repetidos) e apagado — só quando nenhuma viagem o usa. Ao guardar um
   modelo, as sugestões das viagens que o usam são recalculadas e listadas («Viagens que usam este

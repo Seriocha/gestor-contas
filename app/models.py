@@ -413,6 +413,17 @@ class ViagemRejeitado(Base):
     movimento_id: Mapped[int] = mapped_column(ForeignKey("movimento.id", ondelete="CASCADE"))
 
 
+class ViagemConfirmado(Base):
+    """Movimento de uma viagem que já foi ensinado (como confirmado) a um modelo — para não contar duas vezes."""
+    __tablename__ = "viagem_confirmado"
+    __table_args__ = (UniqueConstraint("viagem_id", "movimento_id", "modelo_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    viagem_id: Mapped[int] = mapped_column(ForeignKey("viagem.id", ondelete="CASCADE"), index=True)
+    movimento_id: Mapped[int] = mapped_column(ForeignKey("movimento.id", ondelete="CASCADE"))
+    modelo_id: Mapped[int] = mapped_column(ForeignKey("modelo_viagem.id", ondelete="CASCADE"))
+
+
 class ParIgnorado(Base):
     """Sugestão de ligação (débito ↔ crédito) que o utilizador disse não ser o mesmo dinheiro."""
     __tablename__ = "par_ignorado"

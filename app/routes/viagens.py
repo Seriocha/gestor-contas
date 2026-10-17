@@ -60,12 +60,13 @@ def lista(request: Request, entidade: IntOpcional = None, u: Utilizador = Depend
 # ------------------------------------------------------------------ criar / editar
 def _form(request, db, ent, v, viagem=None, erros=None, status_code=200):
     return render(request, "viagens/form.html", status_code=status_code, entidade=ent, viagem=viagem, v=v,
-                  erros=erros or [], modelos=_modelos(db), motivos=MOTIVOS_VIAGEM)
+                  erros=erros or [], modelos=_modelos(db), motivos=MOTIVOS_VIAGEM,
+                  etiquetas=vg.etiquetas_livres(db, viagem))
 
 
 def _ler(form) -> tuple[dict, list[str], dict]:
     campos = ("nome", "destino", "pais", "data_ini", "data_fim", "pessoas", "motivo", "orcamento", "moeda",
-              "notas", "modelo_id")
+              "notas", "modelo_id", "etiqueta_id")
     v = {k: str(form.get(k, "")).strip() for k in campos}
     erros, dados = [], {}
     if not v["nome"]:
@@ -86,7 +87,8 @@ def _ler(form) -> tuple[dict, list[str], dict]:
              "data_ini": ini, "data_fim": fim, "pessoas": int(v["pessoas"]) if v["pessoas"].isdigit() and int(v["pessoas"]) > 0 else 1,
              "motivo": v["motivo"] if v["motivo"] in MOTIVOS_VIAGEM else "lazer", "orcamento": orc,
              "moeda": v["moeda"].upper()[:3] or None, "notas": v["notas"] or None,
-             "modelo_id": int(v["modelo_id"]) if v["modelo_id"].isdigit() else None}
+             "modelo_id": int(v["modelo_id"]) if v["modelo_id"].isdigit() else None,
+             "etiqueta_id": int(v["etiqueta_id"]) if v["etiqueta_id"].isdigit() else None}
     return v, erros, dados
 
 
@@ -106,15 +108,21 @@ async def criar(request: Request, entidade: int, u: Utilizador = Depends(utiliza
     v, erros, dados = _ler(await ler_form(request))
     if erros:
         return _form(request, db, ent, v, erros=erros, status_code=400)
+    etiqueta_id = dados.pop("etiqueta_id")
     viagem = Viagem(entidade_id=ent.id, **dados)
     if not viagem.modelo_id or not db.get(ModeloViagem, viagem.modelo_id):
         viagem.modelo_id = vg.modelo_omissao(db).id
     db.add(viagem)
     db.flush()
-    vg.etiqueta_da(db, viagem)
+    if etiqueta_id and etiqueta_id in {e.id for e in vg.etiquetas_livres(db, viagem)}:
+        viagem.etiqueta_id = etiqueta_id
+    db.flush()
+    db.refresh(viagem)
+    aprendidos = vg.sincronizar(db, viagem)
     auditar(db, u, "viagem_criada", viagem.nome)
     db.commit()
-    flash(request, f"Viagem «{viagem.nome}» registada. Revê as sugestões de gastos abaixo.")
+    flash(request, f"Viagem «{viagem.nome}» registada. Revê as sugestões de gastos abaixo."
+          + (f" {aprendidos} movimento(s) que já tinham a etiqueta entraram na viagem e no modelo." if aprendidos else ""))
     return RedirectResponse(f"/viagens/{viagem.id}", status_code=303)
 
 
@@ -125,7 +133,8 @@ def editar(request: Request, vid: int, u: Utilizador = Depends(utilizador_atual)
     v = {"nome": viagem.nome, "destino": viagem.destino or "", "pais": viagem.pais or "",
          "data_ini": viagem.data_ini.isoformat(), "data_fim": viagem.data_fim.isoformat(), "pessoas": str(viagem.pessoas),
          "motivo": viagem.motivo, "orcamento": montante_para_input(viagem.orcamento) if viagem.orcamento else "",
-         "moeda": viagem.moeda or "", "notas": viagem.notas or "", "modelo_id": str(viagem.modelo_id or "")}
+         "moeda": viagem.moeda or "", "notas": viagem.notas or "", "modelo_id": str(viagem.modelo_id or ""),
+         "etiqueta_id": str(viagem.etiqueta_id or "")}
     return _form(request, db, ent, v, viagem=viagem)
 
 
@@ -136,11 +145,17 @@ async def guardar(request: Request, vid: int, u: Utilizador = Depends(utilizador
     v, erros, dados = _ler(await ler_form(request))
     if erros:
         return _form(request, db, ent, v, viagem=viagem, erros=erros, status_code=400)
+    etiqueta_id = dados.pop("etiqueta_id")
     for k, val in dados.items():
         setattr(viagem, k, val)
+    if etiqueta_id and etiqueta_id != viagem.etiqueta_id and etiqueta_id in {e.id for e in vg.etiquetas_livres(db, viagem)}:
+        viagem.etiqueta_id = etiqueta_id
+    db.flush()
+    db.refresh(viagem)
+    aprendidos = vg.sincronizar(db, viagem)
     auditar(db, u, "viagem_editada", viagem.nome)
     db.commit()
-    flash(request, "Viagem guardada.")
+    flash(request, "Viagem guardada." + (f" {aprendidos} movimento(s) etiquetado(s) ensinado(s) ao modelo." if aprendidos else ""))
     return RedirectResponse(f"/viagens/{viagem.id}", status_code=303)
 
 
@@ -150,8 +165,9 @@ async def apagar(request: Request, vid: int, u: Utilizador = Depends(utilizador_
     viagem, _ = _viagem(db, u, vid, "editar")
     ent_id, nome, et_id = viagem.entidade_id, viagem.nome, viagem.etiqueta_id
     db.delete(viagem)
-    if et_id and db.get(Etiqueta, et_id):
-        db.delete(db.get(Etiqueta, et_id))   # os movimentos ficam; só perdem a marca da viagem
+    et = db.get(Etiqueta, et_id) if et_id else None
+    if et and et.nome.startswith("Viagem: "):
+        db.delete(et)   # etiqueta criada para a viagem: os movimentos ficam, só perdem a marca (uma etiqueta tua fica)
     auditar(db, u, "viagem_apagada", nome)
     db.commit()
     flash(request, f"Viagem «{nome}» apagada (os movimentos ficam, sem a marca da viagem).")
@@ -184,8 +200,11 @@ async def trocar_modelo(request: Request, vid: int, u: Utilizador = Depends(util
         auditar(db, u, "viagem_modelo", f"{viagem.nome} → {m.nome}")
         db.commit()
     db.refresh(viagem)
+    aprendidos = vg.sincronizar(db, viagem)
+    db.commit()
     n = len(vg.candidatos(db, viagem))
-    flash(request, f"Sugestões recalculadas com o modelo «{viagem.modelo.nome}»: {n}.")
+    flash(request, f"Sugestões recalculadas com o modelo «{viagem.modelo.nome}»: {n}."
+          + (f" {aprendidos} movimento(s) já etiquetado(s) da viagem ensinado(s) ao modelo." if aprendidos else ""))
     return RedirectResponse(f"/viagens/{viagem.id}#sugestoes", status_code=303)
 
 
@@ -281,6 +300,9 @@ async def guardar_modelo(request: Request, mid: int, u: Utilizador = Depends(exi
     except ValueError:
         flash(request, "Valor mínimo inválido.", "erro")
     auditar(db, u, "modelo_viagem", m.nome)
+    db.commit()
+    for v in db.scalars(select(Viagem).where(Viagem.modelo_id == m.id)):
+        vg.sincronizar(db, v)
     db.commit()
     em_uso = _viagens_do_modelo(db, u, m)
     if em_uso:

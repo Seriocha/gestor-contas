@@ -27,6 +27,14 @@
   <label>Modelo para encontrar os gastos
     <select name="modelo_id">{% for m in modelos %}<option value="{{ m.id }}" {% if v.modelo_id == m.id|string %}selected{% endif %}>{{ m.nome }}</option>{% endfor %}</select>
   </label>
+  <label>Etiqueta dos movimentos da viagem
+    <select name="etiqueta_id">
+      <option value="">{{ 'manter a atual' if viagem else '— criar «Viagem: ' ~ (v.nome or 'nome') ~ '» —' }}</option>
+      {% for e in etiquetas %}<option value="{{ e.id }}" {% if v.etiqueta_id == e.id|string %}selected{% endif %}>#{{ e.nome }}</option>{% endfor %}
+    </select>
+  </label>
+  <p class="nota">Se já marcaste movimentos com uma etiqueta (ex.: «Maurícias»), escolhe-a: esses movimentos passam a fazer parte da
+    viagem e são ensinados ao modelo. O mesmo acontece sempre que usas «↻ Recalcular».</p>
   <label>Notas <textarea name="notas" rows="3" placeholder="alojamento, companhia, observações…">{{ v.notas or '' }}</textarea></label>
   <div class="acoes-form">
     <button class="primario">{{ 'Guardar' if viagem else 'Registar e ver sugestões' }}</button>

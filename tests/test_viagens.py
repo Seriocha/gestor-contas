@@ -181,3 +181,69 @@ def test_ajustar_o_modelo_recalcula_as_sugestoes(admin, app):
     assert "Sugestões recalculadas — Maurícias 2026: 2" in r.text and "Viagens que usam este modelo" in r.text
     p = admin.get(f"/viagens/{vid}").text
     assert "2 movimentos que podem ser desta viagem" in p and "↻ Recalcular" in p
+
+
+def test_recalcular_inclui_movimentos_ja_etiquetados_e_ensina_o_modelo(admin, app):
+    from app.models import Etiqueta, ViagemConfirmado
+    vid = _criar(admin)
+    rest, uber = _ids(app, "RESTAURANT LE PORT", "UBER *TRIP")
+    with app.state.SessionLocal() as db:
+        et_id = db.get(Viagem, vid).etiqueta_id
+        mid = db.get(Viagem, vid).modelo_id
+    # etiquetados à mão em Movimentos (ação em massa), fora do ecrã da viagem
+    p = admin.get("/movimentos?entidade=1")
+    admin.post("/movimentos-lote", data={"csrf": _csrf(p), "voltar": "/movimentos?entidade=1", "ambito": "selecao",
+                                         "ids": [str(rest), str(uber)], "acao": f"etiqueta_mais:{et_id}"})
+    with app.state.SessionLocal() as db:
+        assert vg.resumo(db, db.get(Viagem, vid)).total == 6300                  # já contam na viagem
+        assert db.query(ModeloPadrao).count() == 0                               # mas o modelo ainda não sabe
+    r = _post(admin, f"/viagens/{vid}", f"/viagens/{vid}/modelo", modelo_id=str(mid))
+    with app.state.SessionLocal() as db:
+        padroes = {p.padrao: p.positivos for p in db.query(ModeloPadrao)}
+        assert padroes == {"RESTAURANT LE PORT": 1, "UBER": 1}
+        assert db.query(ViagemConfirmado).count() == 2
+    # recalcular outra vez não conta duas vezes
+    _post(admin, f"/viagens/{vid}", f"/viagens/{vid}/modelo", modelo_id=str(mid))
+    with app.state.SessionLocal() as db:
+        assert {p.padrao: p.positivos for p in db.query(ModeloPadrao)} == {"RESTAURANT LE PORT": 1, "UBER": 1}
+    # retirar da viagem desfaz a aprendizagem
+    _post(admin, f"/viagens/{vid}", f"/viagens/{vid}/desassociar", ids=[str(uber)])
+    with app.state.SessionLocal() as db:
+        assert {p.padrao: p.positivos for p in db.query(ModeloPadrao)}["UBER"] == 0
+        assert db.query(ViagemConfirmado).count() == 1
+
+
+def test_escolher_etiqueta_existente_ao_criar(admin, app):
+    from app.models import Etiqueta
+    with app.state.SessionLocal() as db:
+        et = Etiqueta(nome="Maurícias")
+        db.add(et)
+        db.flush()
+        for m in db.query(Movimento).filter(Movimento.descricao_original.in_(["RESTAURANT LE PORT", "UBER *TRIP"])):
+            m.etiquetas.append(et)
+        db.commit()
+        et_id = et.id
+    assert f'value="{et_id}"' in admin.get("/viagens/nova?entidade=1").text
+    r = _post(admin, "/viagens/nova?entidade=1", nome="Maurícias 2026", data_ini="2026-07-09", data_fim="2026-07-15",
+              pessoas="2", etiqueta_id=str(et_id))
+    vid = int(re.search(r"/viagens/(\d+)", r.headers["location"]).group(1))
+    assert "2 movimento(s) que já tinham a etiqueta entraram na viagem e no modelo" in admin.get(f"/viagens/{vid}").text
+    with app.state.SessionLocal() as db:
+        v = db.get(Viagem, vid)
+        assert v.etiqueta_id == et_id and vg.resumo(db, v).total == 6300
+        assert {p.padrao for p in db.query(ModeloPadrao)} == {"RESTAURANT LE PORT", "UBER"}
+    # apagar a viagem não apaga uma etiqueta que era tua
+    _post(admin, f"/viagens/{vid}/editar", f"/viagens/{vid}/apagar")
+    with app.state.SessionLocal() as db:
+        assert db.get(Etiqueta, et_id) is not None
+
+
+def test_reutiliza_etiqueta_com_o_mesmo_nome(admin, app):
+    from app.models import Etiqueta
+    with app.state.SessionLocal() as db:
+        db.add(Etiqueta(nome="Viagem: Maurícias 2026"))
+        db.commit()
+    vid = _criar(admin)
+    with app.state.SessionLocal() as db:
+        assert db.get(Viagem, vid).etiqueta.nome == "Viagem: Maurícias 2026"
+        assert db.query(Etiqueta).filter(Etiqueta.nome.like("Viagem:%")).count() == 1
