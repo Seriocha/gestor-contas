@@ -1,0 +1,44 @@
+{# Carros: abastecimentos importados do Fuelio. Contexto: b, consumo (12 meses), consumo_total, ini, pode_editar. #}
+<section class="cartao" id="fuelio">
+  <h2>Abastecimentos <span class="nota">· Fuelio</span></h2>
+  {% set c = consumo %}{% set t = consumo_total %}
+  {% if t.abastecimentos %}
+  <div class="kpi-linha">
+    <div class="kpi"><span class="nota">Consumo médio</span><strong>{{ ('%.1f' % t.l100).replace('.', ',') ~ ' l/100 km' if t.l100 is not none else '—' }}</strong>
+      <span class="nota">{% if t.km %}em {{ '{:,}'.format(t.km).replace(',', ' ') }} km{% else %}precisa de 2 depósitos cheios{% endif %}</span></div>
+    <div class="kpi"><span class="nota">Custo por km</span><strong>{{ ('%.3f' % t.custo_km).replace('.', ',') ~ ' €' if t.custo_km is not none else '—' }}</strong>
+      <span class="nota">só combustível</span></div>
+    <div class="kpi"><span class="nota">12 meses</span><strong>{{ c.valor | eur }}</strong>
+      <span class="nota">{{ ('%.0f' % c.litros) }} litros{% if c.preco_medio %} · {{ ('%.3f' % c.preco_medio).replace('.', ',') }} €/l{% endif %}</span></div>
+    <div class="kpi"><span class="nota">Ligados ao banco</span><strong>{{ c.ligados }} / {{ c.abastecimentos | length }}</strong>
+      <span class="nota">nos últimos 12 meses</span></div>
+  </div>
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th>Data</th><th>Posto</th><th class="num">Km</th><th class="num">Litros</th><th class="num">Valor</th><th>Débito no banco</th></tr></thead>
+    {% for a in t.abastecimentos[:40] %}
+    <tr><td class="sem-quebra">{{ a.data | data }} <span class="nota">{{ a.hora or '' }}</span></td>
+      <td>{{ a.posto or '—' }}{% if not a.cheio %} <span class="etiqueta">parcial</span>{% endif %}{% if a.notas %}<br><span class="nota">{{ a.notas }}</span>{% endif %}</td>
+      <td class="num sem-quebra">{{ '{:,}'.format(a.km).replace(',', ' ') if a.km is not none else '—' }}</td>
+      <td class="num">{{ ('%.2f' % a.litros).replace('.', ',') }}</td>
+      <td class="num">{{ a.valor | eur if a.valor is not none else '—' }}</td>
+      <td class="nota sem-quebra">{% if a.movimento %}<a href="/movimentos/{{ a.movimento.id }}">{{ a.movimento.data_mov | data }} · {{ a.movimento.conta.nome }}</a>
+        {% if -a.movimento.montante != a.valor %}<br><span class="neg">banco {{ (-a.movimento.montante) | eur }}</span>{% endif %}
+        {% else %}por ligar{% endif %}</td></tr>
+    {% endfor %}
+  </table></div>
+  {% if t.abastecimentos | length > 40 %}<p class="nota">Mostrados os 40 mais recentes de {{ t.abastecimentos | length }}.</p>{% endif %}
+  <p class="nota">Cada abastecimento liga-se ao débito do banco do mesmo valor (ou até 0,20 € de diferença) de 1 dia antes a 5 dias depois; o débito
+    passa a Combustível e fica neste carro. Os que estão por ligar ligam-se quando importares o extrato do banco desse período.</p>
+  {% else %}
+  <p class="vazio sem-margem">Sem abastecimentos. Se registas os abastecimentos no Fuelio, importa aqui o ficheiro de sincronização:
+    no Fuelio, Definições › Cópia de segurança › exportar CSV (ou o ficheiro <code>vehicle-N-sync.csv</code> da pasta de sincronização
+    no Google Drive / Dropbox). Os km de cada abastecimento entram nas leituras do carro.</p>
+  {% endif %}
+  {% if pode_editar and not b.vendido %}
+  <form method="post" action="/patrimonio/{{ b.id }}/fuelio" enctype="multipart/form-data" class="formulario">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <div class="linha"><label>Ficheiro do Fuelio (CSV ou ZIP) <input type="file" name="ficheiro" accept=".csv,.zip" required></label></div>
+    <div class="acoes-form"><button>{{ 'Atualizar abastecimentos' if t.abastecimentos else 'Importar abastecimentos' }}</button></div>
+  </form>
+  {% endif %}
+</section>

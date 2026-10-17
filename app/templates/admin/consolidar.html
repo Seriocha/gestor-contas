@@ -15,16 +15,17 @@
     {% for r in resultado %}<strong>{{ r.entidade }}:</strong>
       {% for k, n in r.passos.items() %}{{ passos[k][0] | lower }} {{ n }}{{ ', ' if not loop.last }}{% endfor %}{{ '; ' if not loop.last else '.' }}
     {% endfor %}
-    <br><span class="nota">Contagens: movimentos categorizados, pagamentos e transferências ligados, movimentos com bem alterado, grupos Via Verde ligados, contas recalculadas.</span>
+    <br><span class="nota">Contagens: movimentos categorizados, pagamentos e transferências ligados, movimentos com bem alterado, grupos Via Verde e abastecimentos ligados, contas recalculadas.</span>
   </div>
   {% endif %}
 
   <div class="rolar"><table class="tabela compacta">
     <thead><tr><th>Entidade</th><th class="num">Sem categoria</th><th class="num">Pagamentos de cartão por ligar</th>
-      <th class="num">Via Verde sem débito</th><th>Matrículas Via Verde sem carro</th></tr></thead>
+      <th class="num">Via Verde sem débito</th><th class="num">Abastecimentos sem débito</th><th>Matrículas Via Verde sem carro</th></tr></thead>
     {% for d in diagnosticos %}
     <tr><td><strong>{{ d.entidade.nome }}</strong></td><td class="num">{{ d.sem_categoria }}</td><td class="num">{{ d.cartoes_por_ligar }}</td>
       <td class="num">{{ d.vv_por_ligar }}{% if d.vv_por_ligar %}<br><span class="nota">{{ d.vv_total_por_ligar | eur }}</span>{% endif %}</td>
+      <td class="num">{{ d.abastecimentos_por_ligar }}</td>
       <td>{% for m in d.vv_sem_carro %}<span class="etiqueta etiqueta-erro">{{ m[:2] ~ '-' ~ m[2:4] ~ '-' ~ m[4:] if m | length == 6 else m }}</span> {% else %}<span class="nota">—</span>{% endfor %}
         {% if d.vv_sem_carro %}<br><a class="nota" href="/patrimonio?entidade={{ d.entidade.id }}">indica a matrícula no carro</a>{% endif %}</td></tr>
     {% endfor %}

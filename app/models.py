@@ -598,6 +598,28 @@ class ViaVerde(Base):
         return f"{m[:2]}-{m[2:4]}-{m[4:]}" if len(m) == 6 else m
 
 
+class Abastecimento(Base):
+    """Abastecimento registado no Fuelio (importado do CSV de sincronização), ligado ao débito no banco."""
+    __tablename__ = "abastecimento"
+    __table_args__ = (UniqueConstraint("bem_id", "guid"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    bem_id: Mapped[int] = mapped_column(ForeignKey("bem.id", ondelete="CASCADE"), index=True)
+    data: Mapped[date] = mapped_column(Date, index=True)
+    hora: Mapped[str | None] = mapped_column(String(5))
+    km: Mapped[int | None] = mapped_column(Integer)
+    litros: Mapped[float] = mapped_column(Float)
+    cheio: Mapped[bool] = mapped_column(Boolean, default=True)
+    valor: Mapped[int | None] = mapped_column(BigInteger)             # cêntimos, total pago
+    preco_litro: Mapped[float | None] = mapped_column(Float)
+    posto: Mapped[str | None] = mapped_column(String(120))
+    notas: Mapped[str | None] = mapped_column(String(300))
+    guid: Mapped[str] = mapped_column(String(64))
+    movimento_id: Mapped[int | None] = mapped_column(ForeignKey("movimento.id", ondelete="SET NULL"), index=True)
+
+    movimento: Mapped["Movimento | None"] = relationship()
+
+
 class RegistoKm(Base):
     """Leitura do conta-quilómetros de um carro numa data (registo periódico ou ida à oficina)."""
     __tablename__ = "registo_km"

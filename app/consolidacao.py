@@ -10,14 +10,15 @@ from dataclasses import dataclass, field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from . import patrimonio, retificacoes, servicos, viaverde
-from .models import Bem, Conta, Entidade, Movimento, ViaVerde, norm_matricula
+from . import fuelio, patrimonio, retificacoes, servicos, viaverde
+from .models import Abastecimento, Bem, Conta, Entidade, Movimento, ViaVerde, norm_matricula
 from .qualificacao import aplicar_regras
 
 PASSOS = {
     "regras": ("Regras de categorização", "aplica as regras aos movimentos ainda sem categoria (os tratados à mão ficam)"),
     "cartoes": ("Pagamentos de cartão", "liga o pagamento de cada cartão de crédito ao débito na conta que o paga"),
     "transferencias": ("Transferências entre contas", "liga os dois lados das transferências entre contas próprias"),
+    "fuelio": ("Abastecimentos (Fuelio)", "liga os abastecimentos aos débitos do banco e passa-os para o carro certo"),
     "bens": ("Despesas das casas e carros", "revê a atribuição de cada movimento a um bem (padrões e «por omissão»)"),
     "via_verde": ("Via Verde", "liga as linhas da Via Verde aos débitos do banco; a repartição pelos carros segue as matrículas"),
     "retificacoes": ("Saldos retificados", "recalcula os acertos das contas de investimento, aforro e cartão refeição"),
@@ -33,6 +34,7 @@ class Diagnostico:
     vv_por_ligar: int = 0
     vv_total_por_ligar: int = 0
     vv_sem_carro: list = field(default_factory=list)
+    abastecimentos_por_ligar: int = 0
     bens: int = 0
 
 
@@ -50,6 +52,8 @@ def diagnostico(db: Session, ent: Entidade) -> Diagnostico:
                                                                                  Bem.matricula.is_not(None)))}
     d.vv_sem_carro = sorted({m for m in db.scalars(select(ViaVerde.matricula).where(ViaVerde.entidade_id == ent.id))}
                             - carros)
+    d.abastecimentos_por_ligar = db.scalar(select(func.count()).select_from(Abastecimento).join(Bem).where(
+        Bem.entidade_id == ent.id, Abastecimento.movimento_id.is_(None))) or 0
     d.bens = db.scalar(select(func.count()).select_from(Bem).where(Bem.entidade_id == ent.id)) or 0
     return d
 
@@ -70,8 +74,12 @@ def consolidar(db: Session, ent: Entidade, passos: set[str]) -> dict[str, int]:
     if "transferencias" in passos:
         r["transferencias"] = servicos.ligar_transferencias(db, ent.id)
         db.flush()
-    if "bens" in passos:
-        r["bens"] = patrimonio.atribuir(db, ent.id)
+    if "fuelio" in passos:
+        r["fuelio"] = fuelio.ligar(db, ent.id)
+    if "bens" in passos or "fuelio" in passos:
+        n = patrimonio.atribuir(db, ent.id)
+        if "bens" in passos:
+            r["bens"] = n
     if "via_verde" in passos:
         r["via_verde"] = viaverde.ligar(db, ent.id)
     if "retificacoes" in passos:

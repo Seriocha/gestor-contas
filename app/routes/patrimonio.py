@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from .. import ia
 from .. import manutencao as mt
+from .. import fuelio
 from .. import viaverde as vv
 from .. import patrimonio as pt
 from .. import relatorios as rel
@@ -252,7 +253,46 @@ def ficha(request: Request, bid: int, u: Utilizador = Depends(utilizador_atual),
                   falta_plano=mt.falta_para_plano(b) if b.tipo == "carro" else [],
                   descricao_carro=mt.descricao_carro(b, hoje) if b.tipo == "carro" else "",
                   oficina=_movs_oficina(db, b, hoje) if b.tipo == "carro" else [],
-                  via_verde=vv.do_carro(db, b, ini, hoje) if b.tipo == "carro" else [])
+                  via_verde=vv.do_carro(db, b, ini, hoje) if b.tipo == "carro" else [],
+                  consumo=fuelio.consumo(db, b, ini, hoje) if b.tipo == "carro" else None,
+                  consumo_total=fuelio.consumo(db, b, date.min, hoje) if b.tipo == "carro" else None)
+
+
+@router.post("/{bid}/fuelio")
+async def importar_fuelio(request: Request, bid: int, u: Utilizador = Depends(utilizador_atual),
+                          db: Session = Depends(get_db)):
+    """CSV de sincronização do Fuelio (vehicle-N-sync.csv, ou o ZIP) deste carro."""
+    form = await ler_form(request)
+    b = _carro(db, u, bid)
+    voltar = f"/patrimonio/{b.id}#fuelio"
+    f = form.get("ficheiro")
+    if f is None or not getattr(f, "filename", ""):
+        flash(request, "Escolhe o ficheiro do Fuelio.", "erro")
+        return RedirectResponse(voltar, status_code=303)
+    try:
+        conteudo = await f.read(5 * 1024 * 1024 + 1)
+        if len(conteudo) > 5 * 1024 * 1024:
+            raise ValueError("ficheiro demasiado grande")
+        dados = fuelio.ler(f.filename, conteudo)
+    except Exception as e:   # zip/csv corrompido ou de outra app
+        flash(request, f"Não foi possível ler o ficheiro: {e}", "erro")
+        return RedirectResponse(voltar, status_code=303)
+    mat = norm_matricula(dados.veiculo.matricula)
+    if mat and b.matricula and mat != norm_matricula(b.matricula):
+        flash(request, f"O ficheiro é do carro com matrícula {dados.veiculo.matricula}, não de {b.matricula}.", "erro")
+        return RedirectResponse(voltar, status_code=303)
+    if mat and not b.matricula:
+        b.matricula = dados.veiculo.matricula.upper()[:12]
+    novos, atualizados, leituras = fuelio.importar(db, b, dados)
+    ligados = fuelio.ligar(db, b.entidade_id)
+    pt.atribuir(db, b.entidade_id)
+    auditar(db, u, "fuelio", f"{b.nome}: {novos} novos, {atualizados} atualizados, {ligados} ligados")
+    db.commit()
+    flash(request, f"Fuelio: {novos} abastecimento{'s' if novos != 1 else ''} novo{'s' if novos != 1 else ''}"
+                   + (f", {atualizados} atualizados" if atualizados else "")
+                   + f", {leituras} leitura{'s' if leituras != 1 else ''} de km e {ligados} "
+                   f"débito{'s' if ligados != 1 else ''} do banco ligado{'s' if ligados != 1 else ''}.")
+    return RedirectResponse(voltar, status_code=303)
 
 
 def _movs_oficina(db: Session, b: Bem, hoje: date) -> list[Movimento]:

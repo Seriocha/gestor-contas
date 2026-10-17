@@ -94,11 +94,13 @@ def atribuir(db: Session, entidade_id: int, movs: list[Movimento] | None = None)
             Conta.entidade_id == entidade_id, ~Movimento.bem_manual)).all()
     padroes = [(p, b) for b in bens for p in b.lista_padroes]
     omissao = {grupo_omissao(b): b for b in bens if b.omissao}
+    from . import fuelio
+    abastecidos = fuelio.bens_dos_debitos(db, entidade_id)     # combustível com registo no Fuelio
     n = 0
     for m in movs:
         if m.bem_manual:
             continue
-        alvo = bem_para(m, padroes, omissao)
+        alvo = abastecidos.get(m.id) or bem_para(m, padroes, omissao)
         if alvo != m.bem_id:
             m.bem_id = alvo
             n += 1

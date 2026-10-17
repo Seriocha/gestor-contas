@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from .models import Conta, Importacao, Movimento, Utilizador
 from .parsers import Extrato
 from . import emprestimos, investimentos, retificacoes
-from . import patrimonio, viaverde
+from . import fuelio, patrimonio, viaverde
 from .qualificacao import aplicar_regras
 
 TAMANHO_MAX = 10 * 1024 * 1024
@@ -169,6 +169,7 @@ def confirmar(db: Session, conta: Conta, extrato: Extrato, nome: str, sha: str,
     else:
         imp.n_qualificados = aplicar_regras(db, movs) if conta.tipo != "EMPRESTIMO" else 0
     db.flush()
+    fuelio.ligar(db, conta.entidade_id)
     patrimonio.atribuir(db, conta.entidade_id, movs)
     viaverde.ligar(db, conta.entidade_id)
     imp.n_pagamentos_cartao = ligar_pagamentos_cartao(db, conta)

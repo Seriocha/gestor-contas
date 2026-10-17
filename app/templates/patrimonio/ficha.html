@@ -101,6 +101,8 @@
 
 {% if mr %}{% include "patrimonio/_manutencao.html" %}{% endif %}
 
+{% if b.tipo == 'carro' %}{% include "patrimonio/_fuelio.html" %}{% endif %}
+
 {% if via_verde %}
 <section class="cartao" id="via-verde">
   <h2>Via Verde <span class="nota">· {{ b.matricula }} · desde {{ ini | data }}</span></h2>
