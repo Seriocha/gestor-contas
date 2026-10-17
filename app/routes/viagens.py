@@ -48,6 +48,9 @@ def lista(request: Request, entidade: IntOpcional = None, u: Utilizador = Depend
     visiveis, ent, papel = entidade_escolhida(request, db, u, entidade)
     if not ent:
         return render(request, "viagens/lista.html", entidade=None, visiveis=visiveis)
+    if not ent.tem("viagens"):
+        return render(request, "_sem_modulo.html", visiveis=visiveis, entidade=ent, titulo="Viagens",
+                      destino="/viagens", modulo="viagens")
     viagens = db.scalars(select(Viagem).where(Viagem.entidade_id == ent.id)
                          .options(selectinload(Viagem.modelo)).order_by(Viagem.data_ini.desc())).all()
     modelos = _modelos(db)

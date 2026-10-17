@@ -11,7 +11,8 @@
     <thead><tr><th>Entidade</th><th>Tipo</th><th>Descrição</th><th></th></tr></thead>
     {% for e in entidades %}
     <tr><td><strong>{{ e.nome }}</strong></td>
-      <td>{{ e.tipo_rotulo }}{% if e.heranca and e.quota is not none %} <span class="etiqueta etiqueta-cor">{{ ('%g' % e.quota).replace('.', ',') }}%</span>{% endif %}</td>
+      <td>{{ e.tipo_rotulo }}{% if e.heranca and e.quota is not none %} <span class="etiqueta etiqueta-cor">{{ e.quota_txt }}</span>{% if e.quota_futura is not none %} <span class="etiqueta" title="{{ e.quota_futura_nota or '' }}">→ {{ e.quota_futura_txt }}</span>{% endif %}{% endif %}
+        <br><span class="nota">{% for k, r in modulos.items() if e.tem(k) %}{{ r.split(' (')[0] }}{{ ', ' if not loop.last }}{% else %}sem módulos{% endfor %}</span></td>
       <td class="nota">{{ e.descricao or '' }}</td><td><a href="/admin/entidades/{{ e.id }}">Editar</a></td></tr>
     {% endfor %}
   </table></div>
@@ -23,7 +24,7 @@
     <label>Nome <input name="nome" required></label>
     <label>Descrição <input name="descricao"></label>
     <label>Tipo <select name="tipo"><option value="pessoal">Pessoal</option><option value="heranca">Herança</option></select></label>
-    <label>Percentagem detida (herança) <input name="quota" inputmode="decimal" placeholder="ex.: 25 ou 33,33"></label>
+    <label>Parte detida (herança) <input name="quota" placeholder="ex.: 1/6 ou 16,67"></label>
     <button class="primario">Criar entidade</button>
   </form>
 </section>

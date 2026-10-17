@@ -17,6 +17,7 @@
     <a href="/contas?arquivadas={{ 0 if arquivadas else 1 }}">{{ 'Esconder arquivadas' if arquivadas else 'Mostrar arquivadas' }}</a>
   </div>
 </div>
+{% set destino = '/contas' %}{% include "_entidades.html" %}
 {% for b in blocos %}
 <section class="cartao">
   <div class="cartao-cabecalho">

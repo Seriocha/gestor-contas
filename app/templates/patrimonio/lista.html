@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_parte.html" import parte %}
 {% block titulo %}Património{% endblock %}
 {% macro tabela(linhas, tipo) -%}
   <div class="rolar"><table class="tabela compacta">
@@ -35,16 +36,20 @@
 <div class="titulo-acoes">
   <h1>Património</h1>
   {% if entidade and pode_editar %}<div class="acoes-form">
+    {% if entidade.tem('imoveis') %}
     <a class="botao primario" href="/patrimonio/novo?entidade={{ entidade.id }}&tipo=casa">+ Casa</a>
     <a class="botao" href="/patrimonio/novo?entidade={{ entidade.id }}&tipo=rustico">+ Propriedade rústica</a>
+    {% endif %}
+    {% if entidade.tem('viaturas') %}
     <a class="botao" href="/patrimonio/novo?entidade={{ entidade.id }}&tipo=carro">+ Carro</a>
     <a class="botao" href="/patrimonio/novo?entidade={{ entidade.id }}&tipo=carro&uso=empresa">+ Viatura da empresa</a>
     <a class="botao" href="/patrimonio/abastecimentos?entidade={{ entidade.id }}">Abastecimentos{{ ' (%d)' % por_validar if por_validar }}</a>
+    {% endif %}
   </div>{% endif %}
 </div>
 {% set destino = '/patrimonio' %}{% include "_entidades.html" %}
 {% if entidade %}
-{% if entidade.heranca %}<div class="aviso">{{ entidade.nome }} é uma herança{% if entidade.quota is not none %} de que detens {{ ('%g' % entidade.quota).replace('.', ',') }}%{% endif %}:
+{% if entidade.heranca %}<div class="aviso">{{ entidade.nome }} é uma herança{% if entidade.quota is not none %} de que detens {{ entidade.quota_txt }}{% if entidade.quota_futura is not none %} ({{ entidade.quota_futura_txt }} {{ (entidade.quota_futura_nota or 'no 2.º cenário') | lower }}){% endif %}{% endif %}:
   os valores são da herança inteira; a tua parte aparece ao lado.</div>{% endif %}
 <section class="kpi-grelha">
   <div class="cartao kpi"><span class="nota">Valor dos bens</span><strong>{{ r.valor | eur }}</strong>
@@ -52,7 +57,7 @@
   <div class="cartao kpi"><span class="nota">Dívida associada</span><strong>{{ r.divida | eur }}</strong>
     <span class="nota">empréstimos ligados aos bens</span></div>
   <div class="cartao kpi"><span class="nota">Capital próprio</span><strong>{{ r.liquido | eur }}</strong>
-    {% if entidade.heranca and entidade.quota is not none %}<span class="nota">a tua parte ({{ ('%g' % entidade.quota).replace('.', ',') }}%): {{ entidade.parte(r.liquido) | eur }}</span>{% endif %}</div>
+    {{ parte(entidade, r.liquido) }}</div>
   <div class="cartao kpi"><span class="nota">Custos em 12 meses</span><strong>{{ r.custo_12m | eur }}</strong>
     <span class="nota">desde {{ r.desde | data }}</span></div>
 </section>
@@ -74,6 +79,10 @@
   {% if ia_disponivel %}A revisão automática corre uma vez por dia; podes também pedir já na página de cada bem.{% else %}Configura a chave da Claude API para a revisão automática, ou indica o valor à mão.{% endif %}</div>
 {% endif %}
 
+{% if not entidade.tem('imoveis') and not entidade.tem('viaturas') %}
+<p class="vazio">{{ entidade.nome }} não tem casas, propriedades nem viaturas (Administração › Entidades › Editar).</p>
+{% endif %}
+{% if entidade.tem('imoveis') %}
 {% if r.casas_por_uso | length > 1 %}
 <section class="cartao">
   <h2>Casas: principal vs. férias</h2>
@@ -96,6 +105,8 @@
   {{ tabela(r.rusticos, 'rustico') }}
 </section>
 {% endif %}
+{% endif %}
+{% if entidade.tem('viaturas') %}
 <section class="cartao">
   <h2>Carros</h2>
   {% if r.carros %}{{ tabela(r.carros, 'carro') }}{% else %}<p class="vazio sem-margem">Sem carros registados.</p>{% endif %}
@@ -129,6 +140,7 @@
   {% endif %}
 </section>
 
+{% endif %}
 {% if r.linhas %}
 <section class="cartao">
   <h2>Atribuição das despesas</h2>

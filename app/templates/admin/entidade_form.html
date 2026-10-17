@@ -12,9 +12,18 @@
     <label>Descrição <input name="descricao" value="{{ v.descricao }}"></label>
     <label>Tipo
       <select name="tipo" id="tipo-entidade">{% for k, r in tipos.items() %}<option value="{{ k }}" {% if v.tipo == k %}selected{% endif %}>{{ r }}</option>{% endfor %}</select></label>
-    <label id="quota" {% if v.tipo != 'heranca' %}hidden{% endif %}>Percentagem que detém
-      <input name="quota" value="{{ v.quota }}" inputmode="decimal" placeholder="ex.: 25 ou 33,33"></label>
-    <p class="nota">Herança: património indiviso de que tens uma quota. Os valores continuam a mostrar-se por inteiro, com a tua parte ao lado.</p>
+    <fieldset id="quota" {% if v.tipo != 'heranca' %}hidden{% endif %}><legend>Partilha</legend>
+      <label>Parte que detém hoje <input name="quota" value="{{ v.quota }}" placeholder="ex.: 1/6 ou 16,67"></label>
+      <label>Parte num 2.º cenário <input name="quota_futura" value="{{ v.quota_futura }}" placeholder="ex.: 1/2 (opcional)"></label>
+      <label>Descrição do 2.º cenário <input name="quota_futura_nota" value="{{ v.quota_futura_nota }}" maxlength="100" placeholder="ex.: Por morte da mãe"></label>
+      <p class="nota">Ex.: hoje cada filho tem 1/6 e a mãe 4/6; por morte da mãe, cada filho passa a 1/2. Os valores mostram-se por inteiro,
+        com a tua parte nos dois cenários ao lado. Aceita frações (1/6) ou percentagens (16,67).</p>
+    </fieldset>
+    <input type="hidden" name="modulos_presentes" value="1">
+    <fieldset><legend>Esta entidade tem</legend>
+      {% for k, r in modulos.items() %}<label class="opcao"><input type="checkbox" name="modulos" value="{{ k }}" {% if k in v.modulos %}checked{% endif %}> {{ r }}</label>{% endfor %}
+      <p class="nota">O que não estiver marcado deixa de aparecer nos ecrãs desta entidade (os dados que já existam ficam guardados).</p>
+    </fieldset>
     <div class="acoes-form"><button class="primario">Guardar</button><a href="/admin/entidades">Cancelar</a></div>
   </form>
 </section>

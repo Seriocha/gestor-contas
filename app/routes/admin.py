@@ -1,4 +1,6 @@
 """Administração: utilizadores, permissões por entidade e entidades."""
+from datetime import datetime, timedelta
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy import func, select
@@ -7,7 +9,7 @@ from sqlalchemy.orm import Session, selectinload
 from .. import preferencias
 from ..backup import fazer_backup, ultimo_backup
 from ..deps import auditar, exigir_admin, flash, get_db, render
-from ..models import PAPEIS, PAPEIS_ROTULO, TIPOS_ENTIDADE, Auditoria, Entidade, Permissao, Utilizador
+from ..models import MODULOS, PAPEIS, PAPEIS_ROTULO, TIPOS_ENTIDADE, Auditoria, Entidade, Permissao, Utilizador
 from ..seguranca import hash_password, ler_form, validar_password_nova
 
 router = APIRouter(prefix="/admin")
@@ -15,6 +17,8 @@ router = APIRouter(prefix="/admin")
 # Decisão por omissão (DESIGN.md §14): novos utilizadores editam a Família
 # e não veem a entidade Mãe.
 PAPEL_OMISSAO = {"Família": "editar"}
+PERIODOS_ATIVIDADE = {"dia": ("Último dia", timedelta(days=1)), "semana": ("Última semana", timedelta(days=7)),
+                      "mes": ("Último mês", timedelta(days=31))}
 
 
 def _entidades(db: Session) -> list[Entidade]:
@@ -48,13 +52,20 @@ def _n_admins_ativos(db: Session, excluir: int | None = None) -> int:
 
 
 @router.get("/utilizadores")
-def utilizadores(request: Request, admin: Utilizador = Depends(exigir_admin), db: Session = Depends(get_db)):
+def utilizadores(request: Request, periodo: str = "", admin: Utilizador = Depends(exigir_admin),
+                 db: Session = Depends(get_db)):
     lista = db.scalars(select(Utilizador).options(selectinload(Utilizador.permissoes))
                        .order_by(Utilizador.nome)).all()
-    eventos = db.execute(select(Auditoria, Utilizador.nome).outerjoin(Utilizador)
-                         .order_by(Auditoria.id.desc()).limit(30)).all()
+    q = select(Auditoria, Utilizador.nome).outerjoin(Utilizador).order_by(Auditoria.id.desc())
+    if periodo in PERIODOS_ATIVIDADE:
+        q = q.where(Auditoria.quando >= datetime.now() - PERIODOS_ATIVIDADE[periodo][1]).limit(500)
+    else:
+        periodo = ""
+        q = q.limit(30)
+    eventos = db.execute(q).all()
     return render(request, "admin/utilizadores.html", lista=lista, entidades=_entidades(db),
-                  rotulos=PAPEIS_ROTULO, eventos=eventos, prefs=request.app.state.prefs,
+                  rotulos=PAPEIS_ROTULO, eventos=eventos, prefs=request.app.state.prefs, periodo=periodo,
+                  periodos_atividade={k: r for k, (r, _) in PERIODOS_ATIVIDADE.items()},
                   ultimo_backup=ultimo_backup(request.app.state.defs))
 
 
@@ -148,7 +159,7 @@ async def editar(request: Request, uid: int, admin: Utilizador = Depends(exigir_
 
 @router.get("/entidades")
 def entidades(request: Request, admin: Utilizador = Depends(exigir_admin), db: Session = Depends(get_db)):
-    return render(request, "admin/entidades.html", entidades=_entidades(db))
+    return render(request, "admin/entidades.html", entidades=_entidades(db), modulos=MODULOS)
 
 
 @router.post("/entidades")
@@ -159,6 +170,8 @@ async def nova_entidade(request: Request, admin: Utilizador = Depends(exigir_adm
     if erros:
         flash(request, " ".join(erros), "erro")
         return RedirectResponse("/admin/entidades", status_code=303)
+    if "modulos" not in dados:
+        dados["modulos"] = ",".join(MODULOS)        # nova entidade: tudo ligado (desliga-se em Editar)
     e = Entidade(**dados, ordem=(db.scalar(select(func.max(Entidade.ordem))) or 0) + 1)
     db.add(e)
     db.flush()
@@ -171,7 +184,7 @@ async def nova_entidade(request: Request, admin: Utilizador = Depends(exigir_adm
 
 
 def _ler_entidade(form, db: Session, atual: Entidade | None) -> tuple[dict, list[str]]:
-    v = {k: str(form.get(k, "")).strip() for k in ("nome", "descricao", "tipo", "quota")}
+    v = {k: str(form.get(k, "")).strip() for k in ("nome", "descricao", "tipo", "quota", "quota_futura", "quota_futura_nota")}
     erros = []
     if not v["nome"]:
         erros.append("Indica o nome.")
@@ -179,24 +192,44 @@ def _ler_entidade(form, db: Session, atual: Entidade | None) -> tuple[dict, list
                                           Entidade.id != (atual.id if atual else 0))):
         erros.append("Já existe uma entidade com esse nome.")
     tipo = v["tipo"] if v["tipo"] in TIPOS_ENTIDADE else "pessoal"
-    quota = None
+    quota = futura = None
     if tipo == "heranca":
-        try:
-            quota = float(v["quota"].replace("%", "").replace(",", "."))
-            if not 0 < quota <= 100:
-                raise ValueError
-        except ValueError:
-            erros.append("Numa herança indica a percentagem que detém (mais de 0 e até 100).")
-    return {"nome": v["nome"][:100], "descricao": v["descricao"] or None, "tipo": tipo, "quota": quota}, erros
+        quota = _percentagem(v["quota"])
+        if quota is None:
+            erros.append("Numa herança indica a parte que detém (ex.: 1/6 ou 16,67).")
+        if v["quota_futura"]:
+            futura = _percentagem(v["quota_futura"])
+            if futura is None:
+                erros.append("A parte no 2.º cenário é inválida (ex.: 1/2 ou 50).")
+    # Os módulos só mudam quando o formulário os traz (marca «modulos_presentes»); senão ficam como estão.
+    modulos = [m for m in form.getlist("modulos") if m in MODULOS] if form.get("modulos_presentes") else None
+    return {"nome": v["nome"][:100], "descricao": v["descricao"] or None, "tipo": tipo, "quota": quota,
+            "quota_futura": futura, "quota_futura_nota": (v["quota_futura_nota"][:100] or None) if futura else None,
+            **({"modulos": ",".join(modulos)} if modulos is not None else {})}, erros
+
+
+def _percentagem(txt: str) -> float | None:
+    """'1/6' → 16,666…; '16,67' ou '16,67%' → 16,67. Entre 0 (exclusive) e 100."""
+    t = txt.replace("%", "").replace(" ", "").replace(",", ".")
+    try:
+        if "/" in t:
+            a, b = t.split("/", 1)
+            v = float(a) / float(b) * 100
+        else:
+            v = float(t)
+    except (ValueError, ZeroDivisionError):
+        return None
+    return v if 0 < v <= 100 else None
 
 
 @router.get("/entidades/{eid}")
 def editar_entidade_form(request: Request, eid: int, admin: Utilizador = Depends(exigir_admin),
                          db: Session = Depends(get_db)):
     e = db.get(Entidade, eid) or _404()
-    v = {"nome": e.nome, "descricao": e.descricao or "", "tipo": e.tipo or "pessoal",
-         "quota": ("%g" % e.quota).replace(".", ",") if e.quota is not None else ""}
-    return render(request, "admin/entidade_form.html", e=e, v=v, tipos=TIPOS_ENTIDADE, erros=[])
+    v = {"nome": e.nome, "descricao": e.descricao or "", "tipo": e.tipo or "pessoal", "quota": e.quota_txt,
+         "quota_futura": e.quota_futura_txt, "quota_futura_nota": e.quota_futura_nota or "",
+         "modulos": (e.modulos or "").split(",")}
+    return render(request, "admin/entidade_form.html", e=e, v=v, tipos=TIPOS_ENTIDADE, modulos=MODULOS, erros=[])
 
 
 @router.post("/entidades/{eid}")
@@ -206,12 +239,15 @@ async def editar_entidade(request: Request, eid: int, admin: Utilizador = Depend
     form = await ler_form(request)
     dados, erros = _ler_entidade(form, db, e)
     if erros:
-        v = {k: str(form.get(k, "")) for k in ("nome", "descricao", "tipo", "quota")}
-        return render(request, "admin/entidade_form.html", status_code=400, e=e, v=v, tipos=TIPOS_ENTIDADE, erros=erros)
+        v = {k: str(form.get(k, "")) for k in ("nome", "descricao", "tipo", "quota", "quota_futura", "quota_futura_nota")}
+        v["modulos"] = form.getlist("modulos")
+        return render(request, "admin/entidade_form.html", status_code=400, e=e, v=v, tipos=TIPOS_ENTIDADE,
+                      modulos=MODULOS, erros=erros)
     antes = f"{e.nome} ({e.tipo}{', %g%%' % e.quota if e.quota else ''})"
     for k, val in dados.items():
         setattr(e, k, val)
-    auditar(db, admin, "entidade_editada", f"{e.id}: {antes} → {e.nome} ({e.tipo}{', %g%%' % e.quota if e.quota else ''})")
+    auditar(db, admin, "entidade_editada", f"{e.id}: {antes} → {e.nome} ({e.tipo}{', %g%%' % e.quota if e.quota else ''}"
+                                           f"{', futura %g%%' % e.quota_futura if e.quota_futura else ''}; módulos {e.modulos})")
     db.commit()
     flash(request, f"Entidade «{e.nome}» guardada.")
     return RedirectResponse("/admin/entidades", status_code=303)

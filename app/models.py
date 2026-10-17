@@ -52,6 +52,20 @@ class Utilizador(Base):
 
 
 TIPOS_ENTIDADE = {"pessoal": "Pessoal", "heranca": "Herança"}
+# Módulos que cada entidade usa (Administração › Entidades): os ecrãs só mostram o que a entidade tem.
+MODULOS = {"imoveis": "Casas e propriedades", "viaturas": "Viaturas (carros, Via Verde, abastecimentos)",
+           "subscricoes": "Subscrições e assinaturas", "viagens": "Viagens"}
+
+
+def fracao(pct: float | None) -> str:
+    """33.333 → '1/3'; 16.667 → '1/6'; 25 → '1/4'; senão '12,5%'."""
+    if pct is None:
+        return ""
+    for d in (2, 3, 4, 5, 6, 8, 9, 10, 12):
+        n = round(pct * d / 100)
+        if 0 < n < d and abs(n / d * 100 - pct) < 0.01:
+            return f"{n}/{d}"
+    return ("%g%%" % round(pct, 4)).replace(".", ",")
 
 
 class Entidade(Base):
@@ -68,6 +82,11 @@ class Entidade(Base):
     # Pessoal, ou herança (indivisa) de que se detém uma quota (%): mostra-se a parte de cada valor.
     tipo: Mapped[str] = mapped_column(String(10), default="pessoal", server_default="pessoal")
     quota: Mapped[float | None] = mapped_column(Float)
+    # 2.º cenário da partilha (ex.: hoje 1/6 de cada filho e 4/6 da mãe; por morte da mãe, 1/2 de cada filho).
+    quota_futura: Mapped[float | None] = mapped_column(Float)
+    quota_futura_nota: Mapped[str | None] = mapped_column(String(100))
+    modulos: Mapped[str] = mapped_column(String(120), default="imoveis,viaturas,subscricoes,viagens",
+                                         server_default="imoveis,viaturas,subscricoes,viagens")
 
     contas: Mapped[list["Conta"]] = relationship(back_populates="entidade")
 
@@ -84,6 +103,23 @@ class Entidade(Base):
         if valor is None:
             return None
         return round(valor * self.quota / 100) if self.heranca and self.quota is not None else valor
+
+    def parte_futura(self, valor: int | None) -> int | None:
+        """A parte no 2.º cenário da partilha (None se não houver)."""
+        if valor is None or not self.heranca or self.quota_futura is None:
+            return None
+        return round(valor * self.quota_futura / 100)
+
+    @property
+    def quota_txt(self) -> str:
+        return fracao(self.quota)
+
+    @property
+    def quota_futura_txt(self) -> str:
+        return fracao(self.quota_futura)
+
+    def tem(self, modulo: str) -> bool:
+        return modulo in (self.modulos or "").split(",")
 
 
 class Permissao(Base):

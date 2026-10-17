@@ -33,7 +33,10 @@ def _token_valido(request: Request, codigo: str) -> None:
 
 
 def _carros(db: Session) -> list[Bem]:
-    return [b for b in db.scalars(select(Bem).where(Bem.tipo == "carro").order_by(Bem.nome)) if not b.vendido]
+    """Carros em uso, das entidades que têm viaturas."""
+    from ..models import Entidade
+    return [b for b in db.scalars(select(Bem).where(Bem.tipo == "carro").order_by(Bem.nome))
+            if not b.vendido and db.get(Entidade, b.entidade_id).tem("viaturas")]
 
 
 def _ler(form, erros: list) -> dict:

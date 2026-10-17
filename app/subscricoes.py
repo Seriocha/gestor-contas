@@ -116,15 +116,24 @@ def proxima_data(s: Subscricao, hoje: date) -> date | None:
     return futuras[0] if futuras else None
 
 
+def _corte(db: Session, entidade_id: int) -> date | None:
+    from .relatorios import inicio_analise
+    return inicio_analise(db, entidade_id)
+
+
 def pagamentos(db: Session, s: Subscricao, hoje: date) -> list[Movimento]:
     """Débitos da subscrição no extrato (pelo padrão, na conta indicada ou em qualquer conta da entidade)."""
     if not s.padrao:
         return []
     contas = [s.conta_id] if s.conta_id else list(db.scalars(select(Conta.id).where(Conta.entidade_id == s.entidade_id)))
     ate = (s.data_fim or hoje) + timedelta(days=TOLERANCIA_DIAS)
+    desde = s.data_inicio - timedelta(days=TOLERANCIA_DIAS)
+    corte = _corte(db, s.entidade_id)
+    if corte and corte > desde:
+        desde = corte                    # cobertura dos dados: antes do corte não se olha
     movs = db.scalars(select(Movimento).where(
         Movimento.conta_id.in_(contas), Movimento.montante < 0, ~Movimento.excluido,
-        Movimento.data_mov.between(s.data_inicio - timedelta(days=TOLERANCIA_DIAS), ate))
+        Movimento.data_mov.between(desde, ate))
         .options(selectinload(Movimento.conta)).order_by(Movimento.data_mov)).all()
     rx = compilar(s.padrao, "contem")
     return [m for m in movs if rx.search((m.descricao_norm or m.descricao_original or "").upper())]
@@ -176,7 +185,10 @@ def estado(db: Session, s: Subscricao, hoje: date) -> Estado:
     ultimo_extrato = db.scalar(q) or hoje
     datas_pagas = [m.data_mov for m in pagos]
     ultima_verificavel = None   # a última data esperada que os extratos já cobrem
+    corte = _corte(db, s.entidade_id)
     for d in datas_esperadas(s, hoje):
+        if corte and d < corte:
+            continue                     # antes da cobertura dos dados: não há extratos para verificar
         pago = any(abs((p - d).days) <= TOLERANCIA_DIAS for p in datas_pagas)
         if pago or d + timedelta(days=TOLERANCIA_DIAS) <= ultimo_extrato:
             ultima_verificavel = (d, pago)
@@ -225,6 +237,9 @@ def detetar(db: Session, entidade_id: int, hoje: date, meses: int = 18) -> list[
     if not validas:
         return []
     desde = somar_meses(hoje.replace(day=1), -meses)
+    corte = _corte(db, entidade_id)
+    if corte and corte > desde:
+        desde = corte
     movs = db.scalars(select(Movimento).where(
         Movimento.conta_id.in_(validas), Movimento.montante < 0, ~Movimento.transferencia, ~Movimento.excluido,
         Movimento.data_mov >= desde).order_by(Movimento.data_mov)).all()

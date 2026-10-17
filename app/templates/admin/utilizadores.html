@@ -71,7 +71,15 @@
 </section>
 
 <section class="cartao">
-  <h2>Atividade recente</h2>
+  <div class="cartao-cabecalho">
+    <h2>Atividade recente</h2>
+    <nav class="separadores sem-margem">
+      <a href="/admin/utilizadores#atividade" {% if not periodo %}class="ativo"{% endif %}>Últimos 30</a>
+      {% for k, r in periodos_atividade.items() %}<a href="/admin/utilizadores?periodo={{ k }}#atividade" {% if periodo == k %}class="ativo"{% endif %}>{{ r }}</a>{% endfor %}
+    </nav>
+  </div>
+  <span id="atividade"></span>
+  {% if periodo %}<p class="nota">{{ eventos | length }} registo{{ 's' if eventos | length != 1 }}{{ ' (mostrados os 500 mais recentes)' if eventos | length >= 500 }}.</p>{% endif %}
   <div class="rolar">
   <table class="tabela compacta">
     {% for ev, nome in eventos %}

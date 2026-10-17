@@ -32,7 +32,7 @@ def test_editar_entidade_heranca(admin, app):
     p = admin.get("/admin/entidades").text
     assert 'href="/admin/entidades/2"' in p
     r = _post(admin, "/admin/entidades/2", nome="Mãe", tipo="heranca", quota="")
-    assert r.status_code == 400 and "percentagem" in r.text
+    assert r.status_code == 400 and "parte que detém" in r.text
     r = _post(admin, "/admin/entidades/2", nome="Família", tipo="pessoal")
     assert r.status_code == 400 and "Já existe" in r.text
     r = _post(admin, "/admin/entidades/2", nome="Herança Monte Silva", descricao="Partilhas", tipo="heranca", quota="33,33")
@@ -41,11 +41,11 @@ def test_editar_entidade_heranca(admin, app):
         e = db.get(Entidade, 2)
         assert (e.nome, e.tipo, e.quota) == ("Herança Monte Silva", "heranca", 33.33) and e.parte(30000) == 9999
         assert db.get(Entidade, 1).parte(30000) == 30000
-    assert "33,33%" in admin.get("/admin/entidades").text
+    assert "1/3" in admin.get("/admin/entidades").text          # 33,33 % mostra-se como fração
     _post(admin, "/admin/entidades", "/admin/entidades", nome="Herança Avós", tipo="heranca", quota="25")
     with app.state.SessionLocal() as db:
         assert db.query(Entidade).filter_by(nome="Herança Avós").one().quota == 25
-    assert "a tua parte (33,33%)" in admin.get("/?entidade=2").text
+    assert "a tua parte (1/3)" in admin.get("/?entidade=2").text
 
 
 def _rustico(c, **extra):
@@ -79,7 +79,7 @@ def test_propriedade_rustica_cortica_e_ia(admin, app, monkeypatch):
         db.commit()
         assert a.valor == 90000000 and "7500 €/ha" in a.justificacao
     p = admin.get(f"/patrimonio/{bid}").text
-    assert "próxima em 2035" in p and "faltam 9 anos" in p and "Montado de sobro" in p and "a tua parte (25%): 225.000,00 €" in p
+    assert "próxima em 2035" in p and "faltam 9 anos" in p and "Montado de sobro" in p and "a tua parte (1/4): 225.000,00 €" in p
     lista = admin.get("/patrimonio?entidade=2").text
     assert "Propriedades rústicas" in lista and "próxima em 2035" in lista and "é uma herança" in lista
     assert "recebeu 8.000,00 €" in lista                                   # a venda da cortiça (padrão) conta no prédio

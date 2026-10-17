@@ -6,6 +6,7 @@ quando os passos voltam a correr. Todos os passos são idempotentes e nunca mexe
 qualificado ou escolhido à mão.
 """
 from dataclasses import dataclass, field
+from datetime import date
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -42,18 +43,20 @@ def diagnostico(db: Session, ent: Entidade) -> Diagnostico:
     d = Diagnostico(ent)
     d.sem_categoria = db.scalar(select(func.count()).select_from(Movimento).join(Conta).where(
         Conta.entidade_id == ent.id, Conta.tipo.not_in(SEM_REGRAS), Movimento.categoria_id.is_(None),
-        ~Movimento.transferencia, ~Movimento.excluido)) or 0
+        ~Movimento.transferencia, ~Movimento.excluido, Movimento.data_mov >= (ent.data_inicio or date.min))) or 0
     d.cartoes_por_ligar = db.scalar(select(func.count()).select_from(Movimento).join(Conta).where(
         Conta.entidade_id == ent.id, Conta.tipo == "CARTAO_CREDITO", Movimento.montante > 0,
         Movimento.par_id.is_(None))) or 0
-    soltas = db.scalars(select(ViaVerde).where(ViaVerde.entidade_id == ent.id, ViaVerde.movimento_id.is_(None))).all()
+    soltas = db.scalars(select(ViaVerde).where(ViaVerde.entidade_id == ent.id, ViaVerde.movimento_id.is_(None),
+                                               ViaVerde.data >= (ent.data_inicio or date.min))).all()
     d.vv_por_ligar, d.vv_total_por_ligar = len(soltas), sum(l.valor for l in soltas)
     carros = {norm_matricula(b.matricula) for b in db.scalars(select(Bem).where(Bem.entidade_id == ent.id,
                                                                                  Bem.matricula.is_not(None)))}
     d.vv_sem_carro = sorted({m for m in db.scalars(select(ViaVerde.matricula).where(ViaVerde.entidade_id == ent.id))}
                             - carros)
     d.abastecimentos_por_ligar = db.scalar(select(func.count()).select_from(Abastecimento).join(Bem).where(
-        Bem.entidade_id == ent.id, Abastecimento.movimento_id.is_(None))) or 0
+        Bem.entidade_id == ent.id, Abastecimento.movimento_id.is_(None),
+        Abastecimento.data >= (ent.data_inicio or date.min))) or 0
     d.bens = db.scalar(select(func.count()).select_from(Bem).where(Bem.entidade_id == ent.id)) or 0
     return d
 
@@ -65,7 +68,7 @@ def consolidar(db: Session, ent: Entidade, passos: set[str]) -> dict[str, int]:
     if "regras" in passos:
         movs = db.scalars(select(Movimento).join(Conta).where(
             Conta.entidade_id == ent.id, Conta.tipo.not_in(SEM_REGRAS), Movimento.categoria_id.is_(None),
-            ~Movimento.transferencia, ~Movimento.excluido)).all()
+            ~Movimento.transferencia, ~Movimento.excluido, Movimento.data_mov >= (ent.data_inicio or date.min))).all()
         r["regras"] = aplicar_regras(db, movs)
         db.flush()
     if "cartoes" in passos:

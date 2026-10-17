@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_parte.html" import parte %}
 {% block titulo %}{{ b.nome }}{% endblock %}
 {% block conteudo %}
 <div class="titulo-acoes">
@@ -38,7 +39,7 @@
   <div class="cartao kpi"><span class="nota">Dívida</span><strong>{{ divida | eur if divida else '—' }}</strong>
     {% if b.emprestimo_conta %}<span class="nota"><a href="/contas/{{ b.emprestimo_conta.id }}/movimentos">{{ b.emprestimo_conta.nome }}</a></span>{% endif %}</div>
   <div class="cartao kpi"><span class="nota">Capital próprio</span><strong>{{ ((valor or 0) - divida) | eur }}</strong>
-    {% if entidade.heranca and entidade.quota is not none %}<span class="nota">a tua parte ({{ ('%g' % entidade.quota).replace('.', ',') }}%): {{ entidade.parte((valor or 0) - divida) | eur }}</span>{% endif %}</div>
+    {{ parte(entidade, (valor or 0) - divida) }}</div>
   {% if b.tipo == 'rustico' and b.tem_cortica %}
   <div class="cartao kpi"><span class="nota">Cortiça</span>
     <strong>{% if b.proxima_tiragem %}próxima em {{ b.proxima_tiragem }}{% else %}sem anos de tiragem{% endif %}</strong>

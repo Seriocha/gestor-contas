@@ -155,6 +155,10 @@ def candidatos(db: Session, v: Viagem) -> list[Sugestao]:
                                            Movimento.data_mov <= fim + timedelta(days=90),
                                            (Movimento.data_mov < v.data_ini) | (Movimento.data_mov > v.data_fim))):
         meses[padrao_de(norm or desc)].add((d.year, d.month))
+    from .relatorios import inicio_analise
+    corte = inicio_analise(db, v.entidade_id)
+    if corte and corte > ini:
+        ini = corte
     movs = db.scalars(select(Movimento).where(
         Movimento.conta_id.in_(contas), Movimento.data_mov.between(ini, fim), ~Movimento.transferencia,
         ~Movimento.excluido).options(selectinload(Movimento.conta), selectinload(Movimento.categoria))

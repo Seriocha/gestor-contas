@@ -213,14 +213,27 @@ def partes(db: Session, entidade_id: int, movs: list[Movimento]) -> dict[int, di
 def do_carro(db: Session, b: Bem, ini: date, fim: date) -> list[ViaVerde]:
     if not b.matricula:
         return []
+    corte = _corte(db, b.entidade_id)
+    if corte and corte > ini:
+        ini = corte
     return db.scalars(select(ViaVerde).where(ViaVerde.entidade_id == b.entidade_id,
                                              ViaVerde.matricula == norm_matricula(b.matricula),
                                              ViaVerde.data >= ini, ViaVerde.data <= fim)
                       .order_by(ViaVerde.data.desc(), ViaVerde.hora.desc())).all()
 
 
+def _corte(db: Session, entidade_id: int) -> date | None:
+    from .relatorios import inicio_analise
+    return inicio_analise(db, entidade_id)
+
+
 def resumo(db: Session, entidade_id: int) -> dict:
-    linhas = db.scalars(select(ViaVerde).where(ViaVerde.entidade_id == entidade_id)).all()
+    """Totais das linhas dentro da cobertura dos dados (as anteriores ao início da análise ficam de fora)."""
+    corte = _corte(db, entidade_id)
+    q = select(ViaVerde).where(ViaVerde.entidade_id == entidade_id)
+    if corte:
+        q = q.where(ViaVerde.data >= corte)
+    linhas = db.scalars(q).all()
     carros = bens_por_matricula(db, entidade_id)
     por_mat = defaultdict(lambda: [0, 0])
     for l in linhas:

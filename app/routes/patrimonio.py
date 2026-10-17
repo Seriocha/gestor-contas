@@ -200,6 +200,13 @@ def _km_da_ficha(db: Session, b: Bem) -> None:
                 b.km = ultimo.km
 
 
+def _modulo_do_tipo(ent, tipo: str) -> None:
+    modulo = "viaturas" if tipo == "carro" else "imoveis"
+    if not ent.tem(modulo):
+        raise HTTPException(status_code=400, detail=f"A entidade «{ent.nome}» não usa este tipo de bem "
+                                                    "(Administração › Entidades › Editar).")
+
+
 def _um_por_omissao(db: Session, b: Bem) -> None:
     """Só um bem de cada grupo (casa, carro, viatura da empresa) fica com as despesas «por omissão»."""
     if b.omissao:
@@ -215,6 +222,7 @@ def novo(request: Request, entidade: int, tipo: str = "casa", uso: str = "princi
     exigir_papel(db, u, entidade, "editar")
     _, ent, _ = entidade_escolhida(request, db, u, entidade)
     tipo = tipo if tipo in TIPOS_BEM else "casa"
+    _modulo_do_tipo(ent, tipo)
     uso = uso if uso in USOS_BEM[tipo] else next(iter(USOS_BEM[tipo]))
     grupo = "empresa" if tipo == "carro" and uso == "empresa" else tipo
     ja_ha = any(pt.grupo_omissao(b) == grupo for b in db.scalars(select(Bem).where(
@@ -231,6 +239,7 @@ async def criar(request: Request, entidade: int, tipo: str = "casa", u: Utilizad
     exigir_papel(db, u, entidade, "editar")
     _, ent, _ = entidade_escolhida(request, db, u, entidade)
     tipo = tipo if tipo in TIPOS_BEM else "casa"
+    _modulo_do_tipo(ent, tipo)
     v, erros, dados = _ler(await ler_form(request), db, ent.id, tipo)
     if erros:
         return _form(request, db, ent, tipo, v, erros=erros, status_code=400)
@@ -328,8 +337,9 @@ async def importar_fuelio(request: Request, bid: int, u: Utilizador = Depends(ut
 def _movs_oficina(db: Session, b: Bem, hoje: date) -> list[Movimento]:
     """Despesas do carro (não combustível) dos últimos 2 anos, para ligar a uma ida à oficina."""
     ligados = {m.movimento_id for m in b.manutencoes if m.movimento_id}
+    desde = max(rel.somar_meses(hoje, -24), rel.inicio_analise(db, b.entidade_id) or date.min)
     movs = db.scalars(select(Movimento).where(Movimento.bem_id == b.id, Movimento.montante < 0,
-                                              Movimento.data_mov >= rel.somar_meses(hoje, -24))
+                                              Movimento.data_mov >= desde)
                       .order_by(Movimento.data_mov.desc())).all()
     return [m for m in movs if m.id not in ligados and not pt.e_combustivel(m)][:40]
 

@@ -204,7 +204,7 @@ def _agrupar(contas: list, agrupar: str) -> list[tuple[str, list]]:
 
 
 @router.get("")
-def lista(request: Request, arquivadas: IntOpcional = 0, ordem: str = "", agrupar: str = "",
+def lista(request: Request, arquivadas: IntOpcional = 0, ordem: str = "", agrupar: str = "", entidade: IntOpcional = None,
           u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
     ordem = ordem if ordem.lstrip("-") in ORDENS_CONTAS else request.session.get("contas_ordem", "tipo")
     request.session["contas_ordem"] = ordem
@@ -212,7 +212,8 @@ def lista(request: Request, arquivadas: IntOpcional = 0, ordem: str = "", agrupa
     request.session["contas_agrupar"] = agrupar
     col, desc = ordem.lstrip("-"), ordem.startswith("-")
     blocos, todas = [], []
-    for entidade, papel in entidades_visiveis(db, u):
+    visiveis, ent, _ = entidade_escolhida(request, db, u, entidade)      # um separador por entidade
+    for entidade, papel in [(e, p) for e, p in visiveis if ent and e.id == ent.id]:
         q = select(Conta).where(Conta.entidade_id == entidade.id).options(
             selectinload(Conta.instituicao), selectinload(Conta.titulares), selectinload(Conta.conta_pagamento))
         if not arquivadas:
@@ -229,6 +230,7 @@ def lista(request: Request, arquivadas: IntOpcional = 0, ordem: str = "", agrupa
         ordens[c] = {"href": f"?ordem={nova}" + ("&arquivadas=1" if arquivadas else ""),
                      "seta": ("▼" if desc else "▲") if atual else ""}
     return render(request, "contas/lista.html", blocos=blocos, arquivadas=arquivadas, ordem=ordem, ordens=ordens,
+                  visiveis=visiveis, entidade=ent,
                   agrupar=agrupar, opcoes_agrupar=AGRUPAR_CONTAS,
                   avisos=retificacoes.avisos(db, todas))
 

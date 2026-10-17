@@ -224,6 +224,10 @@ class Consumo:
 
 
 def consumo(db: Session, b: Bem, ini: date, fim: date) -> Consumo:
+    from .relatorios import inicio_analise
+    corte = inicio_analise(db, b.entidade_id)
+    if corte and corte > ini:
+        ini = corte                      # cobertura dos dados
     todos = db.scalars(select(Abastecimento).where(Abastecimento.bem_id == b.id)
                        .order_by(Abastecimento.data.desc(), Abastecimento.hora.desc())).all()
     periodo = [a for a in todos if ini <= a.data <= fim]

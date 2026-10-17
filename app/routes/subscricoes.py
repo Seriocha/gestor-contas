@@ -31,6 +31,9 @@ def lista(request: Request, entidade: IntOpcional = None, u: Utilizador = Depend
     visiveis, ent, papel = entidade_escolhida(request, db, u, entidade)
     if not ent:
         return render(request, "subscricoes/lista.html", entidade=None, visiveis=visiveis)
+    if not ent.tem("subscricoes"):
+        return render(request, "_sem_modulo.html", visiveis=visiveis, entidade=ent, titulo="Subscrições",
+                      destino="/subscricoes", modulo="subscrições")
     hoje = date.today()
     sugestoes = sb.detetar(db, ent.id, hoje)
     for s in sugestoes:   # link para o formulário já preenchido

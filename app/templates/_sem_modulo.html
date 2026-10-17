@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block titulo %}{{ titulo }}{% endblock %}
+{% block conteudo %}
+<h1>{{ titulo }}</h1>
+{% include "_entidades.html" %}
+<section class="cartao">
+  <p class="vazio sem-margem">{{ entidade.nome }} não usa {{ modulo }}.
+    {% if utilizador and utilizador.is_admin %}Para ligar: <a href="/admin/entidades/{{ entidade.id }}">Administração › Entidades › {{ entidade.nome }}</a>.{% endif %}</p>
+</section>
+{% endblock %}

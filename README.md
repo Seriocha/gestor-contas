@@ -4,7 +4,7 @@ Gestor financeiro doméstico, multiutilizador e self-hosted, para a NAS QNAP. Es
 importa movimentos de bancos portugueses e gere contas à ordem, cartões, investimentos e
 Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIGN.md).
 
-## Estado: v0.42.0
+## Estado: v0.43.0
 
 - Login com várias pessoas: passwords em argon2, bloqueio ao fim de 5 tentativas falhadas,
   proteção CSRF e invalidação das sessões quando a password muda.
@@ -37,6 +37,12 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.43.0 — Entidades, contas por entidade e cobertura em todo o lado.** Atividade recente filtrável (último dia,
+  semana, mês). Na edição da entidade: partilha da herança em dois cenários (hoje 1/6; por morte da mãe 1/2 — frações ou %),
+  com a tua parte nos dois ao lado de cada valor; e os módulos que a entidade tem (casas e propriedades, viaturas,
+  subscrições, viagens) — o que não tiver deixa de aparecer. As Contas passam a um separador por entidade, como o Património.
+  O início da análise (cobertura dos dados) aplica-se também a subscrições, viagens, Via Verde, abastecimentos e consumo,
+  oficina e consolidação. Os campos de data mostram e aceitam sempre dd/mm/aaaa (qualquer browser), com botão de calendário.
 - **v0.42.0 — Fundos de investimento e de pensões.** Novo tipo de conta «Fundo de pensões / PPR» (como o investimento:
   saldo retificado, aplicações, desempenho), com n.º de contrato e data de início. Nas contas de investimento e pensões,
   posições por fundo — nome, gestora, categoria, ISIN, risco 1–7, unidades de participação, cotação e data, valor de
