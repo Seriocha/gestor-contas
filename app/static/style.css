@@ -623,3 +623,19 @@ details.recolher[open] > summary { margin-bottom: 1rem; }
   white-space: nowrap; vertical-align: bottom; }
 .tabela-abastecimentos tr.com-diferenca td { background: var(--alerta-fundo); }
 .tabela-abastecimentos details[open] { min-width: 18rem; }
+
+/* ------------------------------------------------------------------ início: agenda */
+.inicio-baixo { align-items: start; }
+.grafico-donut { height: 300px; }
+.agenda { list-style: none; padding: 0; margin: 0; }
+.agenda-item { display: grid; grid-template-columns: 3.4rem 1fr auto; gap: .8rem; align-items: center; padding: .6rem 0;
+  border-bottom: 1px solid var(--linha); }
+.agenda-item:last-child { border-bottom: 0; }
+.agenda-data { display: flex; flex-direction: column; align-items: center; line-height: 1.1; text-align: center; }
+.agenda-data strong { font-size: 1.15rem; }
+.agenda-item.atrasado .agenda-texto strong { color: var(--erro-texto); }
+.agenda-valor { white-space: nowrap; font-weight: 600; }
+.agenda-pagamento { box-shadow: inset 3px 0 0 var(--serie-despesas); padding-left: .5rem; }
+.agenda-receita { box-shadow: inset 3px 0 0 var(--pos); padding-left: .5rem; }
+.agenda-carro, .agenda-bem { box-shadow: inset 3px 0 0 var(--destaque); padding-left: .5rem; }
+.agenda-importar, .agenda-validar { box-shadow: inset 3px 0 0 var(--previsto); padding-left: .5rem; }

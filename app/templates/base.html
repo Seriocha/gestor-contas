@@ -26,7 +26,7 @@
   ('/relatorios', 'relatorios', 'Relatórios', caminho.startswith('/relatorios')),
   ('/importar', 'importar', 'Importar', caminho.startswith('/importar') and not caminho.startswith('/importar/tarefas')),
 ] %}
-{% set itens_lateral = itens_dia[:3] + [('/viagens', 'viagens', 'Viagens', caminho.startswith('/viagens')), ('/subscricoes', 'subscricoes', 'Subscrições', caminho.startswith('/subscricoes')), ('/patrimonio', 'patrimonio', 'Património', caminho.startswith('/patrimonio'))] + itens_dia[3:] + ([('/importar/tarefas', 'tarefas', 'Tarefas do mês', caminho.startswith('/importar/tarefas'))] if tarefas_janela() else []) %}
+{% set itens_lateral = [('/inicio', 'inicio', 'Início', caminho.startswith('/inicio'))] + itens_dia[:3] + [('/viagens', 'viagens', 'Viagens', caminho.startswith('/viagens')), ('/subscricoes', 'subscricoes', 'Subscrições', caminho.startswith('/subscricoes')), ('/patrimonio', 'patrimonio', 'Património', caminho.startswith('/patrimonio'))] + itens_dia[3:] + ([('/importar/tarefas', 'tarefas', 'Tarefas do mês', caminho.startswith('/importar/tarefas'))] if tarefas_janela() else []) %}
 {% set itens_config = [
   ('/contas', 'contas', 'Contas', caminho.startswith('/contas') and not em_movimentos),
   ('/categorias', 'categorias', 'Categorias e regras', caminho.startswith('/categorias') or caminho.startswith('/regras')),
@@ -34,13 +34,13 @@
 ] + ([('/admin/utilizadores', 'admin', 'Administração', caminho.startswith('/admin'))] if utilizador.is_admin else []) %}
 
 <header class="barra-movel">
-  <a class="marca" href="/">{{ logo() }}<span>Gestor de Contas</span></a>
+  <a class="marca" href="/inicio">{{ logo() }}<span>Gestor de Contas</span></a>
   <button type="button" class="botao-icone" id="abrir-menu" aria-controls="lateral" aria-expanded="false" aria-label="Abrir menu">{{ icone('menu') }}</button>
 </header>
 
 <aside class="lateral" id="lateral" aria-label="Navegação principal">
   <div class="lateral-topo">
-    <a class="marca" href="/">{{ logo() }}<span>Gestor de Contas</span></a>
+    <a class="marca" href="/inicio">{{ logo() }}<span>Gestor de Contas</span></a>
     <button type="button" class="botao-icone so-movel" id="fechar-menu" aria-label="Fechar menu">{{ icone('fechar') }}</button>
   </div>
   <nav class="menu">

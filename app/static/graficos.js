@@ -133,6 +133,38 @@
       });
     },
 
+    inicio_evolucao(canvas) {
+      // Ativos e passivos (barras) e património líquido (linha) nos últimos 12 meses.
+      const d = dados.inicio_evolucao;
+      new Chart(canvas, {
+        data: { labels: d.rotulos, datasets: [
+          { type: 'line', label: 'Património líquido', data: d.liquido, borderColor: COR.texto, backgroundColor: COR.texto,
+            borderWidth: 2.5, tension: 0.25, pointRadius: 0, pointHoverRadius: 5, order: 0 },
+          { type: 'bar', label: 'Ativos', data: d.ativos, backgroundColor: COR.receitas + 'cc', borderRadius: 4,
+            maxBarThickness: 22, order: 1 },
+          { type: 'bar', label: 'Passivos', data: d.passivos.map(v => -v), backgroundColor: COR.despesas + 'cc',
+            borderRadius: 4, maxBarThickness: 22, order: 1 },
+        ] },
+        options: { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+          plugins: { legend: { position: 'top', align: 'end', labels: { boxWidth: 12, boxHeight: 12 } },
+            tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${eur.format(Math.abs(ctx.parsed.y))}` } } },
+          scales: { x: { ...eixos.x, stacked: true }, y: { ...eixos.y, stacked: true } } },
+      });
+    },
+
+    inicio_composicao(canvas) {
+      const linhas = dados.inicio_composicao;
+      const total = linhas.reduce((s, l) => s + l.valor, 0);
+      new Chart(canvas, {
+        type: 'doughnut',
+        data: { labels: linhas.map(l => l.nome), datasets: [{ data: linhas.map(l => l.valor),
+          backgroundColor: linhas.map(l => l.cor), borderColor: COR.superficie, borderWidth: 2, hoverOffset: 6 }] },
+        options: { maintainAspectRatio: false, cutout: '62%',
+          plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, boxHeight: 12 } },
+            tooltip: { callbacks: { label: ctx => `${ctx.label}: ${eur.format(ctx.parsed)} (${(ctx.parsed / total * 100).toFixed(0)}%)` } } } },
+      });
+    },
+
     tendencia(canvas) {
       const d = dados.tendencia;
       const barra = { borderRadius: 4, borderSkipped: 'start', maxBarThickness: 22, categoryPercentage: 0.7, barPercentage: 0.9 };

@@ -4,7 +4,7 @@ Gestor financeiro doméstico, multiutilizador e self-hosted, para a NAS QNAP. Es
 importa movimentos de bancos portugueses e gere contas à ordem, cartões, investimentos e
 Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIGN.md).
 
-## Estado: v0.45.0
+## Estado: v0.46.0
 
 - Login com várias pessoas: passwords em argon2, bloqueio ao fim de 5 tentativas falhadas,
   proteção CSRF e invalidação das sessões quando a password muda.
@@ -37,6 +37,12 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.46.0 — Página Início.** Nova página de entrada (depois do login e no logótipo): património líquido, ativos (contas +
+  casas, propriedades e carros, pelo valor da última avaliação em cada data) e passivos, com evolução em 12 meses (ou desde
+  o início da análise), onde está o património (gráfico) e o total por entidade com a parte de cada herança. Agenda dos
+  próximos 60 dias, atrasados primeiro: débitos das subscrições e fim das fidelizações, receitas previstas, pagamento dos
+  cartões, prestações dos empréstimos, manutenção e km dos carros, revisão do valor dos bens, tiragem da cortiça,
+  importação dos extratos do mês e abastecimentos por validar.
 - **v0.45.0 — Abastecimentos corrigíveis; Fuelio nas tarefas.** Os «últimos 12 meses» dos bens (gráficos, custos, resumo)
   começam no início da análise da entidade quando este é mais recente. Na tabela de abastecimentos, a diferença para o
   débito no banco tem coluna própria e cada abastecimento pode ser corrigido (data, hora, km, litros, valor, posto, cheio —

@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% from "_parte.html" import parte %}
+{% block titulo %}Início{% endblock %}
+{% macro item_agenda(i) -%}
+<li class="agenda-item agenda-{{ i.tipo }}{{ ' atrasado' if i.atrasado }}">
+  <div class="agenda-data">
+    {% if i.atrasado %}<span class="etiqueta etiqueta-erro">em atraso</span>
+    {% elif i.data == hoje %}<strong>Hoje</strong>
+    {% else %}<strong>{{ i.data.day }}</strong><span class="nota">{{ ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'][i.data.month - 1] }}{{ ' ' ~ i.data.year if i.data.year != hoje.year }}</span>{% endif %}
+  </div>
+  <div class="agenda-texto">
+    {% if i.href %}<a href="{{ i.href }}"><strong>{{ i.titulo }}</strong></a>{% else %}<strong>{{ i.titulo }}</strong>{% endif %}
+    <br><span class="nota">{{ i.detalhe }}{{ ' · ' ~ i.entidade if i.entidade }}{% if not i.atrasado and i.data > hoje %} · daqui a {{ (i.data - hoje).days }} dia{{ 's' if (i.data - hoje).days != 1 }}{% endif %}</span>
+  </div>
+  {% if i.valor is not none %}<div class="agenda-valor num {{ 'pos' if i.valor > 0 else 'neg' }}">{{ '+' if i.valor > 0 }}{{ i.valor | eur }}</div>{% endif %}
+</li>
+{%- endmacro %}
+{% block conteudo %}
+<h1>Início</h1>
+{% set destino = '/inicio' %}{% include "_entidades.html" %}
+{% if entidade %}
+{% set h = v.hoje %}
+<section class="cartao">
+  <div class="kpi-linha">
+    <div class="kpi kpi-grande"><span class="nota">Património líquido</span><strong>{{ h.liquido | eur }}</strong>
+      {% if v.datas | length > 1 %}{% set dif = v.variacao_ano %}<span class="nota {{ 'pos' if dif > 0 else 'neg' if dif < 0 }}">{{ '+' if dif > 0 }}{{ dif | eur }} desde {{ v.datas[0] | data }}</span>{% endif %}
+      {{ parte(entidade, h.liquido) }}</div>
+    <div class="kpi"><span class="nota">Ativos</span><strong>{{ h.ativos | eur }}</strong>
+      <span class="nota">{% if v.bens %}dos quais casas, propriedades e carros {{ v.bens | eur }}{% else %}contas{% endif %}</span></div>
+    <div class="kpi"><span class="nota">Passivos</span><strong class="{{ 'neg' if h.passivos }}">{{ h.passivos | eur }}</strong>
+      <span class="nota">{% for n, x in v.composicao_passivos %}{{ n }} {{ x | eur }}{{ ' · ' if not loop.last }}{% else %}sem dívidas{% endfor %}</span></div>
+  </div>
+  {% if v.datas | length > 1 %}
+  <div class="grafico grafico-medio"><canvas data-grafico="inicio_evolucao" aria-label="Ativos, passivos e património líquido nos últimos 12 meses" role="img"></canvas></div>
+  {% endif %}
+</section>
+
+<div class="linha-dupla inicio-baixo">
+  <section class="cartao">
+    <h2>Onde está o património</h2>
+    {% if v.composicao %}
+    <div class="grafico grafico-donut"><canvas data-grafico="inicio_composicao" aria-label="Composição dos ativos" role="img"></canvas></div>
+    {% else %}<p class="vazio sem-margem">Sem ativos registados.</p>{% endif %}
+    {% if totais | length > 1 %}
+    <h3>Por entidade</h3>
+    <table class="tabela compacta">
+      {% for e, liq in totais %}
+      <tr><td><a href="/inicio?entidade={{ e.id }}">{{ e.nome }}</a>{% if e.heranca and e.quota is not none %} <span class="nota">herança, a tua parte {{ e.quota_txt }}</span>{% endif %}</td>
+        <td class="num">{{ liq | eur }}{% if e.heranca and e.quota is not none %}<br><span class="nota">{{ e.parte(liq) | eur }}</span>{% endif %}</td></tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+  </section>
+
+  <section class="cartao" id="agenda">
+    <h2>Agenda <span class="nota">· próximos {{ horizonte }} dias</span></h2>
+    {% if proximos %}
+    <ul class="agenda">{% for i in proximos %}{{ item_agenda(i) }}{% endfor %}</ul>
+    {% else %}<p class="vazio sem-margem">Nada marcado para os próximos {{ horizonte }} dias.</p>{% endif %}
+    {% if depois %}
+    <h3>Mais à frente</h3>
+    <ul class="agenda">{% for i in depois %}{{ item_agenda(i) }}{% endfor %}</ul>
+    {% endif %}
+  </section>
+</div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+{% if entidade %}
+<script type="application/json" id="dados-graficos">{{ graficos | tojson }}</script>
+<script src="/static/vendor/chart.umd.min.js?v={{ versao }}"></script>
+<script src="/static/graficos.js?v={{ versao }}"></script>
+{% endif %}
+{% endblock %}

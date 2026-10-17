@@ -21,7 +21,9 @@ def _ha_utilizadores(db: Session) -> bool:
 
 def _destino_seguro(nxt: str | None) -> str:
     # Só caminhos locais — evita redirecionamentos para sites externos.
-    return nxt if nxt and nxt.startswith("/") and not nxt.startswith("//") else "/"
+    if not nxt or nxt == "/":
+        return "/inicio"                  # página de entrada
+    return nxt if nxt.startswith("/") and not nxt.startswith("//") else "/inicio"
 
 
 def _iniciar_sessao(request: Request, u: Utilizador) -> None:
