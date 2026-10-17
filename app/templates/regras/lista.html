@@ -38,6 +38,7 @@
       <td>
         {% if r.categoria %}<span class="pastilha" style="background: {{ r.categoria.cor_efetiva }}"></span>{{ r.categoria.nome_completo }}{% endif %}
         {% if r.etiqueta %}<span class="etiqueta etiqueta-cor">#{{ r.etiqueta.nome }}</span>{% endif %}
+        {% if r.bem %}<a class="etiqueta etiqueta-bem" href="/patrimonio/{{ r.bem.id }}">→ {{ r.bem.nome }}</a>{% endif %}
         {% if r.marcar_transferencia %}<span class="etiqueta">transferência</span>{% endif %}
         {% if r.excluir %}<span class="etiqueta">excluir</span>{% endif %}
         {% if not r.ativa %}<span class="etiqueta">inativa</span>{% endif %}

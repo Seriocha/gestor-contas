@@ -47,6 +47,20 @@
         {% for e in etiquetas %}<option value="{{ e.id }}" {% if v.etiqueta_id|string == e.id|string %}selected{% endif %}>{{ e.nome }}</option>{% endfor %}
       </select>
     </label>
+    {% if bens_por_entidade %}
+    <label>Ligar a casa / propriedade / carro
+      <select name="bem_id">
+        <option value="">— nenhum —</option>
+        {% for ent, bens in bens_por_entidade %}
+        <optgroup label="{{ ent.nome }}">
+          {% for b in bens %}<option value="{{ b.id }}" {% if v.bem_id|string == b.id|string %}selected{% endif %}>{{ b.nome }} · {{ b.tipo_rotulo | lower }}</option>{% endfor %}
+        </optgroup>
+        {% endfor %}
+      </select>
+    </label>
+    <p class="nota">Com um bem escolhido, a regra só se aplica aos movimentos das contas da entidade desse bem (o seu universo) e ganha à
+      atribuição «por omissão» e aos textos do bem.</p>
+    {% endif %}
     <label class="opcao"><input type="checkbox" name="marcar_transferencia" value="1" {% if v.marcar_transferencia %}checked{% endif %}> Marcar como transferência entre contas próprias</label>
     <label class="opcao"><input type="checkbox" name="excluir" value="1" {% if v.excluir %}checked{% endif %}> Excluir dos relatórios</label>
   </fieldset>

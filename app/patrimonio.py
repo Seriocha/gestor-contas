@@ -96,11 +96,17 @@ def atribuir(db: Session, entidade_id: int, movs: list[Movimento] | None = None)
     omissao = {grupo_omissao(b): b for b in bens if b.omissao}
     from . import fuelio
     abastecidos = fuelio.bens_dos_debitos(db, entidade_id)     # combustível com registo no Fuelio
+    from .models import Regra
+    bens_ids = {b.id for b in bens}
+    das_regras = {rid: bid for rid, bid in db.execute(select(Regra.id, Regra.bem_id).where(Regra.bem_id.is_not(None)))
+                  if bid in bens_ids}
     n = 0
     for m in movs:
         if m.bem_manual:
             continue
-        alvo = abastecidos.get(m.id) or bem_para(m, padroes, omissao)
+        alvo = (abastecidos.get(m.id)
+                or (das_regras.get(m.regra_id) if m.qualificado_por == "regra" else None)
+                or bem_para(m, padroes, omissao))
         if alvo != m.bem_id:
             m.bem_id = alvo
             n += 1

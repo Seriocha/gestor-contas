@@ -46,6 +46,9 @@ def validar_padrao(padrao: str, modo: str) -> str | None:
 def corresponde(regra: Regra, m: Movimento) -> bool:
     if regra.conta_id and regra.conta_id != m.conta_id:
         return False
+    # Regra ligada a um bem: só no universo desse bem (as contas da sua entidade).
+    if regra.bem_id and (regra.bem is None or m.conta is None or m.conta.entidade_id != regra.bem.entidade_id):
+        return False
     if regra.sentido == "SAIDA" and m.montante >= 0:
         return False
     if regra.sentido == "ENTRADA" and m.montante <= 0:
@@ -72,6 +75,8 @@ def aplicar_regra(regra: Regra, m: Movimento) -> None:
         m.excluido = True
     if regra.etiqueta and regra.etiqueta not in m.etiquetas:
         m.etiquetas.append(regra.etiqueta)
+    if regra.bem_id and not m.bem_manual:
+        m.bem_id = regra.bem_id
     m.qualificado_por = "regra"
     m.regra_id = regra.id
 

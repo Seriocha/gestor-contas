@@ -4,7 +4,7 @@ Gestor financeiro doméstico, multiutilizador e self-hosted, para a NAS QNAP. Es
 importa movimentos de bancos portugueses e gere contas à ordem, cartões, investimentos e
 Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIGN.md).
 
-## Estado: v0.40.0
+## Estado: v0.41.0
 
 - Login com várias pessoas: passwords em argon2, bloqueio ao fim de 5 tentativas falhadas,
   proteção CSRF e invalidação das sessões quando a password muda.
@@ -37,6 +37,9 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.41.0 — Regras ligadas a um bem.** No formulário das regras, a ação «Ligar a casa / propriedade / carro» (bens
+  agrupados por entidade). A regra fica condicionada ao universo do bem — só corresponde a movimentos das contas da entidade
+  do bem (também no «Testar») — e o bem da regra ganha à atribuição «por omissão» e aos textos do bem.
 - **v0.40.0 — Construções das propriedades rústicas.** Na ficha da propriedade, um quadro de construções (designação,
   tipo, artigo matricial, área de terreno e área bruta em m², estado), agrupado pelo artigo: construções no mesmo artigo
   partilham a área de terreno, que conta uma vez no «Total de construção». As construções entram na avaliação por IA.

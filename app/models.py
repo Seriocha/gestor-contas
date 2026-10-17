@@ -307,6 +307,8 @@ class Regra(Base):
     montante_max: Mapped[int | None] = mapped_column(BigInteger)
     categoria_id: Mapped[int | None] = mapped_column(ForeignKey("categoria.id", ondelete="CASCADE"))
     etiqueta_id: Mapped[int | None] = mapped_column(ForeignKey("etiqueta.id", ondelete="SET NULL"))
+    # Liga o movimento a um bem (casa, propriedade, carro). A regra passa a valer só nas contas da entidade do bem.
+    bem_id: Mapped[int | None] = mapped_column(ForeignKey("bem.id", ondelete="SET NULL"))
     marcar_transferencia: Mapped[bool] = mapped_column(Boolean, default=False)
     excluir: Mapped[bool] = mapped_column(Boolean, default=False)
     prioridade: Mapped[int] = mapped_column(Integer, default=100)
@@ -316,6 +318,7 @@ class Regra(Base):
     conta: Mapped[Conta | None] = relationship()
     categoria: Mapped[Categoria | None] = relationship()
     etiqueta: Mapped[Etiqueta | None] = relationship()
+    bem: Mapped["Bem | None"] = relationship()
 
 
 # Contas cujo saldo se pode retificar à data (valor real da carteira / dos certificados).

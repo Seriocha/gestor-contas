@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from ..deps import IntOpcional, auditar, entidades_visiveis, exigir_editor, flash, get_db, render
 from ..formatos import montante_para_input, parse_montante
-from ..models import MODOS_REGRA, PAPEIS, SENTIDOS, Categoria, Conta, Entidade, Etiqueta, Movimento, Regra, Utilizador
+from ..models import Bem, MODOS_REGRA, PAPEIS, SENTIDOS, Categoria, Conta, Entidade, Etiqueta, Movimento, Regra, Utilizador
 from .. import ia
 from ..qualificacao import (aplicar_regras, arvore_categorias, compilar, corresponde, qualificar_manual,
                             validar_padrao)
@@ -36,13 +36,26 @@ def _opcoes(db: Session, u: Utilizador) -> dict:
         "etiquetas": db.scalars(select(Etiqueta).order_by(Etiqueta.nome)).all(),
         "contas": db.scalars(select(Conta).where(Conta.entidade_id.in_(_entidades_editaveis(db, u)))
                              .options(selectinload(Conta.entidade)).order_by(Conta.entidade_id, Conta.nome)).all(),
+        "bens_por_entidade": _bens_por_entidade(db, u),
     }
+
+
+def _bens_por_entidade(db: Session, u: Utilizador) -> list:
+    """[(entidade, [bens])] das entidades que o utilizador edita — o «universo» de cada bem."""
+    from ..models import Bem, Entidade
+    r = []
+    for eid in _entidades_editaveis(db, u):
+        bens = db.scalars(select(Bem).where(Bem.entidade_id == eid).order_by(Bem.tipo, Bem.nome)).all()
+        if bens:
+            r.append((db.get(Entidade, eid), bens))
+    return r
 
 
 @router.get("")
 def lista(request: Request, u: Utilizador = Depends(exigir_editor), db: Session = Depends(get_db)):
     regras = db.scalars(select(Regra).options(selectinload(Regra.categoria).selectinload(Categoria.pai),
-                                              selectinload(Regra.conta), selectinload(Regra.etiqueta))
+                                              selectinload(Regra.conta), selectinload(Regra.etiqueta),
+                                              selectinload(Regra.bem))
                         .order_by(Regra.prioridade, Regra.id)).all()
     movs = _movimentos_editaveis(db, u, so_nao_manuais=False)
     usos = {r.id: 0 for r in regras}
@@ -180,13 +193,18 @@ def _ler(form, db: Session) -> tuple[dict, list[str]]:
         "padrao": padrao, "modo": modo, "sentido": sentido,
         "montante_min": montante("montante_min"), "montante_max": montante("montante_max"),
         "conta_id": fk("conta_id", Conta), "categoria_id": fk("categoria_id", Categoria),
-        "etiqueta_id": fk("etiqueta_id", Etiqueta),
+        "etiqueta_id": fk("etiqueta_id", Etiqueta), "bem_id": fk("bem_id", Bem),
         "marcar_transferencia": form.get("marcar_transferencia") == "1", "excluir": form.get("excluir") == "1",
         "ativa": form.get("ativa") == "1",
         "prioridade": int(form["prioridade"]) if str(form.get("prioridade", "")).isdigit() else 100,
     }
-    if not (dados["categoria_id"] or dados["etiqueta_id"] or dados["marcar_transferencia"] or dados["excluir"]):
-        erros.append("Escolhe pelo menos uma ação (categoria, etiqueta, transferência ou excluir).")
+    if not (dados["categoria_id"] or dados["etiqueta_id"] or dados["marcar_transferencia"] or dados["excluir"]
+            or dados["bem_id"]):
+        erros.append("Escolhe pelo menos uma ação (categoria, etiqueta, bem, transferência ou excluir).")
+    if dados["bem_id"] and dados["conta_id"]:
+        bem, conta = db.get(Bem, dados["bem_id"]), db.get(Conta, dados["conta_id"])
+        if bem.entidade_id != conta.entidade_id:
+            erros.append(f"A conta «{conta.nome}» não é da entidade de «{bem.nome}» — a regra nunca corresponderia.")
     return dados, erros
 
 
@@ -204,7 +222,7 @@ def _exemplos(db: Session, u: Utilizador, regra: Regra) -> tuple[int, list[Movim
 
 def _valores(r: Regra) -> dict:
     return {"padrao": r.padrao, "modo": r.modo, "sentido": r.sentido or "", "conta_id": r.conta_id,
-            "categoria_id": r.categoria_id, "etiqueta_id": r.etiqueta_id,
+            "categoria_id": r.categoria_id, "etiqueta_id": r.etiqueta_id, "bem_id": r.bem_id,
             "montante_min": montante_para_input(r.montante_min), "montante_max": montante_para_input(r.montante_max),
             "marcar_transferencia": r.marcar_transferencia, "excluir": r.excluir, "ativa": r.ativa,
             "prioridade": r.prioridade}
@@ -248,6 +266,7 @@ async def _guardar(request: Request, u: Utilizador, db: Session, r: Regra | None
     form = await ler_form(request)
     dados, erros = _ler(form, db)
     teste = Regra(**dados)
+    teste.bem = db.get(Bem, dados["bem_id"]) if dados["bem_id"] else None
     if erros or form.get("testar"):
         v = {**dados, "montante_min": str(form.get("montante_min", "")), "montante_max": str(form.get("montante_max", "")),
              "sentido": dados["sentido"] or ""}
