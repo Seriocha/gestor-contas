@@ -54,6 +54,8 @@
 {% endif %}
 
 {% if not b.empresa %}
+{% if b.tipo == 'rustico' %}{% include "patrimonio/_construcoes.html" %}{% endif %}
+
 <section class="cartao" id="avaliacoes">
   <div class="cartao-cabecalho"><h2>Histórico do valor</h2></div>
   {% if (b.avaliacoes | length) + (1 if b.valor_aquisicao and b.data_aquisicao else 0) > 1 %}

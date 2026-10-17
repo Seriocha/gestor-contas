@@ -30,7 +30,7 @@
   </fieldset>
   <div class="linha">
     <label>Acesso <select name="acesso"><option value="">—</option>{% for k, r in acessos.items() %}<option value="{{ k }}" {% if v.acesso == k %}selected{% endif %}>{{ r }}</option>{% endfor %}</select></label>
-    <label>Construções e benfeitorias <input name="extras" value="{{ v.extras or '' }}" maxlength="200" placeholder="ex.: monte em ruína, armazém, vedação, eletricidade"></label>
+    <label>Outras benfeitorias <input name="extras" value="{{ v.extras or '' }}" maxlength="200" placeholder="ex.: vedação, eletricidade, poço com motor (casas e armazéns na ficha)"></label>
   </div>
   <fieldset><legend>Cortiça</legend>
     <label class="opcao"><input type="checkbox" name="tem_cortica" value="1" id="tem-cortica" {% if v.tem_cortica %}checked{% endif %}> Tem cortiça (montado de sobro em produção)</label>

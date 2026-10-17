@@ -515,6 +515,8 @@ OCUPACOES = {"montado_sobro": "Montado de sobro", "montado_azinho": "Montado de 
 AGUAS = {"furo": "Furo", "poco": "Poço", "charca": "Charca / barragem", "ribeira": "Ribeira / linha de água",
          "rede": "Rede pública", "regadio_publico": "Perímetro de rega"}
 ACESSOS = {"alcatrao": "Estrada alcatroada", "terra_bom": "Caminho de terra em bom estado", "terra_mau": "Caminho de terra difícil"}
+TIPOS_CONSTRUCAO = {"habitacao": "Habitação", "armazem": "Armazém / apoio agrícola", "anexo": "Anexo / garagem",
+                    "ruina": "Ruína", "outra": "Outra"}
 CICLO_CORTICA = 9          # anos entre tiragens (mínimo legal em Portugal)
 COMBUSTIVEIS = {"gasolina": "Gasolina", "gasoleo": "Gasóleo", "hibrido": "Híbrido", "hibrido_plugin": "Híbrido plug-in",
                 "eletrico": "Elétrico", "gpl": "GPL"}
@@ -575,6 +577,8 @@ class Bem(Base):
     emprestimo_conta: Mapped["Conta | None"] = relationship()
     avaliacoes: Mapped[list["AvaliacaoBem"]] = relationship(back_populates="bem", cascade="all, delete-orphan",
                                                             order_by="AvaliacaoBem.data")
+    construcoes: Mapped[list["Construcao"]] = relationship(cascade="all, delete-orphan",
+                                                          order_by="[Construcao.ordem, Construcao.id]")
     registos_km: Mapped[list["RegistoKm"]] = relationship(cascade="all, delete-orphan",
                                                          order_by="[RegistoKm.data, RegistoKm.km]")
     plano: Mapped[list["ItemPlano"]] = relationship(cascade="all, delete-orphan", order_by="ItemPlano.ordem")
@@ -681,6 +685,26 @@ class Abastecimento(Base):
     movimento_id: Mapped[int | None] = mapped_column(ForeignKey("movimento.id", ondelete="SET NULL"), index=True)
 
     movimento: Mapped["Movimento | None"] = relationship()
+
+
+class Construcao(Base):
+    """Construção numa propriedade rústica (casa, armazém…): designação, artigo matricial, área de terreno e
+    área bruta. Construções no mesmo artigo partilham a área de terreno (conta uma vez no total)."""
+    __tablename__ = "construcao"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    bem_id: Mapped[int] = mapped_column(ForeignKey("bem.id", ondelete="CASCADE"), index=True)
+    designacao: Mapped[str] = mapped_column(String(100))
+    tipo: Mapped[str | None] = mapped_column(String(12))
+    artigo: Mapped[str | None] = mapped_column(String(60))
+    area_terreno: Mapped[float | None] = mapped_column(Float)          # m² (do artigo)
+    area_bruta: Mapped[float | None] = mapped_column(Float)            # m²
+    estado: Mapped[str | None] = mapped_column(String(12))
+    ordem: Mapped[int] = mapped_column(Integer, default=0)
+
+    @property
+    def tipo_rotulo(self) -> str:
+        return TIPOS_CONSTRUCAO.get(self.tipo or "", "")
 
 
 class AbastecimentoPendente(Base):

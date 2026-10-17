@@ -312,8 +312,21 @@ def descricao_para_ia(b: Bem) -> str:
             if b.producao_arrobas:
                 c += f"; última produção {b.producao_arrobas} arrobas"
             linhas.append(c)
+        if b.construcoes:
+            grupos, terreno, bruta = construcoes_por_artigo(b)
+            partes = []
+            for g in grupos:
+                for c in g.construcoes:
+                    d = c.designacao + f" ({c.tipo_rotulo.lower() or 'construção'}"
+                    if c.area_bruta:
+                        d += f", {_m2(c.area_bruta)} m² de área bruta"
+                    if c.estado:
+                        d += f", {ESTADOS_BEM.get(c.estado, c.estado).lower()}"
+                    partes.append(d + ")")
+            linhas.append("Construções: " + "; ".join(partes)
+                          + f" — total {_m2(bruta)} m² de área bruta em {_m2(terreno)} m² de terreno")
         if b.extras:
-            linhas.append(f"Construções e benfeitorias: {b.extras}")
+            linhas.append(f"Outras benfeitorias: {b.extras}")
         return "\n".join(linhas)
     if b.tipo == "casa":
         linhas.append(f"Imóvel: habitação T{b.tipologia}" if b.tipologia is not None else "Imóvel: habitação")
@@ -336,6 +349,34 @@ def descricao_para_ia(b: Bem) -> str:
     if b.extras:
         linhas.append(("Características: " if b.tipo == "casa" else "Versão / equipamento: ") + b.extras)
     return "\n".join(linhas)
+
+
+@dataclass
+class GrupoArtigo:
+    artigo: str | None
+    area_terreno: float | None
+    construcoes: list
+
+
+def construcoes_por_artigo(b: Bem) -> tuple[list[GrupoArtigo], float, float]:
+    """Construções agrupadas pelo artigo matricial (a área de terreno é do artigo: conta uma vez).
+    Devolve (grupos, total de terreno, total de área bruta)."""
+    grupos: dict = {}
+    for c in b.construcoes:
+        chave = (c.artigo or "").strip().upper() or f"#{c.id}"     # sem artigo: cada uma é o seu grupo
+        g = grupos.get(chave)
+        if not g:
+            g = grupos[chave] = GrupoArtigo(c.artigo, None, [])
+        g.construcoes.append(c)
+        if c.area_terreno and (g.area_terreno or 0) < c.area_terreno:
+            g.area_terreno = c.area_terreno
+    lista = list(grupos.values())
+    return (lista, sum(g.area_terreno or 0 for g in lista),
+            sum(c.area_bruta or 0 for c in b.construcoes))
+
+
+def _m2(v: float) -> str:
+    return ("%.2f" % v).rstrip("0").rstrip(".").replace(".", ",")
 
 
 def falta_para_ia(b: Bem) -> list[str]:

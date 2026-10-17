@@ -1,0 +1,70 @@
+{# Propriedade rústica: construções agrupadas pelo artigo matricial (a área de terreno é do artigo).
+   Contexto: b, construcoes = (grupos, total_terreno, total_bruta), tipos_construcao, estados, pode_editar. #}
+{% macro m2(v) %}{{ ('%.2f' % v).replace('.', ',') if v is not none else '—' }}{% endmacro %}
+{% set grupos, total_terreno, total_bruta = construcoes %}
+<section class="cartao" id="construcoes">
+  <h2>Construções</h2>
+  {% if b.construcoes %}
+  <div class="rolar"><table class="tabela compacta tabela-construcoes">
+    <thead><tr><th>Designação</th><th>Artigo matricial</th><th class="num">Área de terreno (m²)</th><th class="num">Área bruta (m²)</th>{% if pode_editar %}<th></th>{% endif %}</tr></thead>
+    <tbody>
+    {% for g in grupos %}
+      {% for c in g.construcoes %}
+      <tr>
+        <td><strong>{{ c.designacao }}</strong>{% if c.tipo or c.estado %}<br><span class="nota">{{ c.tipo_rotulo }}{{ ' · ' if c.tipo and c.estado }}{{ estados[c.estado] if c.estado }}</span>{% endif %}</td>
+        {% if loop.first %}
+        <td rowspan="{{ g.construcoes | length }}">{{ g.artigo or '—' }}</td>
+        <td rowspan="{{ g.construcoes | length }}" class="num">{{ m2(g.area_terreno) }}</td>
+        {% endif %}
+        <td class="num">{{ m2(c.area_bruta) }}</td>
+        {% if pode_editar %}
+        <td class="sem-quebra">
+          <details class="editar-construcao"><summary class="ligacao">Editar</summary>
+            <form method="post" action="/patrimonio/{{ b.id }}/construcoes" class="formulario">
+              <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="id" value="{{ c.id }}">
+              <label>Designação <input name="designacao" value="{{ c.designacao }}" required maxlength="100"></label>
+              <label>Tipo <select name="tipo"><option value="">—</option>{% for k, r in tipos_construcao.items() %}<option value="{{ k }}" {% if c.tipo == k %}selected{% endif %}>{{ r }}</option>{% endfor %}</select></label>
+              <label>Artigo matricial <input name="artigo" value="{{ c.artigo or '' }}" maxlength="60"></label>
+              <label>Área de terreno (m²) <input name="area_terreno" value="{{ m2(c.area_terreno) if c.area_terreno else '' }}" inputmode="decimal"></label>
+              <label>Área bruta (m²) <input name="area_bruta" value="{{ m2(c.area_bruta) if c.area_bruta else '' }}" inputmode="decimal"></label>
+              <label>Estado <select name="estado"><option value="">—</option>{% for k, r in estados.items() %}<option value="{{ k }}" {% if c.estado == k %}selected{% endif %}>{{ r }}</option>{% endfor %}</select></label>
+              <button class="primario">Guardar</button>
+            </form>
+          </details>
+          <form method="post" action="/patrimonio/{{ b.id }}/construcoes/{{ c.id }}/apagar" onsubmit="return confirm('Apagar «{{ c.designacao }}»?')">
+            <input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="ligacao">Apagar</button>
+          </form>
+        </td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+    {% endfor %}
+    </tbody>
+    <tfoot><tr class="total"><td><strong>Total de construção</strong></td><td></td>
+      <td class="num"><strong>{{ m2(total_terreno) }}</strong></td><td class="num"><strong>{{ m2(total_bruta) }}</strong></td>{% if pode_editar %}<td></td>{% endif %}</tr></tfoot>
+  </table></div>
+  <p class="nota">Construções com o mesmo artigo matricial partilham a área de terreno do artigo (conta uma vez no total).</p>
+  {% else %}
+  <p class="vazio sem-margem">Sem construções registadas (casas, armazéns, anexos…).</p>
+  {% endif %}
+  {% if pode_editar %}
+  <form method="post" action="/patrimonio/{{ b.id }}/construcoes" class="formulario cartao-interno" style="max-width: none; margin-top: 1rem">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <h3>Adicionar construção</h3>
+    <div class="linha">
+      <label>Designação <input name="designacao" required maxlength="100" placeholder="ex.: Casa 1, Armazém"></label>
+      <label>Tipo <select name="tipo"><option value="">—</option>{% for k, r in tipos_construcao.items() %}<option value="{{ k }}">{{ r }}</option>{% endfor %}</select></label>
+      <label>Artigo matricial <input name="artigo" maxlength="60" placeholder="ex.: Artigo 242 - Secção 2A" list="artigos-construcao"></label>
+    </div>
+    <datalist id="artigos-construcao">{% for g in grupos if g.artigo %}<option value="{{ g.artigo }}">{% endfor %}</datalist>
+    <div class="linha">
+      <label>Área de terreno (m²) <input name="area_terreno" inputmode="decimal" placeholder="268,00"></label>
+      <label>Área bruta (m²) <input name="area_bruta" inputmode="decimal" placeholder="110,95"></label>
+      <label>Estado <select name="estado"><option value="">—</option>{% for k, r in estados.items() %}<option value="{{ k }}">{{ r }}</option>{% endfor %}</select></label>
+    </div>
+    <p class="nota">Se a construção está num artigo já registado (ex.: o armazém no mesmo artigo da casa), escolhe o mesmo artigo e deixa a área de
+      terreno vazia.</p>
+    <div class="acoes-form"><button>Adicionar</button></div>
+  </form>
+  {% endif %}
+</section>

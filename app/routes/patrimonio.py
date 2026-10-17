@@ -15,7 +15,7 @@ from .. import patrimonio as pt
 from .. import relatorios as rel
 from ..deps import IntOpcional, auditar, entidade_escolhida, exigir_papel, flash, get_db, render, utilizador_atual
 from ..formatos import fmt_montante, montante_para_input, parse_data, parse_montante
-from ..models import (ACESSOS, AGUAS, COMBUSTIVEIS, ESTADOS_BEM, OCUPACOES, PAPEIS, TIPOS_BEM, USOS_BEM, AvaliacaoBem, Bem, Conta, Manutencao,
+from ..models import (TIPOS_CONSTRUCAO, Construcao, ACESSOS, AGUAS, COMBUSTIVEIS, ESTADOS_BEM, OCUPACOES, PAPEIS, TIPOS_BEM, USOS_BEM, AvaliacaoBem, Bem, Conta, Manutencao,
                       Movimento, RegistoKm, Utilizador, norm_matricula)
 from ..qualificacao import validar_padrao
 from ..seguranca import ler_form
@@ -276,7 +276,8 @@ def ficha(request: Request, bid: int, u: Utilizador = Depends(utilizador_atual),
                   valor=valor, divida=divida, c=pt.custos(db, b, ini, hoje), proxima=pt.proxima_revisao(b),
                   pendente=pt.revisao_pendente(b, hoje), falta=pt.falta_para_ia(b), ia_disponivel=ia.disponivel(),
                   descricao_ia=pt.descricao_para_ia(b), estados=ESTADOS_BEM, combustiveis=COMBUSTIVEIS,
-                  ocupacoes=OCUPACOES, aguas=AGUAS, acessos=ACESSOS,
+                  ocupacoes=OCUPACOES, aguas=AGUAS, acessos=ACESSOS, tipos_construcao=TIPOS_CONSTRUCAO,
+                  construcoes=pt.construcoes_por_artigo(b) if b.tipo == "rustico" else None,
                   graficos={"bem": pt.serie_valor(b)}, pode_editar=PAPEIS[papel] >= PAPEIS["editar"],
                   mr=mt.resumo(b, hoje) if b.tipo == "carro" else None,
                   falta_plano=mt.falta_para_plano(b) if b.tipo == "carro" else [],
@@ -457,6 +458,68 @@ async def apagar_oficina(request: Request, bid: int, mid: int, u: Utilizador = D
     db.commit()
     flash(request, "Registo de oficina apagado (a leitura de km fica).")
     return RedirectResponse(f"/patrimonio/{b.id}#manutencao", status_code=303)
+
+
+def _area(txt: str, rotulo: str, erros: list) -> float | None:
+    t = txt.strip().replace(" ", "")
+    if not t:
+        return None
+    try:
+        v = float(t.replace(".", "").replace(",", ".")) if "," in t else float(t)
+        if not 0 < v < 10_000_000:
+            raise ValueError
+        return v
+    except ValueError:
+        erros.append(f"{rotulo} inválida (ex.: 110,95).")
+        return None
+
+
+@router.post("/{bid}/construcoes")
+async def adicionar_construcao(request: Request, bid: int, u: Utilizador = Depends(utilizador_atual),
+                               db: Session = Depends(get_db)):
+    form = await ler_form(request)
+    b, _ = _bem(db, u, bid, "editar")
+    voltar = f"/patrimonio/{b.id}#construcoes"
+    if b.tipo != "rustico":
+        raise HTTPException(status_code=404, detail="Não encontrado.")
+    erros = []
+    designacao = str(form.get("designacao", "")).strip()[:100]
+    if not designacao:
+        erros.append("Indica a designação (ex.: Casa 1, Armazém).")
+    terreno = _area(str(form.get("area_terreno", "")), "Área de terreno", erros)
+    bruta = _area(str(form.get("area_bruta", "")), "Área bruta", erros)
+    if erros:
+        flash(request, " ".join(erros), "erro")
+        return RedirectResponse(voltar, status_code=303)
+    tipo, estado = str(form.get("tipo", "")), str(form.get("estado", ""))
+    cid = str(form.get("id", ""))
+    c = next((x for x in b.construcoes if str(x.id) == cid), None) if cid.isdigit() else None
+    dados = dict(designacao=designacao, tipo=tipo if tipo in TIPOS_CONSTRUCAO else None,
+                 artigo=str(form.get("artigo", "")).strip()[:60] or None, area_terreno=terreno, area_bruta=bruta,
+                 estado=estado if estado in ESTADOS_BEM else None)
+    if c:
+        for k, v in dados.items():
+            setattr(c, k, v)
+    else:
+        b.construcoes.append(Construcao(bem_id=b.id, ordem=len(b.construcoes), **dados))
+    auditar(db, u, "construcao", f"{b.nome}: {designacao}")
+    db.commit()
+    flash(request, f"Construção «{designacao}» {'guardada' if c else 'adicionada'}.")
+    return RedirectResponse(voltar, status_code=303)
+
+
+@router.post("/{bid}/construcoes/{cid}/apagar")
+async def apagar_construcao(request: Request, bid: int, cid: int, u: Utilizador = Depends(utilizador_atual),
+                            db: Session = Depends(get_db)):
+    await ler_form(request)
+    b, _ = _bem(db, u, bid, "editar")
+    c = next((x for x in b.construcoes if x.id == cid), None)
+    if not c:
+        raise HTTPException(status_code=404, detail="Não encontrado.")
+    b.construcoes.remove(c)
+    db.commit()
+    flash(request, f"Construção «{c.designacao}» apagada.")
+    return RedirectResponse(f"/patrimonio/{b.id}#construcoes", status_code=303)
 
 
 @router.post("/{bid}/avaliar")

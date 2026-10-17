@@ -85,3 +85,34 @@ def test_propriedade_rustica_cortica_e_ia(admin, app, monkeypatch):
     assert "recebeu 8.000,00 €" in lista                                   # a venda da cortiça (padrão) conta no prédio
     r = _post(admin, "/patrimonio/novo?entidade=2&tipo=rustico", nome="X", area_ha="abc", anos_tiragem="17")
     assert r.status_code == 400 and "hectares" in r.text and "tiragem" in r.text
+
+
+def test_construcoes_da_propriedade(admin, app):
+    bid = _rustico(admin, tem_cortica="")
+    linhas = [("Casa 2", "habitacao", "Artigo 242 - Secção 2A", "268,00", "110,95"),
+              ("Armazém", "armazem", "Artigo 242 - Secção 2A", "", "98,00"),
+              ("Casa1", "habitacao", "Artigo  83", "58,00", "58,00")]
+    for d, t, a, terreno, bruta in linhas:
+        r = _post(admin, f"/patrimonio/{bid}", f"/patrimonio/{bid}/construcoes", designacao=d, tipo=t, artigo=a,
+                  area_terreno=terreno, area_bruta=bruta)
+        assert r.status_code == 303
+    with app.state.SessionLocal() as db:
+        b = db.get(Bem, bid)
+        grupos, terreno, bruta = pt.construcoes_por_artigo(b)
+        assert [len(g.construcoes) for g in grupos] == [2, 1]
+        assert terreno == 326.0 and round(bruta, 2) == 266.95          # como no quadro: 326,00 e 266,95
+        txt = pt.descricao_para_ia(b)
+        assert "Casa 2 (habitação, 110,95 m² de área bruta)" in txt and "total 266,95 m² de área bruta em 326 m² de terreno" in txt
+        armazem = next(c for c in b.construcoes if c.designacao == "Armazém")
+    p = admin.get(f"/patrimonio/{bid}").text
+    assert 'rowspan="2"' in p and "Total de construção" in p and "326,00" in p and "266,95" in p
+    _post(admin, f"/patrimonio/{bid}", f"/patrimonio/{bid}/construcoes", id=str(armazem.id), designacao="Armazém agrícola",
+          tipo="armazem", artigo="Artigo 242 - Secção 2A", area_bruta="100", estado="usado")
+    _post(admin, f"/patrimonio/{bid}", f"/patrimonio/{bid}/construcoes", designacao="", area_bruta="abc")
+    assert "Indica a designação" in admin.get(f"/patrimonio/{bid}").text
+    with app.state.SessionLocal() as db:
+        assert db.get(Bem, bid).construcoes[1].designacao == "Armazém agrícola"
+    _post(admin, f"/patrimonio/{bid}", f"/patrimonio/{bid}/construcoes/{armazem.id}/apagar")
+    with app.state.SessionLocal() as db:
+        b = db.get(Bem, bid)
+        assert [c.designacao for c in b.construcoes] == ["Casa 2", "Casa1"]
