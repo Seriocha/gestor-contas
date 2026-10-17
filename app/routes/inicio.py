@@ -25,5 +25,9 @@ def pagina(request: Request, entidade: IntOpcional = None, u: Utilizador = Depen
         ve = v if e.id == ent.id else inicio.visao(db, e, hoje)
         totais.append((e, ve.hoje["liquido"]))
     proximos, depois = inicio.agenda(db, [e for e, _ in visiveis], request.app.state.prefs, hoje)
+    grupos, passivos = inicio.detalhe(db, ent, hoje)
+    total_ativos = sum(g.total for g in grupos)
     return render(request, "inicio.html", visiveis=visiveis, entidade=ent, v=v, hoje=hoje, totais=totais,
-                  proximos=proximos, depois=depois, horizonte=inicio.HORIZONTE, graficos=inicio.graficos(v, hoje))
+                  proximos=proximos, depois=depois, horizonte=inicio.HORIZONTE, grupos=grupos, passivos=passivos,
+                  total_ativos=total_ativos, variacao=inicio.variacao_mensal(v),
+                  graficos=inicio.graficos(v, hoje, grupos))

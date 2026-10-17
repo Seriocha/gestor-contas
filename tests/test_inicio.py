@@ -68,7 +68,10 @@ def test_patrimonio_com_bens_e_agenda(admin, app):
     p = admin.get("/inicio?entidade=1").text
     assert "Património líquido" in p and 'data-grafico="inicio_evolucao"' in p and "Agenda" in p and "Netflix" in p
     dados = json.loads(re.search(r'id="dados-graficos">(.*?)</script>', p, re.S).group(1))
-    assert dados["inicio_composicao"][0]["nome"] == "Casas"
+    comp = {x["nome"]: x["valor"] for x in dados["inicio_composicao"]}
+    assert comp == {"Ativos bancários": 5000.0, "Património imóvel": 250000.0}       # o carro sem valor não entra
+    assert "Detalhe dos ativos" in p and "Contas à ordem" in p and "Variação mensal" in p and "Passivos" in p
+    assert 'data-grafico="inicio_linha"' in p and 'class="tile"' in p
     assert 'href="/inicio"' in p                                                       # menu / logótipo
 
 

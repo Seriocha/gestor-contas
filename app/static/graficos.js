@@ -152,15 +152,33 @@
       });
     },
 
+    inicio_linha(canvas) {
+      // Mini-gráfico do património líquido no cabeçalho (sem eixos).
+      const d = dados.inicio_linha;
+      const ctx = canvas.getContext('2d');
+      const grad = ctx.createLinearGradient(0, 0, 0, canvas.clientHeight || 120);
+      grad.addColorStop(0, COR.patrimonio + '55');
+      grad.addColorStop(1, COR.patrimonio + '00');
+      new Chart(canvas, {
+        type: 'line',
+        data: { labels: d.map((_, i) => i), datasets: [{ data: d, borderColor: COR.patrimonio, backgroundColor: grad,
+          fill: true, borderWidth: 2.5, tension: 0.35, pointRadius: d.map((_, i) => i === d.length - 1 ? 4 : 0),
+          pointBackgroundColor: COR.patrimonio }] },
+        options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { enabled: false } },
+          scales: { x: { display: false }, y: { display: false } }, animation: false },
+      });
+    },
+
     inicio_composicao(canvas) {
       const linhas = dados.inicio_composicao;
       const total = linhas.reduce((s, l) => s + l.valor, 0);
       new Chart(canvas, {
         type: 'doughnut',
         data: { labels: linhas.map(l => l.nome), datasets: [{ data: linhas.map(l => l.valor),
-          backgroundColor: linhas.map(l => l.cor), borderColor: COR.superficie, borderWidth: 2, hoverOffset: 6 }] },
-        options: { maintainAspectRatio: false, cutout: '62%',
-          plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, boxHeight: 12 } },
+          backgroundColor: linhas.map(l => l.cor), borderColor: COR.superficie, borderWidth: 3, hoverOffset: 8,
+          borderRadius: 6 }] },
+        options: { maintainAspectRatio: false, cutout: '68%',
+          plugins: { legend: { display: false },
             tooltip: { callbacks: { label: ctx => `${ctx.label}: ${eur.format(ctx.parsed)} (${(ctx.parsed / total * 100).toFixed(0)}%)` } } } },
       });
     },

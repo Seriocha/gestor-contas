@@ -81,14 +81,96 @@ def visao(db: Session, ent: Entidade, hoje: date) -> Visao:
                  v_bens[-1])
 
 
-def graficos(v: Visao, hoje: date) -> dict:
+# ------------------------------------------------------------------ detalhe (cartões da página)
+GRUPOS = [  # chave, título, cor do gráfico
+    ("bancarios", "Ativos bancários", "#2a78d6"),
+    ("investimentos", "Investimentos", "#1baf7a"),
+    ("imoveis", "Património imóvel", "#eda100"),
+    ("carros", "Carros", "#4a3aa7"),
+]
+BANCARIOS = {"ORDEM": ("Contas à ordem", "banco"), "POUPANCA": ("Poupança e depósitos", "cofre"),
+             "CARTEIRA_DIGITAL": ("Carteira digital", "carteira"), "CARTAO_REFEICAO": ("Cartão refeição", "refeicao")}
+INVESTIMENTOS = {"INVESTIMENTO": "investimento", "PENSOES": "pensao", "AFORRO": "aforro"}
+
+
+@dataclass
+class Tile:
+    rotulo: str
+    valor: int
+    icone: str
+    href: str | None = None
+    nota: str = ""
+
+
+@dataclass
+class Grupo:
+    chave: str
+    titulo: str
+    cor: str
+    itens: list
+
+    @property
+    def total(self) -> int:
+        return sum(t.valor for t in self.itens)
+
+
+def detalhe(db: Session, ent: Entidade, hoje: date) -> tuple[list, Grupo]:
+    """Grupos de ativos (com os seus cartões) e o grupo dos passivos, a valores de hoje."""
+    contas = rel.patrimonio(db, ent.id, [hoje])["contas"]
+    g = {k: Grupo(k, t, c, []) for k, t, c in GRUPOS}
+    passivos = Grupo("passivos", "Passivos", "#e34948", [])
+    banc = defaultdict(lambda: [0, 0])
+    for c, saldo in contas:
+        if c.tipo in rel.PASSIVOS:
+            if saldo < 0:
+                icone = "credito_casa" if c.tipo == "EMPRESTIMO" else "cartao"
+                passivos.itens.append(Tile(c.nome, -saldo, icone, f"/contas/{c.id}/movimentos",
+                                           "crédito à habitação" if c.tipo == "EMPRESTIMO" else "cartão de crédito"))
+        elif c.tipo in INVESTIMENTOS:
+            if saldo:
+                g["investimentos"].itens.append(Tile(c.nome, saldo, INVESTIMENTOS[c.tipo], f"/contas/{c.id}/movimentos",
+                                                     TIPOS_CONTA.get(c.tipo, "")))
+        elif saldo > 0:
+            banc[c.tipo][0] += saldo
+            banc[c.tipo][1] += 1
+    for tipo, (rotulo, icone) in BANCARIOS.items():
+        if banc[tipo][0]:
+            n = banc[tipo][1]
+            g["bancarios"].itens.append(Tile(rotulo, banc[tipo][0], icone, f"/contas?entidade={ent.id}",
+                                             f"{n} conta{'s' if n != 1 else ''}"))
+    for b in db.scalars(select(Bem).where(Bem.entidade_id == ent.id).order_by(Bem.tipo, Bem.nome)):
+        v = valor_bem_em(b, hoje)
+        if not v:
+            continue
+        if b.tipo == "carro":
+            g["carros"].itens.append(Tile(b.nome, v, "carro", f"/patrimonio/{b.id}", " ".join(x for x in (b.marca, b.modelo) if x)))
+        else:
+            icone = "rustico" if b.tipo == "rustico" else ("ferias" if b.uso == "ferias" else "casa")
+            g["imoveis"].itens.append(Tile(b.nome, v, icone, f"/patrimonio/{b.id}", b.uso_rotulo))
+    for x in g.values():
+        x.itens.sort(key=lambda t: -t.valor)
+    passivos.itens.sort(key=lambda t: -t.valor)
+    return [x for x in g.values() if x.itens], passivos
+
+
+def variacao_mensal(v: "Visao") -> tuple[int, float | None]:
+    """Variação do património líquido face ao fim do mês anterior (€ e %)."""
+    if len(v.liquido) < 2:
+        return 0, None
+    antes, agora = v.liquido[-2], v.liquido[-1]
+    return agora - antes, ((agora - antes) / abs(antes) * 100) if antes else None
+
+
+def graficos(v: Visao, hoje: date, grupos: list | None = None) -> dict:
     from .models import CORES
     return {
         "inicio_evolucao": {"rotulos": [d.strftime("%d/%m/%Y") if d == hoje else rel.rotulo_mes(d) for d in v.datas],
                             "ativos": [x / 100 for x in v.ativos], "passivos": [x / 100 for x in v.passivos],
                             "liquido": [x / 100 for x in v.liquido]},
-        "inicio_composicao": [{"nome": n, "valor": x / 100, "cor": CORES[i % len(CORES)]}
-                              for i, (n, x) in enumerate(v.composicao)],
+        "inicio_composicao": ([{"nome": gr.titulo, "valor": gr.total / 100, "cor": gr.cor} for gr in grupos]
+                              if grupos is not None else
+                              [{"nome": n, "valor": x / 100, "cor": CORES[i % len(CORES)]} for i, (n, x) in enumerate(v.composicao)]),
+        "inicio_linha": [x / 100 for x in v.liquido],
     }
 
 

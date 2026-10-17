@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_parte.html" import parte %}
+{% from "_icones_patrimonio.html" import icone_pat %}
 {% block titulo %}Início{% endblock %}
 {% macro item_agenda(i) -%}
 <li class="agenda-item agenda-{{ i.tipo }}{{ ' atrasado' if i.atrasado }}">
@@ -15,32 +16,86 @@
   {% if i.valor is not none %}<div class="agenda-valor num {{ 'pos' if i.valor > 0 else 'neg' }}">{{ '+' if i.valor > 0 }}{{ i.valor | eur }}</div>{% endif %}
 </li>
 {%- endmacro %}
+{% macro pct(x, total) %}{{ ('%.0f' % (x / total * 100)) if total else 0 }}%{% endmacro %}
 {% block conteudo %}
-<h1>Início</h1>
 {% set destino = '/inicio' %}{% include "_entidades.html" %}
 {% if entidade %}
 {% set h = v.hoje %}
-<section class="cartao">
-  <div class="kpi-linha">
-    <div class="kpi kpi-grande"><span class="nota">Património líquido</span><strong>{{ h.liquido | eur }}</strong>
-      {% if v.datas | length > 1 %}{% set dif = v.variacao_ano %}<span class="nota {{ 'pos' if dif > 0 else 'neg' if dif < 0 }}">{{ '+' if dif > 0 }}{{ dif | eur }} desde {{ v.datas[0] | data }}</span>{% endif %}
-      {{ parte(entidade, h.liquido) }}</div>
-    <div class="kpi"><span class="nota">Ativos</span><strong>{{ h.ativos | eur }}</strong>
-      <span class="nota">{% if v.bens %}dos quais casas, propriedades e carros {{ v.bens | eur }}{% else %}contas{% endif %}</span></div>
-    <div class="kpi"><span class="nota">Passivos</span><strong class="{{ 'neg' if h.passivos }}">{{ h.passivos | eur }}</strong>
-      <span class="nota">{% for n, x in v.composicao_passivos %}{{ n }} {{ x | eur }}{{ ' · ' if not loop.last }}{% else %}sem dívidas{% endfor %}</span></div>
+{# ---------------------------------------------------------------- cabeçalho: património líquido #}
+<section class="cartao inicio-topo">
+  <div class="inicio-topo-texto">
+    <span class="sobretitulo">Património líquido · {{ entidade.nome }}</span>
+    <strong class="valor-grande">{{ h.liquido | eur }}</strong>
+    {% set dv, dp = variacao %}
+    <span class="nota">Variação mensal
+      <strong class="{{ 'pos' if dv > 0 else 'neg' if dv < 0 }}">{{ '+' if dv > 0 }}{{ dv | eur }}{% if dp is not none %} ({{ '+' if dp > 0 }}{{ ('%.1f' % dp).replace('.', ',') }}%){% endif %}</strong>
+      {% if v.datas | length > 1 %}· {{ '+' if v.variacao_ano > 0 }}{{ v.variacao_ano | eur }} desde {{ v.datas[0] | data }}{% endif %}</span>
+    {{ parte(entidade, h.liquido) }}
+    <div class="inicio-topo-kpis">
+      <span><span class="ponto" style="background: #2a78d6"></span> Ativos <strong>{{ h.ativos | eur }}</strong></span>
+      <span><span class="ponto" style="background: #e34948"></span> Passivos <strong>{{ h.passivos | eur }}</strong></span>
+    </div>
   </div>
-  {% if v.datas | length > 1 %}
-  <div class="grafico grafico-medio"><canvas data-grafico="inicio_evolucao" aria-label="Ativos, passivos e património líquido nos últimos 12 meses" role="img"></canvas></div>
-  {% endif %}
+  {% if v.datas | length > 1 %}<div class="inicio-topo-linha"><canvas data-grafico="inicio_linha" aria-label="Evolução do património líquido" role="img"></canvas></div>{% endif %}
 </section>
 
+{# ---------------------------------------------------------------- composição + detalhe #}
+<div class="inicio-grelha">
+  <section class="cartao">
+    <h2>Composição dos ativos</h2>
+    {% if grupos %}
+    <div class="grafico grafico-donut"><canvas data-grafico="inicio_composicao" aria-label="Composição dos ativos" role="img"></canvas>
+      <div class="donut-centro"><span class="nota">Ativos</span><strong>{{ total_ativos | eur }}</strong></div></div>
+    <ul class="legenda-grupos">
+      {% for g in grupos %}<li><span class="ponto" style="background: {{ g.cor }}"></span>{{ g.titulo }}<strong>{{ pct(g.total, total_ativos) }}</strong></li>{% endfor %}
+    </ul>
+    {% else %}<p class="vazio sem-margem">Sem ativos registados.</p>{% endif %}
+  </section>
+
+  <section class="cartao">
+    <h2>Detalhe dos ativos</h2>
+    <div class="grupos-ativos">
+      {% for g in grupos %}
+      <div class="grupo-ativo" style="--cor-grupo: {{ g.cor }}">
+        <div class="grupo-cabecalho"><span>{{ g.titulo }}</span><strong>{{ g.total | eur }}</strong></div>
+        <div class="tiles">
+          {% for t in g.itens[:6] %}
+          <a class="tile" href="{{ t.href or '#' }}" title="{{ t.rotulo }} · {{ t.valor | eur }}">
+            <span class="tile-icone">{{ icone_pat(t.icone) }}</span>
+            <span class="tile-rotulo">{{ t.rotulo }}</span>
+            <strong class="tile-valor">{{ t.valor | eur }}</strong>
+            {% if t.nota %}<span class="nota">{{ t.nota }}</span>{% endif %}
+          </a>
+          {% endfor %}
+        </div>
+      </div>
+      {% else %}<p class="vazio sem-margem">Sem ativos.</p>{% endfor %}
+    </div>
+    {% if passivos.itens %}
+    <div class="grupo-ativo grupo-passivo" style="--cor-grupo: {{ passivos.cor }}">
+      <div class="grupo-cabecalho"><span>Passivos</span><strong class="neg">{{ passivos.total | eur }}</strong></div>
+      <div class="tiles">
+        {% for t in passivos.itens %}
+        <a class="tile" href="{{ t.href or '#' }}">
+          <span class="tile-icone">{{ icone_pat(t.icone) }}</span>
+          <span class="tile-rotulo">{{ t.rotulo }}</span>
+          <strong class="tile-valor neg">{{ t.valor | eur }}</strong>
+          <span class="nota">{{ t.nota }}</span>
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </section>
+</div>
+
+{# ---------------------------------------------------------------- evolução + agenda #}
 <div class="linha-dupla inicio-baixo">
   <section class="cartao">
-    <h2>Onde está o património</h2>
-    {% if v.composicao %}
-    <div class="grafico grafico-donut"><canvas data-grafico="inicio_composicao" aria-label="Composição dos ativos" role="img"></canvas></div>
-    {% else %}<p class="vazio sem-margem">Sem ativos registados.</p>{% endif %}
+    <h2>Evolução <span class="nota">· ativos, passivos e património líquido</span></h2>
+    {% if v.datas | length > 1 %}
+    <div class="grafico grafico-medio"><canvas data-grafico="inicio_evolucao" aria-label="Ativos, passivos e património líquido" role="img"></canvas></div>
+    {% endif %}
     {% if totais | length > 1 %}
     <h3>Por entidade</h3>
     <table class="tabela compacta">

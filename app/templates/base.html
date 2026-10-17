@@ -75,7 +75,7 @@
 
 {% if utilizador %}
 <nav class="abas-movel" aria-label="Navegação rápida">
-  {% for href, ic, rotulo, ativo in itens_dia %}
+  {% for href, ic, rotulo, ativo in [itens_lateral[0]] + itens_dia[1:] %}{# Início no lugar do Painel (que fica no menu) #}
   <a href="{{ href }}" {% if ativo %}class="ativo" aria-current="page"{% endif %}>{{ icone(ic) }}<span>{{ rotulo }}</span></a>
   {% endfor %}
   <button type="button" id="abrir-menu-2" aria-controls="lateral" aria-label="Mais opções">{{ icone('mais') }}<span>Mais</span></button>
