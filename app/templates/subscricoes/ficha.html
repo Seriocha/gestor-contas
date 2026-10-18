@@ -43,7 +43,7 @@
     {% for m in e.pagos | reverse %}
     <tr><td class="sem-quebra">{{ m.data_mov | data }}</td><td class="nota">{{ m.conta.nome }}</td>
       <td><a href="/movimentos/{{ m.id }}">{{ m.descricao_original }}</a></td>
-      <td class="num {{ 'neg' if -m.montante != s.valor }}">{{ m.montante | eur }}</td></tr>
+      <td class="num {{ 'neg' if -m.montante != s.valor }}"><a class="valor-mov" href="/movimentos/{{ m.id }}/detalhe">{{ m.montante | eur }}</a></td></tr>
     {% endfor %}
   </table></div>
   {% endif %}

@@ -88,7 +88,7 @@
   <table class="tabela compacta">
     {% for m in exemplos %}
     <tr><td class="sem-quebra">{{ m.data_mov | data }}</td><td>{{ m.descricao_original }}</td>
-        <td class="num {{ 'neg' if m.montante < 0 else 'pos' }}">{{ m.montante | eur }}</td>
+        <td class="num {{ 'neg' if m.montante < 0 else 'pos' }}"><a class="valor-mov" href="/movimentos/{{ m.id }}/detalhe">{{ m.montante | eur }}</a></td>
         <td class="nota">{{ 'à mão' if m.qualificado_por == 'manual' else '' }}</td></tr>
     {% endfor %}
   </table>

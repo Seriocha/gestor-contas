@@ -474,6 +474,20 @@ def editar_form(request: Request, mov_id: int, voltar: str = "", u: Utilizador =
                   pode_editar=PAPEIS[papel] >= PAPEIS["editar"], voltar=_voltar_seguro(voltar))
 
 
+@router.get("/movimentos/{mov_id}/detalhe")
+def detalhe(request: Request, mov_id: int, voltar: str = "", u: Utilizador = Depends(utilizador_atual),
+            db: Session = Depends(get_db)):
+    """Detalhe só de leitura, com o mapa de tudo aquilo a que o movimento está ligado."""
+    from .. import ligacoes
+    m = db.get(Movimento, mov_id)
+    if not m:
+        raise HTTPException(status_code=404, detail="Não encontrado.")
+    papel = exigir_papel(db, u, m.conta.entidade_id, "ver")
+    mapa = ligacoes.do_movimento(db, m, lambda ent_id: papel_em(db, u, ent_id) is not None)
+    return render(request, "movimentos/detalhe.html", m=m, mapa=mapa, voltar=_voltar_seguro(voltar),
+                  pode_editar=PAPEIS[papel] >= PAPEIS["editar"])
+
+
 def _subscricoes_para(db: Session, m: Movimento) -> list:
     """Subscrições da entidade do movimento que podem receber este débito (as não terminadas e a atual)."""
     from ..models import Subscricao

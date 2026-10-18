@@ -106,7 +106,7 @@
         <td class="sem-quebra">{{ m.data_mov | data }}</td><td class="nota">{{ m.conta.nome }}</td>
         <td><a href="/movimentos/{{ m.id }}">{{ m.descricao_original }}</a></td>
         <td class="nota">{{ m.categoria.nome_completo if m.categoria else '—' }}</td>
-        <td class="num">{{ m.montante | eur }}</td>
+        <td class="num"><a class="valor-mov" href="/movimentos/{{ m.id }}/detalhe">{{ m.montante | eur }}</a></td>
       </tr>
       {% endfor %}
     </table></div>

@@ -89,6 +89,11 @@ def test_cortica_e_heranca_no_inicio(admin, app):
     p = admin.get("/inicio?entidade=2").text
     assert "A tua parte · 1/6</span><strong>100.000,00 €" in p and "Por morte da mãe · 1/2</span><strong>300.000,00 €" in p
     assert "Património por entidade</h2>" in p
+    # a agenda é só da entidade escolhida: a cortiça da herança não aparece no Início da família
+    agenda = lambda html: html[html.index('id="agenda"'):]
+    assert "Tiragem da cortiça" in agenda(p)
+    p1 = admin.get("/inicio?entidade=1").text
+    assert "Tiragem da cortiça" not in agenda(p1) and "· Herança" not in agenda(p1)
 
 
 def test_heranca_no_inicio_da_familia_e_preferencia(admin, app):

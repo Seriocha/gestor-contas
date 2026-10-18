@@ -190,7 +190,7 @@
       <td><a href="/movimentos/{{ m.id }}">{{ m.descricao_original }}</a></td>
       <td class="nota">{{ m.categoria.nome_completo if m.categoria else '—' }}</td>
       {% set v = c.partes.get(m.id, m.montante) %}
-      <td class="num {{ 'neg' if v < 0 else 'pos' }}">{{ v | eur }}{% if v != m.montante %}<br><span class="nota">de {{ m.montante | eur }}</span>{% endif %}</td></tr>
+      <td class="num {{ 'neg' if v < 0 else 'pos' }}"><a class="valor-mov" href="/movimentos/{{ m.id }}/detalhe">{{ v | eur }}</a>{% if v != m.montante %}<br><span class="nota">de {{ m.montante | eur }}</span>{% endif %}</td></tr>
     {% endfor %}
   </table></div>
   {% if c.movimentos | length > 50 %}<p class="nota">Mostrados os 50 mais recentes de {{ c.movimentos | length }}.</p>{% endif %}

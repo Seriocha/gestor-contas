@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block titulo %}Movimento{% endblock %}
+{% set cores = {'conta': '#2a78d6', 'entidade': '#4a3aa7', 'regra': '#7d8590', 'par': '#eb6834', 'casa': '#1baf7a',
+                'carro': '#1baf7a', 'rustico': '#008300', 'subscricao': '#e87ba4', 'etiqueta': '#eda100', 'viagem': '#008300',
+                'viaverde': '#2a78d6', 'abastecimento': '#e34948', 'manutencao': '#eda100', 'recheio': '#1baf7a',
+                'origem': '#7d8590'} %}
+{% macro no(n, lado) -%}
+<{{ 'a' if n.href else 'div' }} class="mapa-no" {% if n.href %}href="{{ n.href }}"{% endif %} data-lado="{{ lado }}"
+   style="--cor-no: {{ n.cor or cores.get(n.grupo, '#7d8590') }}">
+  <span class="mapa-no-icone" aria-hidden="true">{{ n.icone }}</span>
+  <span class="mapa-no-texto">
+    <span class="mapa-no-rotulo">{{ n.rotulo }}</span>
+    <strong>{{ n.titulo }}</strong>
+    {% if n.detalhe %}<span class="nota">{{ n.detalhe }}</span>{% endif %}
+  </span>
+  {% if n.valor is not none %}<span class="mapa-no-valor num {{ 'neg' if n.valor < 0 else 'pos' }}">{{ n.valor | eur }}</span>{% endif %}
+</{{ 'a' if n.href else 'div' }}>
+{%- endmacro %}
+{% block conteudo %}
+<div class="titulo-acoes">
+  <h1>Movimento</h1>
+  <span class="acoes-titulo">
+    <a href="{{ voltar }}">‹ Voltar</a>
+    {% if pode_editar %}<a class="botao pequeno" href="/movimentos/{{ m.id }}?voltar={{ voltar | urlencode }}">✎ Editar</a>{% endif %}
+  </span>
+</div>
+
+<section class="cartao mapa-cartao">
+  {% set nos = mapa.nos %}
+  {% set metade = ((nos | length) + 1) // 2 %}
+  <div class="mapa-ligacoes" id="mapa-ligacoes">
+    <svg class="mapa-linhas" aria-hidden="true"></svg>
+    <div class="mapa-coluna">{% for n in nos[:metade] %}{{ no(n, 'esq') }}{% endfor %}</div>
+    <div class="mapa-centro" style="--cor-no: {{ 'var(--neg)' if m.montante < 0 else 'var(--pos)' }}">
+      <span class="nota">{{ m.data_mov | data }}{% if m.data_valor and m.data_valor != m.data_mov %} · valor {{ m.data_valor | data }}{% endif %}</span>
+      <strong class="mapa-valor {{ 'neg' if m.montante < 0 else 'pos' }}">{{ m.montante | eur(m.moeda) }}</strong>
+      <span class="mapa-desc">{{ m.descricao_original }}</span>
+      {% if m.saldo_apos is not none %}<span class="nota">Saldo após: {{ m.saldo_apos | eur(m.moeda) }}</span>{% endif %}
+      {% if m.notas %}<span class="nota">📝 {{ m.notas }}</span>{% endif %}
+      {% for e in mapa.estado %}<span class="etiqueta">{{ e }}</span>{% endfor %}
+    </div>
+    <div class="mapa-coluna">{% for n in nos[metade:] %}{{ no(n, 'dir') }}{% endfor %}</div>
+  </div>
+  <p class="nota sem-margem mapa-legenda">{{ nos | length }} ligaç{{ 'ão' if nos | length == 1 else 'ões' }} · carrega num cartão para abrir a ficha.</p>
+</section>
+
+{% if mapa.via_verde %}
+<section class="cartao" id="via-verde">
+  <h2>Via Verde <span class="nota">· passagens pagas neste débito</span></h2>
+  <div class="rolar">
+  <table class="tabela compacta">
+    <thead><tr><th>Data</th><th>Matrícula</th><th>Serviço</th><th>Entrada → saída</th><th class="num">Valor</th></tr></thead>
+    {% for x in mapa.via_verde %}
+    <tr><td class="sem-quebra">{{ x.data | data }}{{ ' ' ~ x.hora if x.hora }}</td><td>{{ x.matricula_fmt }}</td><td>{{ x.servico or '' }}</td>
+      <td>{{ x.entrada or '' }}{{ ' → ' ~ x.saida if x.saida }}</td><td class="num">{{ x.valor | eur }}</td></tr>
+    {% endfor %}
+  </table>
+  </div>
+</section>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+// linhas do movimento (centro) até cada ligação; no telemóvel a lista fica empilhada e as linhas são de CSS
+(() => {
+  const mapa = document.getElementById('mapa-ligacoes');
+  if (!mapa) return;
+  const svg = mapa.querySelector('.mapa-linhas'), centro = mapa.querySelector('.mapa-centro');
+  const desenhar = () => {
+    svg.innerHTML = '';
+    if (getComputedStyle(svg).display === 'none') return;
+    const base = mapa.getBoundingClientRect(), c = centro.getBoundingClientRect();
+    svg.setAttribute('viewBox', `0 0 ${base.width} ${base.height}`);
+    const cy = c.top + c.height / 2 - base.top;
+    mapa.querySelectorAll('.mapa-no').forEach(no => {
+      const r = no.getBoundingClientRect(), esq = no.dataset.lado === 'esq';
+      const x1 = (esq ? c.left : c.right) - base.left, x2 = (esq ? r.right : r.left) - base.left;
+      const y2 = r.top + r.height / 2 - base.top, mx = (x1 + x2) / 2;
+      const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      p.setAttribute('d', `M${x1},${cy} C${mx},${cy} ${mx},${y2} ${x2},${y2}`);
+      p.style.stroke = getComputedStyle(no).getPropertyValue('--cor-no');
+      svg.appendChild(p);
+    });
+  };
+  desenhar();
+  new ResizeObserver(desenhar).observe(mapa);
+})();
+</script>
+{% endblock %}

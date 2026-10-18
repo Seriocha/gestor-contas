@@ -4,7 +4,7 @@ Gestor financeiro doméstico, multiutilizador e self-hosted, para a NAS QNAP. Es
 importa movimentos de bancos portugueses e gere contas à ordem, cartões, investimentos e
 Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIGN.md).
 
-## Estado: v0.52.0
+## Estado: v0.53.0
 
 - Login com várias pessoas: passwords em argon2, bloqueio ao fim de 5 tentativas falhadas,
   proteção CSRF e invalidação das sessões quando a password muda.
@@ -37,6 +37,14 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.53.0 — Detalhe do movimento com mapa de ligações.** Um clique no valor de um movimento (lista de movimentos,
+  ficha do bem, subscrição, viagem, regra, variações) abre o detalhe só de leitura: o movimento ao centro e, à volta, ligadas
+  por linhas, todas as ligações — conta, entidade, categoria (e como foi escolhida), regra, o outro lado da transferência,
+  bem, subscrição (associada à mão ou pelo texto do extrato), viagem, etiquetas, passagens Via Verde, abastecimento, ida à
+  oficina, item do recheio e a origem (importação ou à mão). Cada cartão abre a respetiva ficha; «Editar» vai para a edição.
+  No telemóvel o mapa fica empilhado.
+- **v0.52.1 — Agenda por entidade.** A agenda do Início mostra só os itens da entidade escolhida (a herança deixa de
+  aparecer na Família e vice-versa).
 - **v0.52.0 — Início personalizável na própria página.** O botão «✎ Personalizar» põe a página em modo de edição:
   cada bloco (património líquido, composição, detalhe dos ativos, evolução, agenda, património por entidade) pode ser
   arrastado pelo ⠿ (ou movido com ↑ ↓ no telemóvel), ter a largura ¼, ⅓, ½, ⅔ ou inteira, e ser ocultado/mostrado.

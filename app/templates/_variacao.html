@@ -54,7 +54,7 @@
       {% if m.transferencia %}<span class="etiqueta">transferência{% if m.par_id %} ↔{% endif %}</span>{% endif %}
       {% if m.excluido %}<span class="etiqueta">excluído</span>{% endif %}</td>
     <td>{% if m.categoria %}<span class="pastilha" style="background: {{ m.categoria.cor_efetiva }}"></span>{{ m.categoria.nome_completo }}{% else %}<span class="nota">—</span>{% endif %}</td>
-    <td class="num {{ 'neg' if m.montante < 0 else 'pos' }}">{{ m.montante | eur(m.moeda) }}</td>
+    <td class="num {{ 'neg' if m.montante < 0 else 'pos' }}"><a class="valor-mov" href="/movimentos/{{ m.id }}/detalhe">{{ m.montante | eur(m.moeda) }}</a></td>
   </tr>
   {% endfor %}
 </table></div>

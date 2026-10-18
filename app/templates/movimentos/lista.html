@@ -346,7 +346,7 @@
           {% if m.categoria %}<span class="pastilha" style="background: {{ m.categoria.cor_efetiva }}"></span>{{ m.categoria.nome_completo }}{% else %}<span class="nota">—</span>{% endif %}
           {% endif %}
         </td>
-        <td class="c-valor num {{ 'neg' if m.montante < 0 else 'pos' }}">{{ m.montante | eur(m.moeda) }}</td>
+        <td class="c-valor num {{ 'neg' if m.montante < 0 else 'pos' }}"><a class="valor-mov" href="/movimentos/{{ m.id }}/detalhe?voltar={{ aqui | urlencode }}" title="Ver o detalhe e as ligações">{{ m.montante | eur(m.moeda) }}</a></td>
         {% if conta %}<td class="c-saldo num">{{ m.saldo_apos | eur(conta.moeda) }}</td>{% endif %}
       </tr>
       {% endfor %}

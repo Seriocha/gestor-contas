@@ -31,7 +31,7 @@ def pagina(request: Request, entidade: IntOpcional = None, u: Utilizador = Depen
     herancas = []
     if not ent.heranca and preferencias.ligada(request.app.state.prefs, "mostrar_minha_parte"):
         herancas = [(e, liq, e.parte_futura(liq)) for e, liq in totais if e.heranca and e.quota_futura is not None]
-    proximos, depois = inicio.agenda(db, [e for e, _ in visiveis], request.app.state.prefs, hoje)
+    proximos, depois = inicio.agenda(db, [ent], request.app.state.prefs, hoje)   # só a entidade escolhida
     grupos, passivos = inicio.detalhe(db, ent, hoje)
     total_ativos = sum(g.total for g in grupos)
     return render(request, "inicio.html", visiveis=visiveis, entidade=ent, v=v, hoje=hoje, totais=totais,
