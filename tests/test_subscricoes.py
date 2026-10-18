@@ -9,7 +9,7 @@ from sqlalchemy import select
 from app import subscricoes as sb
 from app.main import create_app
 from app.models import Subscricao
-from tests.test_app import PW, _post
+from tests.test_app import PW, _csrf, _post
 from tests.test_previsoes import _mov
 
 HOJE = date(2026, 10, 17)
@@ -147,3 +147,51 @@ def test_associar_movimento_na_ficha(admin, app):
     with app.state.SessionLocal() as db:
         nova = db.scalar(select(Subscricao).where(Subscricao.nome == "iCloud"))
         assert db.get(Movimento, m2).subscricao_id == nova.id
+
+
+def test_refrescar_mostra_debitos_de_fora_e_associa(app):
+    """Vodafone: débitos antigos noutra conta e com outro texto — o «Refrescar» mostra porquê e permite associá-los."""
+    from app.models import Movimento, Subscricao
+    from datetime import date as d_, timedelta as td
+    c = TestClient(app)
+    _post(c, "/setup", nome="Admin", login="admin", password=PW, password2=PW)
+    _post(c, "/contas/nova?entidade=1", nome="Santander", tipo="ORDEM", moeda="EUR", instituicao_id="1")
+    _post(c, "/contas/nova?entidade=1", nome="ActivoBank", tipo="ORDEM", moeda="EUR", instituicao_id="2")
+    hoje = d_.today()
+    antigos = [(hoje - td(days=30 * k)).isoformat() for k in (8, 7, 6)]
+    for dia in antigos:
+        _mov(c, 2, dia, "12,08", "DD VODAFONE PORTU 07224585011", sentido="saida")
+    for k in (2, 1):
+        _mov(c, 1, (hoje - td(days=30 * k)).isoformat(), "34,22", "Vodafone Portuga", sentido="saida")
+    _mov(c, 1, (hoje - td(days=40)).isoformat(), "3,00", "CAFE", sentido="saida")
+    with app.state.SessionLocal() as db:
+        s = Subscricao(entidade_id=1, nome="Vodafone", valor=3422, conta_id=1, padrao="VODAFONE PORTUGA",
+                       data_inicio=hoje - td(days=70))
+        db.add(s)
+        db.commit()
+        sid = s.id
+    f = c.get(f"/subscricoes/{sid}/editar")
+    assert "Refrescar movimentos" in f.text
+    dados = {"csrf": _csrf(f), "nome": "Vodafone", "valor": "34,22", "periodicidade": "mensal", "conta_id": "1",
+             "inicio": (hoje - td(days=70)).isoformat(), "padrao": "VODAFONE PORTUGA"}
+    r = c.post(f"/subscricoes/{sid}/refrescar", data=dados)
+    assert r.status_code == 200 and "ainda não guardado" in r.text
+    assert "<strong>2</strong> débitos contam" in r.text
+    assert r.text.count('name="associar"') == 3 and "CAFE" not in r.text
+    assert "noutra conta (ActivoBank)" in r.text and "antes do início" in r.text and "o texto do extrato não bate" in r.text
+    assert 'data-padrao="VODAFONE"' in r.text
+    with app.state.SessionLocal() as db:
+        assert db.get(Subscricao, sid).padrao == "VODAFONE PORTUGA"                 # refrescar não grava
+    # com o texto mais largo, qualquer conta e o início recuado, contam todos
+    r = c.post(f"/subscricoes/{sid}/refrescar", data={**dados, "conta_id": "", "padrao": "VODAFONE",
+                                                       "inicio": antigos[0]})
+    assert "<strong>5</strong> débitos contam" in r.text and 'name="associar"' not in r.text
+    # ou: guardar associando à mão os antigos
+    with app.state.SessionLocal() as db:
+        ids = [m.id for m in db.query(Movimento).filter(Movimento.descricao_original.like("DD VODAFONE%"))]
+    r = c.post(f"/subscricoes/{sid}/editar", data={**dados, "associar": [str(i) for i in ids]}, follow_redirects=False)
+    assert r.status_code == 303
+    with app.state.SessionLocal() as db:
+        assert all(db.get(Movimento, i).subscricao_id == sid for i in ids)
+    r = c.post(f"/subscricoes/{sid}/refrescar", data={**dados, "csrf": _csrf(c.get(f"/subscricoes/{sid}/editar"))})
+    assert "<strong>5</strong> débitos contam" in r.text

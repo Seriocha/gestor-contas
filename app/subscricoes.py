@@ -13,6 +13,7 @@ partir de 2 meses; (2) recorrências — o mesmo texto em 3+ meses, cerca de um
 débito por período e valor estável (±30%). Sugestões já cobertas por uma
 subscrição ou ignoradas não voltam a aparecer.
 """
+import re
 import statistics
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
@@ -143,6 +144,74 @@ def pagamentos(db: Session, s: Subscricao, hoje: date) -> list[Movimento]:
                    and m.subscricao_id in (None, s.id)]
     por_id = {m.id: m for m in pelo_padrao + list(ligados)}
     return sorted(por_id.values(), key=lambda m: (m.data_mov, m.id))
+
+
+@dataclass
+class Analise:
+    contados: list                       # débitos que contam (pela associação ou pelo texto)
+    fora: list                           # [(movimento, motivo)] — parecidos que não contam, e porquê
+    sugestao_padrao: str | None = None   # texto do extrato mais largo que apanharia os que falham só pelo texto
+    sugestao_conta: bool = False         # há débitos parecidos noutras contas
+
+
+def _palavras_chave(s: Subscricao) -> list[str]:
+    """Palavras (≥4 letras) do texto do extrato e do nome, para procurar débitos parecidos."""
+    fonte = " ".join(x for x in ((s.padrao or "").replace("|", " "), s.nome or "") if x).upper()
+    vistas = []
+    for p in re.findall(r"[A-ZÀ-Ý]{4,}", fonte):
+        if p not in vistas and p not in ("PORTUGAL", "PORTUGA", "PORTU", "COMPRA", "DEBITO", "PAGAMENTO"):
+            vistas.append(p)
+    return vistas
+
+
+def analisar(db: Session, s: Subscricao, hoje: date) -> Analise:
+    """Para o botão «Refrescar» da edição: os débitos que contam com os dados (ainda por guardar) da subscrição e os
+    débitos parecidos (mesma palavra no texto) que ficam de fora, com o motivo."""
+    contados = pagamentos(db, s, hoje)
+    ids = {m.id for m in contados}
+    chaves = _palavras_chave(s)
+    if not chaves:
+        return Analise(contados, [])
+    corte = _corte(db, s.entidade_id)
+    movs = db.scalars(select(Movimento).join(Conta).where(
+        Conta.entidade_id == s.entidade_id, Movimento.montante < 0, ~Movimento.excluido,
+        Movimento.data_mov >= hoje - timedelta(days=3 * 366))
+        .options(selectinload(Movimento.conta)).order_by(Movimento.data_mov)).all()
+    rx = compilar(s.padrao, "contem") if s.padrao else None
+    fora, so_texto, outra_conta = [], [], False
+    for m in movs:
+        texto = (m.descricao_norm or m.descricao_original or "").upper()
+        if m.id in ids or not any(c in texto for c in chaves):
+            continue
+        if m.subscricao_id and m.subscricao_id != s.id:
+            outra = db.get(Subscricao, m.subscricao_id)
+            fora.append((m, f"associado a «{outra.nome if outra else '?'}»"))
+            continue
+        motivos = []
+        if corte and m.data_mov < corte:
+            motivos.append(f"antes do início da análise ({corte:%d/%m/%Y})")
+        if s.conta_id and m.conta_id != s.conta_id:
+            motivos.append(f"noutra conta ({m.conta.nome})")
+            outra_conta = True
+        if m.data_mov < s.data_inicio - timedelta(days=TOLERANCIA_DIAS):
+            motivos.append(f"antes do início ({s.data_inicio:%d/%m/%Y})")
+        if s.data_fim and m.data_mov > s.data_fim + timedelta(days=TOLERANCIA_DIAS):
+            motivos.append(f"depois do fim ({s.data_fim:%d/%m/%Y})")
+        if not rx or not rx.search(texto):
+            motivos.append("sem texto do extrato" if not rx else "o texto do extrato não bate")
+            so_texto.append(texto)
+        fora.append((m, " · ".join(motivos) or "não conta"))
+    sugestao = None
+    if so_texto:
+        chave = next((c for c in chaves if all(c in t for t in so_texto)), None)
+        if chave:
+            # a alternativa que contém a palavra passa a ser só a palavra (mais larga); senão junta-se como alternativa
+            alts = [a.strip() for a in (s.padrao or "").split("|") if a.strip()]
+            novas = [chave if chave in a else a for a in alts] if any(chave in a for a in alts) else alts + [chave]
+            novas = list(dict.fromkeys(novas))
+            if "|".join(novas) != (s.padrao or ""):
+                sugestao = "|".join(novas)
+    return Analise(contados, fora, sugestao, outra_conta)
 
 
 @dataclass

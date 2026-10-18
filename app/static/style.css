@@ -814,3 +814,4 @@ a.mapa-no:hover { transform: translateY(-2px); border-color: var(--cor-no); }
     border-top: 2px dashed var(--linha-forte); }
 }
 .acoes-titulo { display: flex; gap: .8rem; align-items: center; }
+.refrescar { margin: 1rem 0; } .refrescar tr.fora td { background: var(--alerta-fundo); }

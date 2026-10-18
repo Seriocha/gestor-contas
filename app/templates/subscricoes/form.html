@@ -45,8 +45,43 @@
   </div>
   <p class="nota">O texto liga a subscrição aos débitos no extrato (alternativas separadas por «|»), para ver o último pagamento, os que faltam e se o valor mudou.</p>
   <label>Notas <textarea name="notas" rows="2">{{ v.notas or '' }}</textarea></label>
+  {% if analise %}
+  <section class="cartao-interno refrescar" id="refrescar">
+    <h3>Débitos com estes dados <span class="nota">· ainda não guardado</span></h3>
+    <p><strong>{{ analise.contados | length }}</strong> débito{{ 's' if analise.contados | length != 1 }} conta{{ 'm' if analise.contados | length != 1 }}
+      {%- if analise.contados %} · de {{ analise.contados[0].data_mov | data }} a {{ analise.contados[-1].data_mov | data }}
+      · total {{ analise.contados | sum(attribute='montante') | eur }}{% endif %}.</p>
+    {% if analise.sugestao_padrao %}
+    <p class="aviso">Há débitos parecidos com outro texto no extrato.
+      <button type="button" class="pequeno" data-padrao="{{ analise.sugestao_padrao }}" id="usar-padrao">Usar «{{ analise.sugestao_padrao }}»</button></p>
+    {% endif %}
+    {% if analise.sugestao_conta %}<p class="aviso">Há débitos parecidos noutras contas — escolhe «qualquer conta» se a subscrição mudou de conta.</p>{% endif %}
+    <div class="rolar">
+    <table class="tabela compacta">
+      <thead><tr><th></th><th>Data</th><th>Conta</th><th>Descrição</th><th class="num">Valor</th><th>Situação</th></tr></thead>
+      {% for m in analise.contados %}
+      <tr><td>✓</td><td class="sem-quebra">{{ m.data_mov | data }}</td><td class="nota">{{ m.conta.nome }}</td><td>{{ m.descricao_original }}</td>
+        <td class="num"><a class="valor-mov" href="/movimentos/{{ m.id }}/detalhe">{{ m.montante | eur }}</a></td>
+        <td class="nota">{{ 'associado à mão' if m.subscricao_id == sub.id else 'pelo texto' }}</td></tr>
+      {% endfor %}
+      {% for m, motivo in analise.fora %}
+      <tr class="fora"><td><input type="checkbox" name="associar" value="{{ m.id }}" aria-label="Associar este débito"
+            {% if m.id | string in (v.associar or []) %}checked{% endif %} {% if 'associado a' in motivo %}disabled{% endif %}></td>
+        <td class="sem-quebra">{{ m.data_mov | data }}</td><td class="nota">{{ m.conta.nome }}</td><td>{{ m.descricao_original }}</td>
+        <td class="num"><a class="valor-mov" href="/movimentos/{{ m.id }}/detalhe">{{ m.montante | eur }}</a></td>
+        <td class="neg">{{ motivo }}</td></tr>
+      {% endfor %}
+    </table>
+    </div>
+    {% if analise.fora %}<p class="nota">Assinala os débitos que também são desta subscrição: ao guardar ficam associados (contam mesmo
+      que o texto, a conta ou as datas não batam). Ou corrige os dados acima e carrega outra vez em «Refrescar».</p>
+    {% elif not analise.contados %}<p class="nota">Nenhum débito encontrado — confirma o texto do extrato.</p>{% endif %}
+  </section>
+  {% endif %}
   <div class="acoes-form">
     <button class="primario">Guardar</button>
+    {% if sub %}<button type="submit" formaction="/subscricoes/{{ sub.id }}/refrescar#refrescar" formnovalidate
+      title="Ver que débitos contam com estes dados, sem guardar">🔄 Refrescar movimentos</button>{% endif %}
     <a href="{{ '/subscricoes/' ~ sub.id if sub else '/subscricoes?entidade=' ~ entidade.id }}">Cancelar</a>
   </div>
 </form>
@@ -60,6 +95,12 @@
 {% block scripts %}
 <script>
   // Escolher um serviço do catálogo preenche o nome, o texto do extrato e a categoria (se ainda vazios)
+  const usar = document.getElementById('usar-padrao');
+  if (usar) usar.addEventListener('click', () => {
+    const p = document.getElementById('padrao');
+    p.value = usar.dataset.padrao; p.focus();
+    usar.textContent = 'Aplicado — carrega em «Refrescar» para ver';
+  });
   document.getElementById('servico').addEventListener('change', e => {
     const o = e.target.selectedOptions[0];
     if (!o || !o.value) return;

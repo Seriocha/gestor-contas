@@ -47,11 +47,12 @@ def lista(request: Request, entidade: IntOpcional = None, u: Utilizador = Depend
 
 
 # ------------------------------------------------------------------ formulário
-def _form(request, db, ent, v, sub=None, erros=None, status_code=200):
+def _form(request, db, ent, v, sub=None, erros=None, status_code=200, analise=None):
     contas = db.scalars(select(Conta).where(Conta.entidade_id == ent.id).order_by(Conta.nome)).all()
     return render(request, "subscricoes/form.html", status_code=status_code, entidade=ent, sub=sub, v=v,
                   erros=erros or [], contas=contas, categorias=arvore_categorias(db), periodicidades=PERIODICIDADES,
-                  catalogo=sb.CATALOGO, categorias_por_nome={c.nome: c.id for c in db.scalars(select(Categoria))})
+                  catalogo=sb.CATALOGO, categorias_por_nome={c.nome: c.id for c in db.scalars(select(Categoria))},
+                  analise=analise)
 
 
 def _ler(form, db: Session, entidade_id: int) -> tuple[dict, list[str], dict]:
@@ -211,15 +212,37 @@ def editar(request: Request, sid: int, u: Utilizador = Depends(utilizador_atual)
 async def guardar(request: Request, sid: int, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
     s, _ = _sub(db, u, sid, "editar")
     _, ent, _ = entidade_escolhida(request, db, u, s.entidade_id)
-    v, erros, dados = _ler(await ler_form(request), db, ent.id)
+    form = await ler_form(request)
+    v, erros, dados = _ler(form, db, ent.id)
     if erros:
         return _form(request, db, ent, v, sub=s, erros=erros, status_code=400)
     for k, val in dados.items():
         setattr(s, k, val)
-    auditar(db, u, "subscricao_editada", s.nome)
+    # débitos assinalados no «Refrescar» para contarem nesta subscrição (associação à mão)
+    from ..models import Movimento
+    n = 0
+    for mid in form.getlist("associar"):
+        m = db.get(Movimento, int(mid)) if str(mid).isdigit() else None
+        if m and m.conta.entidade_id == s.entidade_id and m.montante < 0:
+            m.subscricao_id, n = s.id, n + 1
+    auditar(db, u, "subscricao_editada", s.nome + (f" (+{n} débitos associados)" if n else ""))
     db.commit()
-    flash(request, "Subscrição guardada.")
+    flash(request, "Subscrição guardada." + (f" {n} débito{'s' if n != 1 else ''} associado{'s' if n != 1 else ''}." if n else ""))
     return RedirectResponse(f"/subscricoes/{s.id}", status_code=303)
+
+
+@router.post("/{sid}/refrescar")
+async def refrescar(request: Request, sid: int, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
+    """Mostra, sem guardar, que débitos contam com os dados do formulário e os parecidos que ficam de fora (e porquê)."""
+    s, _ = _sub(db, u, sid, "editar")
+    _, ent, _ = entidade_escolhida(request, db, u, s.entidade_id)
+    form = await ler_form(request)
+    v, erros, dados = _ler(form, db, ent.id)
+    if erros:
+        return _form(request, db, ent, v, sub=s, erros=erros, status_code=400)
+    provisoria = Subscricao(id=s.id, entidade_id=s.entidade_id, **dados)     # não entra na sessão: nada é gravado
+    v["associar"] = [str(x) for x in form.getlist("associar")]
+    return _form(request, db, ent, v, sub=s, analise=sb.analisar(db, provisoria, date.today()))
 
 
 @router.post("/{sid}/apagar")
