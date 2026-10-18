@@ -55,6 +55,9 @@ def test_ler_validar_mover_e_rejeitar(admin, app, pasta):
     (pasta / "Santander" / "lixo.csv").write_bytes(b"a;b\n1;2\n")
     (pasta / "Santander" / "importados").mkdir()
     (pasta / "Santander" / "importados" / "velho.xls").write_bytes(xls_santander(SANT))   # já tratado: ignorado
+    for sistema in ("@Recycle", "@Recently-Snapshot", "#recycle"):                        # pastas do QTS: ignoradas
+        (pasta / sistema).mkdir()
+        (pasta / sistema / "apagado.xls").write_bytes(xls_santander(SANT))
     antes = _n_movs(app)
 
     t = admin.get("/admin/tarefas")

@@ -25,7 +25,12 @@ from .parsers import Extrato, FormatoDesconhecido, ler_extrato
 log = logging.getLogger(__name__)
 
 PASTA_IMPORTADOS = "importados"
-IGNORAR = {PASTA_IMPORTADOS, "rejeitados", "@recycle", "#recycle", ".streams", "@eaDir"}
+IGNORAR = {PASTA_IMPORTADOS, "rejeitados"}
+
+
+def _de_sistema(nome: str) -> bool:
+    """Pastas do QTS/SMB que não são bancos: @Recycle, @Recently-Snapshot, @eaDir, #recycle, .streams…"""
+    return nome.startswith(("@", "#", ".")) or nome.lower() in IGNORAR
 INTERVALOS = {15: "15 minutos", 30: "30 minutos", 60: "1 hora", 180: "3 horas", 720: "12 horas", 1440: "1 dia"}
 
 
@@ -54,7 +59,7 @@ def estado_pasta(raiz: Path | None) -> tuple[bool, str]:
 def ficheiros(raiz: Path) -> list[tuple[str, Path]]:
     """(subpasta do banco, ficheiro) — só o 1.º nível de cada subpasta; ignora importados/ e ficheiros escondidos."""
     out = []
-    for pasta in sorted(p for p in raiz.iterdir() if p.is_dir() and p.name not in IGNORAR and not p.name.startswith(".")):
+    for pasta in sorted(p for p in raiz.iterdir() if p.is_dir() and not _de_sistema(p.name)):
         for f in sorted(pasta.iterdir()):
             if f.is_file() and not f.name.startswith((".", "~$")) and f.suffix.lower() not in (".tmp", ".part"):
                 out.append((pasta.name, f))

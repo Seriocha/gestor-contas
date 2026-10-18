@@ -4,7 +4,7 @@ Gestor financeiro doméstico, multiutilizador e self-hosted, para a NAS QNAP. Es
 importa movimentos de bancos portugueses e gere contas à ordem, cartões, investimentos e
 Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIGN.md).
 
-## Estado: v0.55.0
+## Estado: v0.55.1
 
 - Login com várias pessoas: passwords em argon2, bloqueio ao fim de 5 tentativas falhadas,
   proteção CSRF e invalidação das sessões quando a password muda.
@@ -37,6 +37,9 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.55.1 — Pasta de extratos: pastas de sistema ignoradas.** As pastas do QTS dentro da partilha (`@Recycle`,
+  `@Recently-Snapshot`, `@eaDir`, `#recycle`, `.streams`…) deixam de ser tratadas como bancos (os ficheiros apagados
+  na reciclagem não são propostos). Novo `qnap/criar_pastas_extratos.sh`: cria as subpastas dos bancos na partilha.
 - **v0.55.0 — Extratos numa pasta partilhada da NAS, lidos automaticamente.** Uma subpasta por banco
   (`/share/Extratos/Santander/`, `ActivoBank/`…), montada no container em `/importar` (`GESTOR_IMPORT_DIR`; o
   `qnap/update.sh` monta-a se existir). A app lê a pasta de hora a hora (15 min a 1 dia, em Administração › Tarefas,
