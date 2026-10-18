@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block titulo %}Cartões de débito · {{ conta.nome }}{% endblock %}
+{% block conteudo %}
+<div class="titulo-acoes">
+  <h1>Cartões de débito <span class="nota">· {{ conta.nome }} ({{ conta.entidade.nome }})</span></h1>
+  <a href="/contas/{{ conta.id }}/movimentos">‹ Movimentos da conta</a>
+</div>
+{% if not gastos %}
+<section class="cartao">
+  <p class="vazio sem-margem">Ainda não há cartões nesta conta. Importa o ficheiro de movimentos de cada cartão de débito (Santander:
+    NetBanco › Cartões › Cartões de Débito › Consultar Movimentos › Exportar) em <a href="/importar">Importar</a> — ou põe-no na pasta
+    partilhada do banco. Não cria movimentos: identifica o cartão de cada compra que já está no extrato da conta.</p>
+</section>
+{% else %}
+{% set total = gastos | sum(attribute='total') %}
+<section class="cartao">
+  <h2>Gastos por cartão <span class="nota">· desde {{ de | data }}</span></h2>
+  <ul class="barras-categoria">
+    {% for g in gastos %}
+    <li><span class="nome"><span class="ponto" style="background: {{ g.cartao.cor or '#8a8a85' }}"></span>
+        <a href="/movimentos?entidade={{ conta.entidade_id }}&cartao={{ g.cartao.id }}&de={{ de.isoformat() }}">{{ g.cartao.nome }}</a>
+        <span class="nota">…{{ g.cartao.final }} · {{ g.n }} compra{{ 's' if g.n != 1 }}</span></span>
+      <span class="barra"><span style="width: {{ (g.total / total * 100) | round(1) if total else 0 }}%; background: {{ g.cartao.cor or '#8a8a85' }}"></span></span>
+      <span class="num">{{ g.total | eur }}</span></li>
+    {% endfor %}
+  </ul>
+  <div class="rolar separado"><table class="tabela compacta">
+    <thead><tr><th>Mês</th>{% for g in gastos %}<th class="num">{{ g.cartao.nome }}</th>{% endfor %}<th class="num">Total</th></tr></thead>
+    {% for m in meses | reverse %}
+    {% set t = namespace(v=0) %}
+    <tr><td class="sem-quebra">{{ rotulo_mes(m) }}</td>
+      {% for g in gastos %}{% set v = g.por_mes.get(m, 0) %}{% set t.v = t.v + v %}<td class="num">{{ v | eur if v else '—' }}</td>{% endfor %}
+      <td class="num"><strong>{{ t.v | eur if t.v else '—' }}</strong></td></tr>
+    {% endfor %}
+  </table></div>
+  {% if soltas %}<p class="nota">Compras lidas ainda sem débito na conta: {% for g in gastos if soltas.get(g.cartao.id) %}{{ g.cartao.nome }} {{ soltas[g.cartao.id] }}{{ ', ' if not loop.last }}{% endfor %}
+    — ligam-se sozinhas quando chegar o extrato da conta.</p>{% endif %}
+</section>
+
+{% if pode_editar %}
+<section class="cartao">
+  <h2>Quem usa cada cartão</h2>
+  <form method="post" class="formulario" style="max-width: none">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    {% for g in gastos %}
+    <div class="linha">
+      <label>Cartão …{{ g.cartao.final }} <input name="nome_{{ g.cartao.id }}" value="{{ g.cartao.nome }}" maxlength="60" placeholder="ex.: Sérgio"></label>
+      <label>Cor <input type="color" name="cor_{{ g.cartao.id }}" value="{{ g.cartao.cor or '#8a8a85' }}"></label>
+    </div>
+    {% endfor %}
+    <div class="acoes-form"><button class="primario">Guardar</button></div>
+  </form>
+</section>
+{% endif %}
+{% endif %}
+{% endblock %}

@@ -179,6 +179,9 @@ def confirmar(db: Session, conta: Conta, extrato: Extrato, nome: str, sha: str,
         db.flush()
     imp.emprestimo = emprestimos.processar(db, conta)
     retificacoes.recalcular_contas(db, [conta])
+    if conta.tipo == "ORDEM":
+        from . import cartoes
+        cartoes.ligar(db, conta.id)      # compras de cartões de débito já lidas que esperavam este extrato
 
     msg = None
     primeiro = linhas[0] if linhas else None

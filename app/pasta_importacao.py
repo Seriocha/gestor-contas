@@ -86,6 +86,9 @@ def _candidatas(db: Session, extrato: Extrato, pasta: str) -> list[Conta]:
 def detetar_conta(db: Session, extrato: Extrato, pasta: str) -> tuple[Conta | None, str]:
     """A conta do extrato: pelo banco (formato/subpasta), tipo e moeda; depois pelo n.º de conta no ficheiro;
     por fim pelos movimentos que já existem na conta (o mesmo extrato sobreposto). Sem certeza, None."""
+    if extrato.debito_cartao:
+        from . import cartoes
+        return cartoes.detetar_conta(db, extrato)
     cands = _candidatas(db, extrato, pasta)
     if not cands:
         return None, f"nenhuma conta do {extrato.banco} deste tipo e moeda"
@@ -120,7 +123,10 @@ def resumo_para(db: Session, p: ImportacaoPendente, extrato: Extrato) -> None:
     p.n_lidos = len(movs)
     p.data_ini = movs[0].data_mov if movs else None
     p.data_fim = movs[-1].data_mov if movs else None
-    if conta and not erro:
+    if conta and extrato.debito_cartao:
+        from . import cartoes
+        p.n_novos = cartoes.previa(db, conta, extrato).n_novas      # compras do cartão ainda não lidas
+    elif conta and not erro:
         p.n_novos = sum(1 for l in servicos.preparar(db, conta, extrato) if not l.duplicado)
 
 

@@ -11,6 +11,7 @@
   <h1>{{ conta.nome }} <span class="nota">· {{ conta.instituicao.nome }} · {{ conta.entidade.nome }}</span></h1>
   {% if conta.tipo == 'EMPRESTIMO' %}<a class="botao primario" href="/contas/{{ conta.id }}/emprestimo">Ver empréstimo</a>
   {% elif pode_editar %}<div class="acoes-form">
+    {% if tem_cartoes %}<a class="botao" href="/contas/{{ conta.id }}/cartoes">💳 Cartões de débito</a>{% endif %}
     <a class="botao {{ 'primario' if conta.tipo in ('POUPANCA', 'INVESTIMENTO', 'AFORRO', 'PENSOES') else '' }}" href="/contas/{{ conta.id }}/movimentos/novo">+ Movimento</a>
     <a class="botao {{ '' if conta.tipo in ('POUPANCA', 'INVESTIMENTO', 'AFORRO', 'PENSOES') else 'primario' }}" href="/importar?conta={{ conta.id }}">Importar extrato</a>
   </div>{% endif %}
@@ -28,6 +29,10 @@
 {% set destino = "/movimentos" %}{% include "_entidades.html" %}
 {% endif %}
 {% if erro %}<div class="aviso aviso-erro">{{ erro }}</div>{% endif %}
+{% if cartao_filtro %}
+<div class="aviso">Só as compras do cartão <a href="/contas/{{ cartao_filtro.conta_id }}/cartoes"><strong>{{ cartao_filtro.nome }}</strong></a>
+  (…{{ cartao_filtro.final }}, {{ cartao_filtro.conta.nome }}). <a href="/movimentos?entidade={{ entidade.id }}">Ver todos</a></div>
+{% endif %}
 {% if bem_filtro %}
 <div class="aviso">Só os movimentos de <a href="/patrimonio/{{ bem_filtro.id }}"><strong>{{ bem_filtro.nome }}</strong></a>.
   <a href="/movimentos?entidade={{ entidade.id }}">Ver todos</a></div>
@@ -237,7 +242,7 @@
     {# Filtro atual, para as ações aplicadas a todos os movimentos do filtro (todas as páginas). #}
     <input type="hidden" name="f_entidade" value="{{ entidade.id }}">
     <input type="hidden" name="f_conta" value="{{ conta.id if conta else '' }}">
-    {% for k in ['categoria', 'etiqueta', 'tipo', 'q', 'de', 'ate', 'vmin', 'vmax', 'anteriores', 'bem'] %}<input type="hidden" name="f_{{ k }}" value="{{ f[k] }}">{% endfor %}
+    {% for k in ['categoria', 'etiqueta', 'tipo', 'q', 'de', 'ate', 'vmin', 'vmax', 'anteriores', 'bem', 'cartao'] %}<input type="hidden" name="f_{{ k }}" value="{{ f[k] }}">{% endfor %}
     <button type="button" class="abrir-lote" id="abrir-lote">Ações em massa…</button>
     <div class="barra-lote" id="barra-lote">
       <fieldset class="ambito">
@@ -328,6 +333,8 @@
           {% if (m.hash_dedup or '').startswith('retif:') %}<span class="etiqueta etiqueta-cor">retificação</span>{% endif %}
           {% if naturezas_inv.get(m.id) %}{% set n = naturezas_inv[m.id] %}<span class="etiqueta natureza natureza-{{ n }}">{{ {'aplicacao': 'aplicação', 'resgate': 'resgate', 'ganho': 'ganho', 'perda': 'perda', 'partida': 'valor de partida'}[n] }}</span>{% endif %}
           {% for e in m.etiquetas %}<span class="etiqueta etiqueta-cor">#{{ e.nome }}</span>{% endfor %}
+          {% if cartao_de.get(m.id) %}{% set cd = cartao_de[m.id] %}<a class="etiqueta etiqueta-cartao" style="--cor-cartao: {{ cd.cor or '#8a8a85' }}"
+             href="/movimentos?entidade={{ entidade.id }}&cartao={{ cd.id }}" title="Cartão de débito …{{ cd.final }}">💳 {{ cd.nome }}</a>{% endif %}
           {% if m.bem %}<a class="etiqueta etiqueta-bem" href="/patrimonio/{{ m.bem.id }}">{{ '⌂' if m.bem.tipo == 'casa' else '🚗' }} {{ m.bem.nome }}</a>{% endif %}
           {% if m.notas %}<br><span class="nota">{{ m.notas }}</span>{% endif %}
         </td>

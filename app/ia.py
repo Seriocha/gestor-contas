@@ -133,3 +133,76 @@ def aplicar_cache(db: Session, grupos: list) -> None:
         g.comerciante, g.atividade, g.confianca = s.comerciante, s.atividade, s.confianca
         if s.categoria_id and not g.sugestao_id:
             g.sugestao_id, g.origem = s.categoria_id, "IA"
+
+
+# ------------------------------------------------------------------ análise de um movimento (ecrã do movimento)
+SISTEMA_ANALISE = """Analisas UM movimento de um extrato bancário português para explicar a quem o vê o que foi. \
+Identifica o comerciante ou serviço a partir da descrição (usa a pesquisa na web se a tiveres: nome comercial, \
+atividade, localização, site). Escolhe a categoria mais adequada da lista dada para o sentido do movimento. \
+Não inventes: se não encontrares, di-lo na explicação, deixa os campos a null e a confiança baixa.
+Responde APENAS com um objeto JSON com as chaves: comerciante, atividade (curta), localizacao (ou null), \
+site (URL ou null), categoria_id (da lista, ou null), confianca (0 a 1), explicacao (1 a 3 frases em português), \
+fontes (lista de até 3 URLs consultados)."""
+
+PESQUISA_WEB = [{"type": "web_search_20250305", "name": "web_search", "max_uses": 4, "user_location": {
+    "type": "approximate", "country": "PT", "timezone": "Europe/Lisbon"}}]
+
+
+def chave_movimento(m) -> str:
+    from .sugestoes import padrao_de
+    padrao = padrao_de(m.descricao_norm or m.descricao_original or "") or (m.descricao_original or "")[:60].upper()
+    return f"{padrao}|{'ENTRADA' if m.montante > 0 else 'SAIDA'}"[:200]
+
+
+def analise_de(db: Session, m) -> SugestaoIA | None:
+    return db.scalar(select(SugestaoIA).where(SugestaoIA.chave == chave_movimento(m)))
+
+
+def analisar_movimento(db: Session, m) -> SugestaoIA:
+    """Pergunta à IA (com pesquisa web, se a conta o permitir) o que é este movimento. Só se envia a descrição, o
+    valor, a data e o tipo de conta. Guarda na cache por comerciante (substitui uma resposta anterior)."""
+    if not disponivel():
+        raise ErroIA("A chave da Claude API não está configurada (ANTHROPIC_API_KEY).")
+    from .models import TIPOS_CONTA
+    cats = db.scalars(select(Categoria)).all()
+    natureza = "RECEITA" if m.montante > 0 else "DESPESA"
+    mensagem = (f"Movimento: «{m.descricao_original}»\nValor: {m.montante / 100:.2f} {m.moeda}\n"
+                f"Data: {m.data_mov:%d/%m/%Y}\nConta: {TIPOS_CONTA.get(m.conta.tipo, m.conta.tipo)} "
+                f"({m.conta.instituicao.nome})\n\nCategorias de {natureza} (id: nome):\n{_lista_categorias(cats, natureza)}")
+    web = True
+    try:
+        texto = _chamar(SISTEMA_ANALISE, mensagem, ferramentas=PESQUISA_WEB)
+    except ErroIA as e:
+        if "400" not in str(e) and "web_search" not in str(e):
+            raise
+        web = False
+        texto = _chamar(SISTEMA_ANALISE, mensagem)
+    ini, fim = texto.find("{"), texto.rfind("}")
+    try:
+        d = json.loads(texto[ini:fim + 1]) if 0 <= ini < fim else None
+    except json.JSONDecodeError:
+        d = None
+    if not isinstance(d, dict):
+        raise ErroIA("A resposta da IA não trouxe a análise.")
+    validas = {c.id for c in cats if c.natureza == natureza}
+    cat = d.get("categoria_id")
+    cat = cat if isinstance(cat, int) and cat in validas else None
+    try:
+        conf = max(0.0, min(1.0, float(d.get("confianca"))))
+    except (TypeError, ValueError):
+        conf = None
+    site = str(d.get("site") or "")
+    fontes = [str(f) for f in (d.get("fontes") or []) if isinstance(f, str) and f.startswith(("http://", "https://"))][:3]
+    detalhe = {"localizacao": (str(d.get("localizacao") or "")[:120] or None),
+               "site": site[:200] if site.startswith(("http://", "https://")) else None,
+               "explicacao": str(d.get("explicacao") or "")[:600] or None, "fontes": fontes}
+    s = analise_de(db, m) or SugestaoIA(chave=chave_movimento(m))
+    s.comerciante = str(d.get("comerciante") or "")[:120] or None
+    s.atividade = str(d.get("atividade") or "")[:200] or None
+    s.categoria_id, s.confianca, s.modelo, s.web = cat, conf, modelo(), web
+    s.detalhe = json.dumps(detalhe, ensure_ascii=False)
+    from datetime import datetime
+    s.criado_em = datetime.now()
+    db.add(s)
+    db.flush()
+    return s

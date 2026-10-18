@@ -270,6 +270,37 @@ class Importacao(Base):
     utilizador: Mapped[Utilizador | None] = relationship()
 
 
+class CartaoDebito(Base):
+    """Cartão de débito de uma conta à ordem (pelos 4 últimos dígitos), com o nome de quem o usa."""
+    __tablename__ = "cartao_debito"
+    __table_args__ = (UniqueConstraint("conta_id", "final"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    conta_id: Mapped[int] = mapped_column(ForeignKey("conta.id", ondelete="CASCADE"), index=True)
+    final: Mapped[str] = mapped_column(String(4))
+    nome: Mapped[str] = mapped_column(String(60))
+    cor: Mapped[str | None] = mapped_column(String(7))
+
+    conta: Mapped["Conta"] = relationship()
+
+
+class MovimentoCartao(Base):
+    """Compra lida do ficheiro de um cartão de débito. Não é um movimento: liga-se ao débito igual no extrato da
+    conta (movimento_id) para se saber que cartão o fez."""
+    __tablename__ = "movimento_cartao"
+    __table_args__ = (UniqueConstraint("cartao_id", "hash"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    cartao_id: Mapped[int] = mapped_column(ForeignKey("cartao_debito.id", ondelete="CASCADE"), index=True)
+    data: Mapped[date] = mapped_column(Date)
+    montante: Mapped[int] = mapped_column(BigInteger)
+    descricao: Mapped[str] = mapped_column(String(200))
+    hash: Mapped[str] = mapped_column(String(64))
+    movimento_id: Mapped[int | None] = mapped_column(ForeignKey("movimento.id", ondelete="SET NULL"), index=True)
+
+    cartao: Mapped[CartaoDebito] = relationship()
+
+
 class ImportacaoPendente(Base):
     """Extrato encontrado na pasta partilhada da NAS (lida periodicamente): fica à espera de validação pelo
     administrador (Administração › Tarefas). Validado, é importado como os outros e o ficheiro passa para importados/."""
@@ -1002,8 +1033,19 @@ class SugestaoIA(Base):
     confianca: Mapped[float | None] = mapped_column(Float)
     modelo: Mapped[str | None] = mapped_column(String(60))
     criado_em: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, server_default=func.now())
+    # Análise de um movimento (ecrã do movimento): localização, site, explicação e fontes, em JSON; web = com pesquisa
+    detalhe: Mapped[str | None] = mapped_column(Text)
+    web: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
 
     categoria: Mapped["Categoria | None"] = relationship()
+
+    @property
+    def info(self) -> dict:
+        import json
+        try:
+            return json.loads(self.detalhe) if self.detalhe else {}
+        except ValueError:
+            return {}
 
 
 class Definicao(Base):

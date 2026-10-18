@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block titulo %}Cartão de débito{% endblock %}
+{% block conteudo %}
+<h1>Cartão de débito …{{ extrato.conta_ref }} <span class="nota">· {{ conta.nome }} ({{ conta.entidade.nome }})</span></h1>
+{% for e in erros %}<div class="aviso aviso-erro">{{ e }}</div>{% endfor %}
+{% if aviso_conta %}<div class="aviso aviso-alerta">{{ aviso_conta }}</div>{% endif %}
+{% if pendente %}
+<p class="nota">📂 Extrato da pasta partilhada: <strong>{{ pendente.caminho }}</strong>{{ ' · conta detetada por ' ~ pendente.deteccao if pendente.deteccao }}</p>
+{% endif %}
+{% if p %}
+<section class="cartao">
+  <p class="sem-margem">Estas compras <strong>já estão no extrato da conta</strong> — este ficheiro não cria movimentos: liga cada compra ao
+    débito igual na conta (mesmo valor, até 5 dias depois) para se saber que cartão a fez.</p>
+  {% if contas | length > 1 %}
+  <form method="get" action="{{ '/admin/pasta/' ~ pendente.id if pendente else '/importar/cartao' }}" class="formulario separado" style="max-width: none">
+    {% if not pendente %}<input type="hidden" name="sha" value="{{ sha }}"><input type="hidden" name="nome" value="{{ nome }}">{% endif %}
+    <label>Conta à ordem do cartão
+      <select name="conta" onchange="this.form.submit()">
+        {% for c in contas %}<option value="{{ c.id }}" {% if c.id == conta.id %}selected{% endif %}>{{ c.entidade.nome }} · {{ c.nome }}</option>{% endfor %}
+      </select></label>
+    <noscript><button>Mudar</button></noscript>
+  </form>
+  {% endif %}
+  <div class="resumo separado">
+    <div><span class="nota">Cartão</span><strong>{{ p.cartao.nome if p.cartao else 'novo' }}</strong></div>
+    <div><span class="nota">Período</span><strong>{{ extrato.movimentos[0].data_mov | data if extrato.movimentos }} a {{ extrato.movimentos[-1].data_mov | data if extrato.movimentos }}</strong></div>
+    <div><span class="nota">Compras lidas</span><strong>{{ p.n_lidas }}</strong></div>
+    <div><span class="nota">Novas</span><strong>{{ p.n_novas }}</strong></div>
+    <div><span class="nota">Ligam a um débito</span><strong>{{ p.n_ligam }}</strong></div>
+  </div>
+  {% if p.sem_debito %}
+  <details class="separado"><summary>{{ p.sem_debito | length }} sem débito na conta (por agora)</summary>
+    <p class="nota">Ainda não lançadas, ou de antes/depois do extrato da conta que está na app: ligam-se sozinhas quando o extrato chegar.</p>
+    <div class="rolar"><table class="tabela compacta">
+      {% for m in p.sem_debito[:40] %}<tr><td class="sem-quebra">{{ m.data_mov | data }}</td><td>{{ m.descricao }}</td><td class="num">{{ m.montante | eur }}</td></tr>{% endfor %}
+    </table></div>
+  </details>
+  {% endif %}
+  <form method="post" action="/importar/cartao/confirmar" class="acoes-form separado">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <input type="hidden" name="conta_id" value="{{ conta.id }}">
+    <input type="hidden" name="sha" value="{{ sha }}">
+    <input type="hidden" name="nome" value="{{ nome }}">
+    {% if pendente %}<input type="hidden" name="pendente" value="{{ pendente.id }}">{% endif %}
+    <button class="primario">{{ ('Validar e ' if pendente else '') ~ ('ligar %d compras' % p.n_ligam if p.n_ligam else 'guardar o cartão (nada a ligar)') }}</button>
+    <a href="{{ '/admin/tarefas#pasta' if pendente else '/importar' }}">Cancelar</a>
+  </form>
+  {% if not p.cartao %}<p class="nota">O cartão fica com o nome «Cartão …{{ extrato.conta_ref }}» — muda-o depois para o nome de quem o usa.</p>{% endif %}
+</section>
+{% else %}<p><a href="{{ '/admin/tarefas#pasta' if pendente else '/importar' }}">Voltar</a></p>{% endif %}
+{% endblock %}

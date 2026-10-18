@@ -1,7 +1,10 @@
 {% extends "base.html" %}
 {% block titulo %}Movimento{% endblock %}
 {% block conteudo %}
-<h1>Movimento <span class="nota">· {{ m.conta.nome }}</span></h1>
+<div class="titulo-acoes">
+  <h1>Movimento <span class="nota">· {{ m.conta.nome }}</span></h1>
+  <a class="botao pequeno" href="/movimentos/{{ m.id }}/detalhe?voltar={{ voltar | urlencode }}#analise">🔎 Detalhe e análise</a>
+</div>
 <section class="cartao">
   <div class="resumo">
     <div><span class="nota">Data</span><strong>{{ m.data_mov | data }}</strong></div>

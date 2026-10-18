@@ -17,7 +17,7 @@ from ..models import CORES, PAPEIS, Bem, Categoria, Conta, Entidade, Etiqueta, M
 from ..qualificacao import aplicar_regras, arvore_categorias, qualificar_manual, repor
 from ..servicos import normalizar_descricao
 from ..seguranca import ler_form
-from .. import investimentos, recheio, retificacoes, servicos, posicoes
+from .. import cartoes, investimentos, recheio, retificacoes, servicos, posicoes
 from .. import relatorios as rel
 from ..servicos import resumo_cartao, saldo_conta
 
@@ -183,7 +183,7 @@ def _calendario(db: Session, base, *, conta_id, categoria, etiqueta, tipo, q, vm
 def _listar(request: Request, db: Session, u: Utilizador, *, entidade: int | None, conta: Conta | None,
             categoria: int, etiqueta: int, tipo: str, q: str, de: str, ate: str, pagina: int,
             vmin: str = "", vmax: str = "", ordem: str = "-data", anteriores: int = 0, mes: str = "",
-            bem: int | None = None):
+            bem: int | None = None, cartao: int | None = None):
     if conta:
         papel = exigir_papel(db, u, conta.entidade_id, "ver")
         visiveis, ent, _ = entidade_escolhida(request, db, u, conta.entidade_id)
@@ -210,6 +210,13 @@ def _listar(request: Request, db: Session, u: Utilizador, *, entidade: int | Non
         base = base.where(Movimento.bem_id == bem_obj.id)
     else:
         bem_obj = None
+    # Compras de um cartão de débito (pessoa): os débitos ligados às linhas do ficheiro do cartão.
+    from ..models import CartaoDebito, MovimentoCartao
+    cartao_obj = db.get(CartaoDebito, cartao) if cartao else None
+    if cartao_obj and cartao_obj.conta.entidade_id == ent.id:
+        base = base.where(Movimento.id.in_(select(MovimentoCartao.movimento_id).where(MovimentoCartao.cartao_id == cartao_obj.id)))
+    else:
+        cartao_obj = None
     # Cobertura dos dados: por omissão só se veem os movimentos desde o início da análise.
     corte = ent.data_inicio
     ocultos = 0
@@ -237,7 +244,7 @@ def _listar(request: Request, db: Session, u: Utilizador, *, entidade: int | Non
                                categoria=0, etiqueta=0, tipo="sem", texto="", d_de=None, d_ate=None))
     filtros = {"categoria": categoria or "", "etiqueta": etiqueta or "", "tipo": tipo, "q": q, "de": de, "ate": ate,
                "vmin": vmin, "vmax": vmax, "anteriores": 1 if anteriores and corte else "",
-               "bem": bem_obj.id if bem_obj else ""}
+               "bem": bem_obj.id if bem_obj else "", "cartao": cartao_obj.id if cartao_obj else ""}
     if not conta:
         filtros["entidade"] = ent.id
     # Títulos das colunas: clicar ordena por essa coluna; clicar outra vez inverte.
@@ -256,6 +263,8 @@ def _listar(request: Request, db: Session, u: Utilizador, *, entidade: int | Non
                              base_q={**base_q, **({"ordem": ordem} if ordem != "-data" else {})})
     return render(
         request, "movimentos/lista.html", visiveis=visiveis, entidade=ent, conta=conta, bem_filtro=bem_obj,
+        cartao_filtro=cartao_obj, cartao_de=cartoes.do_movimento(db, [m.id for m in lista]),
+        tem_cartoes=bool(conta and cartoes.cartoes_da_conta(db, conta.id)),
         saldo=saldo_conta(db, conta) if conta else None,
         cartao=resumo_cartao(db, conta, date.today()) if conta and conta.tipo == "CARTAO_CREDITO" else None,
         retificaveis=conta is not None and retificacoes.retificavel(conta),
@@ -281,7 +290,8 @@ def _listar(request: Request, db: Session, u: Utilizador, *, entidade: int | Non
 def movimentos(request: Request, entidade: IntOpcional = None, conta: IntOpcional = None, categoria: IntOpcional = None,
                etiqueta: IntOpcional = None, tipo: str = "", q: str = "", de: str = "", ate: str = "", pagina: IntOpcional = 1,
                vmin: str = "", vmax: str = "", ordem: str = "-data", anteriores: IntOpcional = 0, mes: str = "",
-               bem: IntOpcional = None, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
+               bem: IntOpcional = None, cartao: IntOpcional = None, u: Utilizador = Depends(utilizador_atual),
+               db: Session = Depends(get_db)):
     if conta:
         return RedirectResponse(f"/contas/{conta}/movimentos?" + urlencode(
             {k: v for k, v in {"categoria": categoria or "", "etiqueta": etiqueta or "", "tipo": tipo, "q": q, "de": de,
@@ -290,7 +300,7 @@ def movimentos(request: Request, entidade: IntOpcional = None, conta: IntOpciona
              if v}), status_code=303)
     return _listar(request, db, u, entidade=entidade, conta=None, categoria=categoria, etiqueta=etiqueta,
                    tipo=tipo if tipo in TIPOS_FILTRO else "", q=q, de=de, ate=ate, pagina=pagina,
-                   vmin=vmin, vmax=vmax, ordem=ordem, anteriores=anteriores or 0, mes=mes, bem=bem)
+                   vmin=vmin, vmax=vmax, ordem=ordem, anteriores=anteriores or 0, mes=mes, bem=bem, cartao=cartao)
 
 
 @router.get("/contas/{conta_id}/movimentos")
@@ -517,8 +527,50 @@ def detalhe(request: Request, mov_id: int, voltar: str = "", u: Utilizador = Dep
         raise HTTPException(status_code=404, detail="Não encontrado.")
     papel = exigir_papel(db, u, m.conta.entidade_id, "ver")
     mapa = ligacoes.do_movimento(db, m, lambda ent_id: papel_em(db, u, ent_id) is not None)
+    from .. import ia
     return render(request, "movimentos/detalhe.html", m=m, mapa=mapa, voltar=_voltar_seguro(voltar),
-                  pode_editar=PAPEIS[papel] >= PAPEIS["editar"])
+                  pode_editar=PAPEIS[papel] >= PAPEIS["editar"], analise=ia.analise_de(db, m),
+                  ia_disponivel=ia.disponivel())
+
+
+@router.post("/movimentos/{mov_id}/analisar")
+async def analisar(request: Request, mov_id: int, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
+    """Análise do movimento pela IA (com pesquisa na web). Com fetch devolve só a secção; sem JS volta ao detalhe."""
+    from .. import ia
+    form = await ler_form(request)
+    m = _movimento_editavel(db, u, mov_id)
+    erro = None
+    try:
+        ia.analisar_movimento(db, m)
+        auditar(db, u, "analise_ia", f"{m.id}: {m.descricao_original[:80]}")
+        db.commit()
+    except ia.ErroIA as e:
+        db.rollback()
+        erro = str(e)
+    if form.get("fragmento") == "1":
+        return render(request, "movimentos/_analise.html", status_code=200 if not erro else 502, m=m,
+                      analise=ia.analise_de(db, m), ia_disponivel=ia.disponivel(), pode_editar=True, erro_analise=erro)
+    if erro:
+        flash(request, f"Não foi possível analisar: {erro}", "erro")
+    return RedirectResponse(f"/movimentos/{m.id}/detalhe#analise", status_code=303)
+
+
+@router.post("/movimentos/{mov_id}/analise/aplicar")
+async def aplicar_analise(request: Request, mov_id: int, u: Utilizador = Depends(utilizador_atual),
+                          db: Session = Depends(get_db)):
+    """Aplica ao movimento a categoria sugerida pela análise (fica qualificado à mão)."""
+    from .. import ia
+    await ler_form(request)
+    m = _movimento_editavel(db, u, mov_id)
+    s = ia.analise_de(db, m)
+    if not s or not s.categoria_id:
+        flash(request, "Não há categoria sugerida para aplicar.", "erro")
+    else:
+        qualificar_manual(db, m, categoria_id=s.categoria_id)
+        auditar(db, u, "analise_ia_aplicada", f"{m.id} → {s.categoria_id}")
+        db.commit()
+        flash(request, f"Categoria «{m.categoria.nome_completo}» aplicada.")
+    return RedirectResponse(f"/movimentos/{m.id}/detalhe#analise", status_code=303)
 
 
 def _subscricoes_para(db: Session, m: Movimento) -> list:
@@ -579,6 +631,10 @@ def _ids_do_filtro(db: Session, u: Utilizador, form) -> list[int]:
     base = select(Movimento.id).join(Conta).where(Conta.entidade_id == entidade_id)
     if _int(form.get("f_bem")):
         base = base.where(Movimento.bem_id == _int(form.get("f_bem")))
+    if _int(form.get("f_cartao")):
+        from ..models import MovimentoCartao
+        base = base.where(Movimento.id.in_(select(MovimentoCartao.movimento_id)
+                                           .where(MovimentoCartao.cartao_id == _int(form.get("f_cartao")))))
     corte = db.get(Entidade, entidade_id).data_inicio
     if corte and form.get("f_anteriores") != "1":
         base = base.where(Movimento.data_mov >= corte)

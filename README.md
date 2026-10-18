@@ -4,7 +4,7 @@ Gestor financeiro doméstico, multiutilizador e self-hosted, para a NAS QNAP. Es
 importa movimentos de bancos portugueses e gere contas à ordem, cartões, investimentos e
 Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIGN.md).
 
-## Estado: v0.56.0
+## Estado: v0.58.0
 
 - Login com várias pessoas: passwords em argon2, bloqueio ao fim de 5 tentativas falhadas,
   proteção CSRF e invalidação das sessões quando a password muda.
@@ -37,6 +37,22 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.58.0 — Análise do movimento.** No detalhe de um movimento, «🔎 Análise do movimento»: «Analisar com IA» pergunta à
+  Claude API (com pesquisa na web, quando a conta o permite) quem é o comerciante, a atividade, o local e o site, com uma
+  explicação, as fontes e a categoria sugerida — «Aplicar a este movimento» ou criar uma regra. Só se envia a descrição, o
+  valor, a data e o tipo de conta; a resposta fica guardada por comerciante (a mesma cache das sugestões da
+  classificação) e aparece como mais uma ligação no mapa. «Pesquisar na web» abre uma pesquisa pelo comerciante, sem IA.
+- **v0.57.0 — Cartões de débito: gastos por cartão/pessoa.** O ficheiro de movimentos de cada cartão de débito
+  (Santander: «Consulta Movimentos Cartões Débito», .xls) importa-se como os outros — à mão ou pela pasta partilhada —
+  mas não cria movimentos: as compras já estão no extrato da conta à ordem, onde não se sabe de que cartão são. Cada
+  compra liga-se ao débito igual na conta (mesmo valor, lançado até 5 dias depois; entre iguais, o mais próximo e de
+  descrição mais parecida). As que ainda não têm débito ligam-se sozinhas quando chegar o extrato da conta. Em
+  «💳 Cartões de débito» (na conta) dá-se o nome de quem usa cada cartão e vêem-se os gastos por cartão e por mês; na
+  lista de movimentos cada compra mostra «💳 nome» e pode filtrar-se por cartão.
+  **Análise do movimento pela IA:** no detalhe do movimento (clique no valor, ou «🔎 Detalhe e análise» na edição),
+  «Analisar com IA» mostra os passos enquanto a IA identifica o comerciante pesquisando na web (nome, atividade,
+  localização, site, fontes), explica o movimento e sugere a categoria, que se aplica com um clique. Só é enviado a
+  descrição, o valor, a data e o tipo de conta; a análise fica guardada e vale para os movimentos do mesmo comerciante.
 - **v0.56.0 — Colunas por grupo no Início.** No modo «Personalizar», cada grupo do «Detalhe dos ativos» (ativos
   bancários, investimentos, património imóvel, carros, passivos) tem «Auto · 1 · 2 · 3 · 4»: quantos cartões ficam lado
   a lado. Com 1 coluna os cartões ficam em lista (ícone, nome e valor numa linha). Guardado por utilizador com o resto

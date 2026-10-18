@@ -44,6 +44,8 @@
   <p class="nota sem-margem mapa-legenda">{{ nos | length }} ligaç{{ 'ão' if nos | length == 1 else 'ões' }} · carrega num cartão para abrir a ficha.</p>
 </section>
 
+{% include "movimentos/_analise.html" %}
+
 {% if mapa.via_verde %}
 <section class="cartao" id="via-verde">
   <h2>Via Verde <span class="nota">· passagens pagas neste débito</span></h2>
@@ -60,6 +62,36 @@
 {% endif %}
 {% endblock %}
 {% block scripts %}
+<script>
+// «Analisar com IA»: mostra os passos enquanto a IA trabalha (a resposta chega de uma vez) e troca a secção pelo resultado
+document.addEventListener('submit', async e => {
+  const f = e.target.closest('.form-analisar');
+  if (!f) return;
+  e.preventDefault();
+  const sec = f.closest('.analise-mov'), passos = sec.querySelector('.analise-passos');
+  f.querySelector('button').disabled = true;
+  sec.querySelectorAll('.analise-resultado, .analise-vazia, .aviso').forEach(x => x.remove());
+  passos.hidden = false;
+  const itens = [...passos.children];
+  let i = 0;
+  const avancar = () => { itens.forEach((li, k) => { li.classList.toggle('feito', k < i); li.classList.toggle('atual', k === i); }); };
+  avancar();
+  const relogio = setInterval(() => { if (i < itens.length - 1) { i++; avancar(); } }, 2500);
+  const fd = new FormData(f);
+  fd.append('fragmento', '1');
+  try {
+    const r = await fetch(f.action, { method: 'POST', body: fd });
+    const html = await r.text();
+    clearInterval(relogio);
+    i = itens.length; avancar();
+    const novo = new DOMParser().parseFromString(html, 'text/html').querySelector('.analise-mov');
+    setTimeout(() => { if (novo) sec.replaceWith(novo); else location.reload(); }, 400);
+  } catch (err) {
+    clearInterval(relogio);
+    f.submit();                       // sem ligação ao fetch: envia o formulário normal
+  }
+});
+</script>
 <script>
 // linhas do movimento (centro) até cada ligação; no telemóvel a lista fica empilhada e as linhas são de CSS
 (() => {

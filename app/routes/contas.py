@@ -377,3 +377,48 @@ async def arquivar(request: Request, conta_id: int, u: Utilizador = Depends(util
     flash(request, f"Conta «{c.nome}» {'arquivada' if not c.ativa else 'reativada'}.")
     return RedirectResponse("/contas", status_code=303)
 
+
+
+# ------------------------------------------------------------------ cartões de débito (quem fez cada compra)
+@router.get("/{conta_id}/cartoes")
+def cartoes_da_conta(request: Request, conta_id: int, u: Utilizador = Depends(utilizador_atual),
+                     db: Session = Depends(get_db)):
+    from .. import cartoes
+    from .. import relatorios as rel
+    from ..models import CartaoDebito, MovimentoCartao
+    from sqlalchemy import func
+    c = _conta_ou_404(db, conta_id)
+    papel = exigir_papel(db, u, c.entidade_id, "ver")
+    hoje = date.today()
+    de = max(rel.somar_meses(hoje.replace(day=1), -11), rel.inicio_analise(db, c.entidade_id) or date.min)
+    gastos = [g for g in cartoes.gastos(db, c.entidade_id, de, hoje) if g.cartao.conta_id == c.id]
+    meses = []
+    m = de.replace(day=1)
+    while m <= hoje:
+        meses.append(m)
+        m = rel.somar_meses(m, 1)
+    soltas = dict(db.execute(select(MovimentoCartao.cartao_id, func.count()).join(CartaoDebito)
+                             .where(CartaoDebito.conta_id == c.id, MovimentoCartao.movimento_id.is_(None))
+                             .group_by(MovimentoCartao.cartao_id)).all())
+    return render(request, "contas/cartoes.html", conta=c, gastos=gastos, meses=meses, de=de, soltas=soltas,
+                  rotulo_mes=rel.rotulo_mes, pode_editar=PAPEIS[papel] >= PAPEIS["editar"])
+
+
+@router.post("/{conta_id}/cartoes")
+async def cartoes_guardar(request: Request, conta_id: int, u: Utilizador = Depends(utilizador_atual),
+                          db: Session = Depends(get_db)):
+    from .. import cartoes
+    form = await ler_form(request)
+    c = _conta_ou_404(db, conta_id)
+    exigir_papel(db, u, c.entidade_id, "editar")
+    for cartao in cartoes.cartoes_da_conta(db, c.id):
+        nome = str(form.get(f"nome_{cartao.id}", "")).strip()[:60]
+        cor = str(form.get(f"cor_{cartao.id}", "")).strip()
+        if nome:
+            cartao.nome = nome
+        if re.fullmatch(r"#[0-9a-fA-F]{6}", cor):
+            cartao.cor = cor
+    auditar(db, u, "cartoes_debito", c.nome)
+    db.commit()
+    flash(request, "Cartões guardados.")
+    return RedirectResponse(f"/contas/{c.id}/cartoes", status_code=303)

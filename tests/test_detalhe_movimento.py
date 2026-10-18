@@ -9,7 +9,7 @@ from sqlalchemy import select
 from app.main import create_app
 from app.models import (Abastecimento, Bem, Categoria, Etiqueta, ItemRecheio, Manutencao, Movimento, Subscricao,
                         ViaVerde, Viagem)
-from tests.test_app import PW, _post
+from tests.test_app import PW, _csrf, _post
 from tests.test_previsoes import _mov
 
 HOJE = date.today()
@@ -87,3 +87,43 @@ def test_subscricao_pelo_padrao(admin, app):
     p = admin.get(f"/movimentos/{mid}/detalhe").text
     assert "Combustível frota" in p and "pelo texto do extrato" in p
     assert re.search(r"\d+ ligaç(ão|ões)", p)
+
+
+def test_analise_do_movimento_pela_ia(admin, app, monkeypatch):
+    import json as _json
+    from app import ia
+    with app.state.SessionLocal() as db:
+        galp = db.scalars(select(Movimento).order_by(Movimento.id)).first()
+        cat = db.scalars(select(Categoria).where(Categoria.nome == "Combustível")).first()
+        mid, cat_id = galp.id, cat.id
+    monkeypatch.setattr(ia, "disponivel", lambda: False)
+    assert "precisa da chave da Claude API" in admin.get(f"/movimentos/{mid}/detalhe").text
+    chamadas = []
+
+    def falso(sistema, mensagem, ferramentas=None, modelo_ia=None):
+        chamadas.append(ferramentas)
+        if ferramentas:                                   # a conta não tem pesquisa web: a app tenta sem ela
+            raise ia.ErroIA("Erro 400: web_search not enabled")
+        return _json.dumps({"comerciante": "Galp", "atividade": "Posto de combustível", "localizacao": "Av. da República, Lisboa",
+                            "site": "https://www.galp.com", "categoria_id": cat_id, "confianca": 0.92,
+                            "explicacao": "Abastecimento num posto Galp.", "fontes": ["https://www.galp.com/pt", "nao-e-url"]})
+    monkeypatch.setattr(ia, "disponivel", lambda: True)
+    monkeypatch.setattr(ia, "_chamar", falso)
+    p = admin.get(f"/movimentos/{mid}/detalhe").text
+    assert "Analisar com IA" in p and 'class="analise-passos" hidden' in p
+    r = admin.post(f"/movimentos/{mid}/analisar", data={"csrf": _csrf(admin.get(f"/movimentos/{mid}/detalhe")), "fragmento": "1"})
+    assert r.status_code == 200 and "<!doctype" not in r.text.lower()           # só a secção
+    assert "Galp" in r.text and "Posto de combustível" in r.text and "Av. da República" in r.text and "92% de confiança" in r.text
+    assert "sem pesquisa na web" in r.text and "nao-e-url" not in r.text and len(chamadas) == 2
+    assert "Mensagem" not in r.text
+    # aplicar a categoria sugerida
+    admin.post(f"/movimentos/{mid}/analise/aplicar", data={"csrf": _csrf(admin.get(f"/movimentos/{mid}/detalhe"))})
+    with app.state.SessionLocal() as db:
+        m = db.get(Movimento, mid)
+        assert m.categoria_id == cat_id and m.qualificado_por == "manual"
+    p = admin.get(f"/movimentos/{mid}/detalhe").text
+    assert "é a categoria atual" in p and "Voltar a analisar" in p
+    # erro da IA: a secção diz porquê
+    monkeypatch.setattr(ia, "_chamar", lambda *a, **k: "sem json")
+    r = admin.post(f"/movimentos/{mid}/analisar", data={"csrf": _csrf(admin.get(f"/movimentos/{mid}/detalhe")), "fragmento": "1"})
+    assert r.status_code == 502 and "Não foi possível analisar" in r.text and "Galp" in r.text    # a análise anterior fica

@@ -41,6 +41,7 @@ class Extrato:
     cartao: bool = False              # extrato de cartão de crédito (não de conta à ordem)
     emprestimo: bool = False          # extrato de empréstimo (movimentos da conta do empréstimo)
     refeicao: bool = False            # extrato de cartão refeição
+    debito_cartao: bool = False       # compras de um cartão de débito (conta_ref = 4 últimos dígitos): não cria movimentos
     # Extratos com várias subcontas (Revolut: (produto, moeda) → movimentos). `movimentos` é a principal.
     subcontas: dict | None = None
     # Deduplicação contra importações noutro formato (Revolut PDF vs CSV): mesmo valor e mesmo saldo
@@ -163,9 +164,9 @@ def ler_linhas(nome: str, conteudo: bytes) -> list[list]:
 def todos() -> list:
     """Todos os parsers, pela ordem de deteção (o 1.º que reconhecer o ficheiro ganha)."""
     from . import activobank, big, creditoagricola, revolut, santander, santander_cartao, santander_emprestimo
-    from . import revolut_pdf, santander_refeicao
+    from . import revolut_pdf, santander_debito, santander_refeicao
     return [santander.Parser, santander_cartao.Parser, santander_emprestimo.Parser,
-            santander_refeicao.Parser, revolut_pdf.Parser, activobank.Parser,
+            santander_refeicao.Parser, santander_debito.Parser, revolut_pdf.Parser, activobank.Parser,
             creditoagricola.Parser, big.Parser, revolut.Parser]
 
 

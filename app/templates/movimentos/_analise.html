@@ -1,0 +1,58 @@
+{# Análise do movimento pela IA (detalhe do movimento). Contexto: m, analise (SugestaoIA ou none), ia_disponivel,
+   pode_editar, csrf_token, erro_analise (opcional). Também é devolvido sozinho depois de «Analisar» (fetch). #}
+<section class="cartao analise-mov" id="analise">
+  <div class="cartao-cabecalho">
+    <h2>🔎 Análise do movimento</h2>
+    {% if ia_disponivel and pode_editar %}
+    <form method="post" action="/movimentos/{{ m.id }}/analisar" class="form-analisar">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
+      <button class="pequeno {{ '' if analise else 'primario' }}">{{ 'Voltar a analisar' if analise else 'Analisar com IA' }}</button>
+    </form>
+    {% endif %}
+  </div>
+
+  <ol class="analise-passos" hidden aria-live="polite">
+    <li data-passo="1">Ler a descrição, o valor e a conta</li>
+    <li data-passo="2">Procurar o comerciante na web</li>
+    <li data-passo="3">Escolher a categoria</li>
+    <li data-passo="4">Preparar a explicação</li>
+  </ol>
+
+  {% if erro_analise %}<div class="aviso aviso-erro">Não foi possível analisar: {{ erro_analise }}</div>{% endif %}
+
+  {% if analise %}{% set info = analise.info %}
+  <div class="analise-resultado">
+    <div class="analise-quem">
+      <strong class="analise-comerciante">{{ analise.comerciante or 'Comerciante não identificado' }}</strong>
+      {% if analise.atividade %}<span>{{ analise.atividade }}</span>{% endif %}
+      {% if info.localizacao %}<span class="nota">📍 {{ info.localizacao }}</span>{% endif %}
+      {% if info.site %}<a class="nota" href="{{ info.site }}" target="_blank" rel="noopener noreferrer">🌐 {{ info.site | replace('https://', '') | replace('http://', '') | truncate(50) }}</a>{% endif %}
+    </div>
+    {% if info.explicacao %}<p class="analise-explicacao">{{ info.explicacao }}</p>{% endif %}
+    <div class="analise-categoria">
+      <span class="nota">Categoria sugerida</span>
+      {% if analise.categoria %}
+      <strong><span class="pastilha" style="background: {{ analise.categoria.cor_efetiva }}"></span>{{ analise.categoria.nome_completo }}</strong>
+      {% if analise.confianca is not none %}<span class="etiqueta">{{ (analise.confianca * 100) | round | int }}% de confiança</span>{% endif %}
+      {% if m.categoria_id == analise.categoria_id %}<span class="etiqueta etiqueta-ok">é a categoria atual</span>
+      {% elif pode_editar %}
+      <form method="post" action="/movimentos/{{ m.id }}/analise/aplicar" style="display: inline">
+        <input type="hidden" name="csrf" value="{{ csrf_token }}">
+        <button class="pequeno primario">Aplicar{{ ' (substitui «' ~ m.categoria.nome_completo ~ '»)' if m.categoria }}</button>
+      </form>
+      {% endif %}
+      {% else %}<span>nenhuma (a IA não teve certeza)</span>{% endif %}
+    </div>
+    {% if info.fontes %}
+    <p class="nota sem-margem">Fontes: {% for f in info.fontes %}<a href="{{ f }}" target="_blank" rel="noopener noreferrer">{{ f | replace('https://', '') | replace('http://', '') | truncate(40) }}</a>{{ ' · ' if not loop.last }}{% endfor %}</p>
+    {% endif %}
+    <p class="nota sem-margem">{{ analise.criado_em.strftime('%d/%m/%Y %H:%M') }} · {{ analise.modelo or 'IA' }}{{ ' · com pesquisa na web' if analise.web else ' · sem pesquisa na web' }}
+      · vale para todos os movimentos com este comerciante.</p>
+  </div>
+  {% elif not ia_disponivel %}
+  <p class="nota sem-margem">A análise por IA precisa da chave da Claude API (ficheiro <code>ia.env</code> na NAS).</p>
+  {% else %}
+  <p class="nota sem-margem analise-vazia">A IA identifica o comerciante (pesquisando na web), explica o que é o movimento e sugere a categoria.
+    Só é enviado a descrição, o valor, a data e o tipo de conta.</p>
+  {% endif %}
+</section>

@@ -853,3 +853,23 @@ body.a-personalizar .grupo-colunas { display: inline-flex; }
 .grupo-colunas button:last-child { border-radius: 0 var(--raio-p) var(--raio-p) 0; }
 .grupo-colunas button[aria-pressed="true"] { background: var(--texto); border-color: var(--texto); color: var(--fundo); }
 body.a-personalizar .grupo-cabecalho { flex-wrap: wrap; }
+.etiqueta-cartao { background: color-mix(in srgb, var(--cor-cartao) 18%, transparent); border-color: var(--cor-cartao);
+  color: var(--texto); text-decoration: none; }
+
+/* ------------------------------------------------------------------ detalhe do movimento: análise pela IA */
+.analise-passos { list-style: none; padding: 0; margin: .5rem 0 1rem; display: grid; gap: .45rem; }
+.analise-passos li { display: flex; align-items: center; gap: .6rem; color: var(--suave); }
+.analise-passos li::before { content: ""; width: 1.1rem; height: 1.1rem; border-radius: 50%; border: 2px solid var(--linha-forte); flex: none; }
+.analise-passos li.atual { color: var(--texto); font-weight: 600; }
+.analise-passos li.atual::before { border-color: var(--destaque); border-top-color: transparent; animation: rodar .8s linear infinite; }
+.analise-passos li.feito { color: var(--texto); }
+.analise-passos li.feito::before { content: "✓"; display: grid; place-items: center; font-size: .7rem; font-weight: 800;
+  background: var(--pos); border-color: var(--pos); color: var(--fundo); }
+@keyframes rodar { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .analise-passos li.atual::before { animation: none; } }
+.analise-resultado { display: grid; gap: .7rem; }
+.analise-quem { display: flex; flex-wrap: wrap; align-items: baseline; gap: .3rem .9rem; }
+.analise-comerciante { font-family: var(--fonte-titulo); font-size: 1.25rem; }
+.analise-explicacao { margin: 0; padding: .7rem .9rem; border-left: 3px solid var(--destaque); background: var(--superficie-2);
+  border-radius: 0 var(--raio-m) var(--raio-m) 0; }
+.analise-categoria { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
