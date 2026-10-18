@@ -32,11 +32,44 @@ def _token_valido(request: Request, codigo: str) -> None:
         raise HTTPException(status_code=404, detail="Página não encontrada.")
 
 
-def _carros(db: Session) -> list[Bem]:
-    """Carros em uso, das entidades que têm viaturas."""
+def _estado_carro(db: Session, b: Bem, hoje: date) -> str | None:
+    """None se o carro aparece na página de registo; senão o motivo."""
     from ..models import Entidade
+    ent = db.get(Entidade, b.entidade_id)
+    if not ent.tem("viaturas"):
+        return f"a entidade «{ent.nome}» não tem o módulo Viaturas (Administração › Entidades)"
+    if b.data_venda and b.data_venda < hoje:
+        return f"{'devolvido' if b.empresa else 'vendido'} em {b.data_venda:%d/%m/%Y} (Património › Editar)"
+    return None
+
+
+def _carros(db: Session) -> list[Bem]:
+    """Carros em uso (ainda não vendidos/devolvidos à data de hoje), das entidades que têm viaturas."""
+    hoje = date.today()
     return [b for b in db.scalars(select(Bem).where(Bem.tipo == "carro").order_by(Bem.nome))
-            if not b.vendido and db.get(Entidade, b.entidade_id).tem("viaturas")]
+            if _estado_carro(db, b, hoje) is None]
+
+
+def diagnostico_carros(db: Session) -> dict:
+    """Para o ecrã de validação: carros que aparecem, os que não aparecem (e porquê) e matrículas da Via Verde sem carro."""
+    from ..models import ViaVerde, norm_matricula
+    hoje = date.today()
+    todos = db.scalars(select(Bem).where(Bem.tipo == "carro").order_by(Bem.nome)).all()
+    fora = [(b, m) for b in todos if (m := _estado_carro(db, b, hoje))]
+    registadas = {norm_matricula(b.matricula) for b in todos if b.matricula}
+    sem_carro = sorted({m for m in db.scalars(select(ViaVerde.matricula).distinct())} - registadas)
+    return {"visiveis": [b for b in todos if _estado_carro(db, b, hoje) is None], "fora": fora, "sem_carro": sem_carro}
+
+
+def _postos(db: Session) -> list[str]:
+    """Postos usados recentemente (sugestões no campo «Posto»)."""
+    from ..models import Abastecimento
+    vistos = []
+    for p in db.scalars(select(Abastecimento.posto).where(Abastecimento.posto.is_not(None))
+                        .order_by(Abastecimento.data.desc()).limit(200)):
+        if p not in vistos:
+            vistos.append(p)
+    return vistos[:25]
 
 
 def _ler(form, erros: list) -> dict:
@@ -77,7 +110,9 @@ def _ler(form, erros: list) -> dict:
 def pagina(request: Request, codigo: str, ok: IntOpcional = None, db: Session = Depends(get_db)):
     _token_valido(request, codigo)
     feito = db.get(AbastecimentoPendente, ok) if ok else None
+    from .. import ia
     return render(request, "abastecer/pagina.html", carros=_carros(db), codigo=codigo, feito=feito, erros=[], v={},
+                  postos=_postos(db), ler_talao=ia.disponivel(),
                   agora=datetime.now())
 
 
@@ -95,12 +130,32 @@ async def registar(request: Request, codigo: str, db: Session = Depends(get_db))
     if not erros and (db.scalar(select(func.count()).select_from(AbastecimentoPendente)) or 0) >= MAX_PENDENTES:
         erros.append("Há demasiados abastecimentos por validar. Pede a quem gere a app para os validar primeiro.")
     if erros:
+        from .. import ia
         return render(request, "abastecer/pagina.html", status_code=400, carros=list(carros.values()), codigo=codigo,
-                      feito=None, erros=erros, v={k: str(form.get(k, "")) for k in form.keys()}, agora=datetime.now())
+                      feito=None, erros=erros, v={k: str(form.get(k, "")) for k in form.keys()}, agora=datetime.now(),
+                      postos=_postos(db), ler_talao=ia.disponivel())
     p = AbastecimentoPendente(bem_id=b.id, **dados)
     db.add(p)
     db.commit()
     return RedirectResponse(f"/abastecer/{codigo}?ok={p.id}", status_code=303)
+
+
+@router.post("/abastecer/{codigo}/ler")
+async def ler_talao(request: Request, codigo: str):
+    """Lê a fotografia do talão (e do conta-quilómetros) e devolve os campos para preencher o formulário."""
+    from fastapi.responses import JSONResponse
+    from .. import ia, talao
+    _token_valido(request, codigo)
+    form = await ler_form(request)
+    imagens = []
+    for campo in ("talao", "painel"):
+        f = form.get(campo)
+        if f is not None and getattr(f, "filename", ""):
+            imagens.append((await f.read(talao.MAX_BYTES + 1), (f.content_type or "image/jpeg").split(";")[0]))
+    try:
+        return JSONResponse({"ok": True, "campos": talao.ler(imagens)})
+    except ia.ErroIA as e:
+        return JSONResponse({"ok": False, "erro": str(e)}, status_code=400)
 
 
 # ------------------------------------------------------------------ validação (com login)
@@ -128,7 +183,8 @@ def validacao(request: Request, entidade: IntOpcional = None, u: Utilizador = De
             ultimo_km[p.bem_id] = r.km if r else None
     codigo = request.app.state.prefs.get("abastecer_token") or ""
     return render(request, "abastecer/validar.html", visiveis=visiveis, entidade=ent, pendentes=pend, ultimo_km=ultimo_km,
-                  pode_editar=PAPEIS[papel] >= PAPEIS["editar"], link=f"{str(request.base_url).rstrip('/')}/abastecer/{codigo}"
+                  pode_editar=PAPEIS[papel] >= PAPEIS["editar"], diag=diagnostico_carros(db),
+                  link=f"{str(request.base_url).rstrip('/')}/abastecer/{codigo}"
                   if codigo else None, montante_para_input=montante_para_input)
 
 

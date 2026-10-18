@@ -1,51 +1,190 @@
 {% extends "base.html" %}
 {% block titulo %}Abastecimento{% endblock %}
-{% block classe_main %}cartao-central{% endblock %}
+{% block classe_main %}ab-main{% endblock %}
 {% block cabecalho %}<meta name="robots" content="noindex">{% endblock %}
 {% block conteudo %}
-<h1>Abastecimento</h1>
-{% if feito %}
-<div class="aviso aviso-ok">Registado: {{ feito.bem.nome }} · {{ feito.data | data }} · {{ ('%.2f' % feito.litros).replace('.', ',') }} l
-  {%- if feito.valor %} · {{ feito.valor | eur }}{% endif %}{% if feito.km %} · {{ '{:,}'.format(feito.km).replace(',', ' ') }} km{% endif %}.
-  Fica por validar na app.</div>
-{% endif %}
-{% if erros %}<div class="aviso aviso-erro"><ul>{% for e in erros %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
-{% if not carros %}
-<p class="vazio">Não há carros registados na app.</p>
-{% else %}
-<form method="post" class="formulario">
-  <input type="hidden" name="csrf" value="{{ csrf_token }}">
-  <label>Carro
-    <select name="bem_id" id="carro" required>
-      {% if carros | length > 1 %}<option value="">— escolher —</option>{% endif %}
-      {% for b in carros %}<option value="{{ b.id }}" data-km="{{ b.km or '' }}" {% if v.bem_id == b.id | string %}selected{% endif %}>{{ b.nome }}{{ ' · ' ~ b.matricula if b.matricula }}</option>{% endfor %}
-    </select></label>
-  <div class="linha">
-    <label>Data <input type="date" name="data" value="{{ v.data or agora.date().isoformat() }}" max="{{ agora.date().isoformat() }}" required></label>
-    <label>Hora <input type="time" name="hora" value="{{ v.hora or agora.strftime('%H:%M') }}"></label>
+<div class="ab-pagina">
+  <header class="ab-topo">
+    <span class="ab-icone" aria-hidden="true">⛽</span>
+    <div><h1>Abastecimento</h1><span class="nota">{{ agora.strftime('%d/%m/%Y · %H:%M') }}</span></div>
+  </header>
+
+  {% if feito %}
+  <div class="ab-feito" role="status">
+    <strong>✓ Registado</strong>
+    <span>{{ feito.bem.nome }} · {{ ('%.2f' % feito.litros).replace('.', ',') }} l{% if feito.valor %} · {{ feito.valor | eur }}{% endif %}{% if feito.km %} · {{ '{:,}'.format(feito.km).replace(',', ' ') }} km{% endif %}</span>
+    <span class="nota">Fica por validar na app.</span>
   </div>
-  <label>Km no conta-quilómetros <input name="km" value="{{ v.km or '' }}" inputmode="numeric" placeholder="ex.: 18 064"></label>
-  <p class="nota" id="km-ultimo" hidden></p>
-  <div class="linha">
-    <label>Litros <input name="litros" value="{{ v.litros or '' }}" inputmode="decimal" required placeholder="41,04"></label>
-    <label>Valor pago (€) <input name="valor" value="{{ v.valor or '' }}" inputmode="decimal" required placeholder="84,91"></label>
-  </div>
-  <label class="opcao"><input type="checkbox" name="cheio" value="1" {% if not v or v.cheio %}checked{% endif %}> Depósito cheio</label>
-  <label>Posto <input name="posto" value="{{ v.posto or '' }}" maxlength="120" placeholder="ex.: Prio Vialonga"></label>
-  <label>Nota <input name="notas" value="{{ v.notas or '' }}" maxlength="300" placeholder="opcional"></label>
-  <label>Quem registou <input name="quem" value="{{ v.quem or '' }}" maxlength="60" placeholder="opcional" autocomplete="name"></label>
-  <button class="primario">Registar</button>
-</form>
-<p class="nota">O registo fica por validar: só conta na app depois de confirmado por quem a gere.</p>
-{% endif %}
+  {% endif %}
+  {% if erros %}<div class="aviso aviso-erro"><ul>{% for e in erros %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
+
+  {% if not carros %}
+  <p class="vazio">Não há carros disponíveis na app.</p>
+  {% else %}
+  {% if ler_talao %}
+  <section class="ab-cartao ab-foto">
+    <label class="ab-botao-foto">
+      <input type="file" id="foto-talao" accept="image/*" capture="environment" hidden>
+      <span aria-hidden="true">📷</span> Fotografar o talão
+    </label>
+    <label class="ab-ligacao-foto"><input type="file" id="foto-painel" accept="image/*" capture="environment" hidden>
+      + fotografia do conta-quilómetros (opcional)</label>
+    <p class="nota" id="foto-estado">A fotografia é lida automaticamente (Claude API) e preenche o formulário — confirma antes de registar.</p>
+  </section>
+  {% endif %}
+
+  <form method="post" class="ab-form" id="ab-form" autocomplete="off">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+
+    <fieldset class="ab-cartao">
+      <legend>Carro</legend>
+      <div class="ab-carros">
+        {% for b in carros %}
+        <label class="ab-carro">
+          <input type="radio" name="bem_id" value="{{ b.id }}" data-km="{{ b.km or '' }}" required
+                 {% if v.bem_id == b.id | string or (carros | length == 1) %}checked{% endif %}>
+          <span class="ab-carro-nome">{{ b.nome }}</span>
+          <span class="ab-carro-info">{{ b.matricula or '' }}{% if b.km %}{{ ' · ' if b.matricula }}{{ '{:,}'.format(b.km).replace(',', ' ') }} km{% endif %}</span>
+        </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+
+    <div class="ab-cartao">
+      <label class="ab-campo">Km no conta-quilómetros
+        <input name="km" id="ab-km" value="{{ v.km or '' }}" inputmode="numeric" placeholder="ex.: 18064">
+      </label>
+      <span class="nota" id="km-ultimo"></span>
+    </div>
+
+    <div class="ab-cartao ab-duplo">
+      <label class="ab-campo">Litros
+        <input name="litros" id="ab-litros" value="{{ v.litros or '' }}" inputmode="decimal" required placeholder="41,04">
+      </label>
+      <label class="ab-campo">Valor pago (€)
+        <input name="valor" id="ab-valor" value="{{ v.valor or '' }}" inputmode="decimal" required placeholder="84,91">
+      </label>
+      <span class="nota ab-preco" id="ab-preco"></span>
+    </div>
+
+    <div class="ab-cartao">
+      <label class="ab-interruptor"><input type="checkbox" name="cheio" value="1" {% if not v or v.cheio %}checked{% endif %}>
+        <span class="ab-trilho" aria-hidden="true"></span> Depósito cheio</label>
+      <label class="ab-campo">Posto
+        <input name="posto" id="ab-posto" value="{{ v.posto or '' }}" maxlength="120" list="ab-postos" placeholder="ex.: Prio Vialonga">
+      </label>
+      <datalist id="ab-postos">{% for p in postos %}<option value="{{ p }}">{% endfor %}</datalist>
+    </div>
+
+    <details class="ab-cartao ab-mais" {% if v.data or v.notas %}open{% endif %}>
+      <summary>Data, hora, nota e quem registou</summary>
+      <div class="ab-duplo">
+        <label class="ab-campo">Data <input type="date" name="data" id="ab-data" value="{{ v.data or agora.date().isoformat() }}" max="{{ agora.date().isoformat() }}"></label>
+        <label class="ab-campo">Hora <input type="time" name="hora" id="ab-hora" value="{{ v.hora or agora.strftime('%H:%M') }}"></label>
+      </div>
+      <label class="ab-campo">Nota <input name="notas" value="{{ v.notas or '' }}" maxlength="300" placeholder="opcional"></label>
+      <label class="ab-campo">Quem registou <input name="quem" id="ab-quem" value="{{ v.quem or '' }}" maxlength="60" placeholder="opcional" autocomplete="name"></label>
+    </details>
+
+    <button class="ab-registar" type="submit">Registar abastecimento</button>
+    <p class="nota ab-rodape">O registo fica por validar: só conta na app depois de confirmado por quem a gere.</p>
+  </form>
+  {% endif %}
+</div>
 {% endblock %}
 {% block scripts %}
 <script>
-  const sel = document.getElementById('carro'), info = document.getElementById('km-ultimo');
-  const mostra = () => {
-    const km = sel && sel.selectedOptions[0] ? sel.selectedOptions[0].dataset.km : '';
-    if (info) { info.hidden = !km; info.textContent = km ? `Última leitura conhecida: ${Number(km).toLocaleString('pt-PT')} km` : ''; }
+(() => {
+  const f = document.getElementById('ab-form');
+  if (!f) return;
+  const num = s => parseFloat(String(s || '').replace(/\s/g, '').replace(',', '.'));
+  const fmt = (x, c = 2) => x.toFixed(c).replace('.', ',');
+  const litros = document.getElementById('ab-litros'), valor = document.getElementById('ab-valor');
+  const preco = document.getElementById('ab-preco'), km = document.getElementById('ab-km'), kmUlt = document.getElementById('km-ultimo');
+  const guardar = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+  const ler = k => { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } };
+
+  // €/litro calculado à medida que se escreve
+  const atualizaPreco = () => {
+    const l = num(litros.value), v = num(valor.value);
+    preco.textContent = l > 0 && v > 0 ? `${fmt(v / l, 3)} €/l` : '';
   };
-  if (sel) { sel.addEventListener('change', mostra); mostra(); }
+  litros.addEventListener('input', atualizaPreco); valor.addEventListener('input', atualizaPreco); atualizaPreco();
+
+  // carro: lembrar o último escolhido; mostrar a última leitura de km
+  const carros = [...f.querySelectorAll('input[name=bem_id]')];
+  const ultimoCarro = ler('ab-carro');
+  if (!carros.some(c => c.checked) && ultimoCarro) carros.forEach(c => { if (c.value === ultimoCarro) c.checked = true; });
+  const mostraKm = () => {
+    const c = carros.find(x => x.checked);
+    const k = c && c.dataset.km;
+    kmUlt.textContent = k ? `Última leitura: ${Number(k).toLocaleString('pt-PT')} km` : '';
+  };
+  carros.forEach(c => c.addEventListener('change', () => { guardar('ab-carro', c.value); mostraKm(); }));
+  mostraKm();
+  km.addEventListener('input', () => {
+    const c = carros.find(x => x.checked), k = c && Number(c.dataset.km), v = Number(km.value.replace(/\D/g, ''));
+    km.classList.toggle('ab-alerta', !!(k && v && v < k));
+  });
+
+  // quem registou: lembrado neste telemóvel
+  const quem = document.getElementById('ab-quem');
+  if (quem && !quem.value) quem.value = ler('ab-quem');
+  f.addEventListener('submit', () => { if (quem) guardar('ab-quem', quem.value); });
+
+  // fotografia do talão (e do conta-quilómetros): reduzir no telemóvel, enviar, preencher
+  const fotoTalao = document.getElementById('foto-talao'), fotoPainel = document.getElementById('foto-painel');
+  const estado = document.getElementById('foto-estado');
+  if (!fotoTalao) return;
+  let painel = null;
+  const reduzir = ficheiro => new Promise((ok, erro) => {
+    const img = new Image();
+    img.onload = () => {
+      const max = 1600, r = Math.min(1, max / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * r); c.height = Math.round(img.height * r);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      c.toBlob(b => b ? ok(b) : erro(new Error('imagem')), 'image/jpeg', 0.85);
+      URL.revokeObjectURL(img.src);
+    };
+    img.onerror = () => erro(new Error('imagem'));
+    img.src = URL.createObjectURL(ficheiro);
+  });
+  const preencher = (campo, valorCampo) => {
+    const el = f.elements[campo];
+    if (!el || valorCampo === undefined || valorCampo === null || valorCampo === '') return;
+    el.value = valorCampo;
+    el.classList.add('ab-lido');
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  fotoPainel.addEventListener('change', () => {
+    painel = fotoPainel.files[0] || null;
+    estado.textContent = painel ? 'Fotografia do conta-quilómetros pronta — agora fotografa o talão.' : estado.textContent;
+  });
+  fotoTalao.addEventListener('change', async () => {
+    const ficheiro = fotoTalao.files[0];
+    if (!ficheiro) return;
+    estado.textContent = 'A ler o talão…';
+    try {
+      const fd = new FormData();
+      fd.append('csrf', f.elements.csrf.value);
+      fd.append('talao', await reduzir(ficheiro), 'talao.jpg');
+      if (painel) fd.append('painel', await reduzir(painel), 'painel.jpg');
+      const r = await fetch(location.pathname.replace(/\/$/, '') + '/ler', { method: 'POST', body: fd });
+      const d = await r.json();
+      if (!d.ok) throw new Error(d.erro || 'Não foi possível ler.');
+      const c = d.campos;
+      preencher('litros', c.litros !== undefined ? fmt(c.litros) : '');
+      preencher('valor', c.valor !== undefined ? fmt(c.valor) : '');
+      preencher('posto', c.posto);
+      preencher('km', c.km);
+      if (c.data) { const [a, m, dd] = c.data.split('-'); preencher('data', `${dd}/${m}/${a}`); }
+      preencher('hora', c.hora);
+      estado.textContent = 'Lido' + (c.combustivel ? ` (${c.combustivel})` : '') + ' — confirma os valores a amarelo e regista.';
+    } catch (e) {
+      estado.textContent = `Não foi possível ler a fotografia (${e.message}). Preenche à mão.`;
+    }
+  });
+})();
 </script>
 {% endblock %}

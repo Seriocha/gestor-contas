@@ -44,6 +44,10 @@
 
 <section class="cartao">
   <h2>Página de registo sem login</h2>
+  <p>Carros na página: {% for b in diag.visiveis %}<strong>{{ b.nome }}</strong>{{ ' (' ~ b.matricula ~ ')' if b.matricula }}{{ ', ' if not loop.last }}{% else %}<span class="neg">nenhum</span>{% endfor %}.</p>
+  {% if diag.fora %}<ul class="nota">{% for b, motivo in diag.fora %}<li><a href="/patrimonio/{{ b.id }}">{{ b.nome }}</a> não aparece: {{ motivo }}.</li>{% endfor %}</ul>{% endif %}
+  {% if diag.sem_carro %}<p class="nota">Matrículas na Via Verde sem carro registado: {% for m in diag.sem_carro %}<strong>{{ m[:2] ~ '-' ~ m[2:4] ~ '-' ~ m[4:] if m | length == 6 else m }}</strong>{{ ', ' if not loop.last }}{% endfor %}
+    — regista-as em Património › + Carro para aparecerem aqui.</p>{% endif %}
   <p class="nota">Uma página simples para registar abastecimentos no telemóvel, sem entrar na app. Funciona só onde a app é acessível
     (rede de casa / VPN) e com o código secreto do link — guarda-o como atalho no ecrã do telemóvel. Gerar um novo invalida o anterior.</p>
   {% if link %}<p><a href="{{ link }}" target="_blank" rel="noopener"><code>{{ link }}</code></a></p>

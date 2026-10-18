@@ -4,7 +4,7 @@ Gestor financeiro doméstico, multiutilizador e self-hosted, para a NAS QNAP. Es
 importa movimentos de bancos portugueses e gere contas à ordem, cartões, investimentos e
 Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIGN.md).
 
-## Estado: v0.50.0
+## Estado: v0.51.0
 
 - Login com várias pessoas: passwords em argon2, bloqueio ao fim de 5 tentativas falhadas,
   proteção CSRF e invalidação das sessões quando a password muda.
@@ -37,6 +37,12 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.51.0 — Registo de abastecimentos no telemóvel.** A página sem login foi refeita para o telefone: letras e campos
+  grandes, carros em botões, km com a última leitura (aviso se for menor), €/l calculado à medida, posto com sugestões e
+  botão «Registar» sempre visível. Aparecem os carros da empresa com data de devolução futura; o ecrã de validação mostra
+  que carros estão na página, os que não estão (e porquê) e as matrículas da Via Verde sem carro registado. Com a chave da
+  Claude API, «📷 Fotografar o talão» (e, opcional, o conta-quilómetros) lê a fotografia no servidor e preenche o
+  formulário — confirma-se antes de registar; nada é gravado sem essa confirmação.
 - **v0.50.0 — Movimento associado a uma subscrição.** Na ficha de um débito escolhe-se a subscrição (ou cria-se uma já
   preenchida a partir dele, ficando associado). O débito associado conta nos pagamentos dessa subscrição mesmo que o texto não
   bata com o padrão, deixa de contar noutra e de ser sugerido; se a subscrição não tinha texto do extrato, fica com o deste

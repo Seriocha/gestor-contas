@@ -49,8 +49,8 @@ def test_registar_sem_login_e_validar(admin, app):
     anonimo = TestClient(app)                                    # sem sessão
     assert anonimo.get("/abastecer/errado").status_code == 404
     pg = anonimo.get(f"/abastecer/{codigo}")
-    assert pg.status_code == 200 and "Frontera · BU-07-US" in pg.text and "Saldo" not in pg.text
-    bid = re.search(r'<option value="(\d+)"', pg.text).group(1)
+    assert pg.status_code == 200 and "ab-carro-nome\">Frontera" in pg.text and "BU-07-US" in pg.text and "Saldo" not in pg.text
+    bid = re.search(r'name="bem_id" value="(\d+)"', pg.text).group(1)
     r = anonimo.post(f"/abastecer/{codigo}", data={"csrf": _csrf(pg), "bem_id": bid, "data": ONTEM, "hora": "20:03",
                                                    "km": "18 064", "litros": "41,04", "valor": "84,91", "cheio": "1",
                                                    "posto": "Intermarché", "quem": "Ana"}, follow_redirects=False)
@@ -82,7 +82,7 @@ def test_rejeitar_e_link_novo_invalida(admin, app):
     codigo = _link(admin)
     anonimo = TestClient(app)
     pg = anonimo.get(f"/abastecer/{codigo}")
-    bid = re.search(r'<option value="(\d+)"', pg.text).group(1)
+    bid = re.search(r'name="bem_id" value="(\d+)"', pg.text).group(1)
     anonimo.post(f"/abastecer/{codigo}", data={"csrf": _csrf(pg), "bem_id": bid, "data": ONTEM, "litros": "10",
                                                "valor": "20"})
     v = admin.get("/patrimonio/abastecimentos?entidade=1")
@@ -97,3 +97,43 @@ def test_rejeitar_e_link_novo_invalida(admin, app):
     f = admin.get("/patrimonio/abastecimentos?entidade=1")
     admin.post("/patrimonio/abastecimentos/link", data={"csrf": _csrf(f), "acao": "desligar"})
     assert anonimo.get(f"/abastecer/{novo}").status_code == 404
+
+
+def test_duas_viaturas_e_diagnostico(admin, app):
+    from datetime import date, timedelta
+    _post(admin, "/patrimonio/novo?entidade=1&tipo=carro", nome="Carro da empresa", uso="empresa", matricula="AC-71-ZE",
+          data_venda=(date.today() + timedelta(days=200)).isoformat(), revisao_meses="0")        # devolução no futuro
+    _post(admin, "/patrimonio/novo?entidade=1&tipo=carro", nome="Velho", data_venda="2020-01-01", revisao_meses="0")
+    codigo = _link(admin)
+    pg = TestClient(app).get(f"/abastecer/{codigo}").text
+    assert "Frontera" in pg and "Carro da empresa" in pg and "Velho" not in pg
+    v = admin.get("/patrimonio/abastecimentos?entidade=1").text
+    assert "Carros na página" in v and "Velho</a> não aparece: vendido em 01/01/2020" in v
+
+
+def test_ler_talao_por_fotografia(admin, app, monkeypatch):
+    import json
+    from app import ia
+    codigo = _link(admin)
+    anonimo = TestClient(app)
+    pg = anonimo.get(f"/abastecer/{codigo}")
+    assert "Fotografar o talão" not in pg.text                       # sem chave da API não aparece
+    monkeypatch.setattr(ia, "disponivel", lambda: True)
+    enviado = {}
+
+    def falso(sistema, conteudo, **k):
+        enviado["conteudo"] = conteudo
+        return json.dumps({"data": ONTEM, "hora": "20:03", "litros": "41.04", "preco_litro": 2.069, "valor": None,
+                           "posto": "Intermarché Santa Iria", "combustivel": "gasóleo", "km": None, "confianca": 0.9})
+    monkeypatch.setattr(ia, "_chamar", falso)
+    pg = anonimo.get(f"/abastecer/{codigo}")
+    assert "Fotografar o talão" in pg.text
+    r = anonimo.post(f"/abastecer/{codigo}/ler", data={"csrf": _csrf(pg)},
+                     files={"talao": ("t.jpg", b"fake-jpeg", "image/jpeg")})
+    d = r.json()
+    assert d["ok"] and d["campos"]["litros"] == 41.04 and d["campos"]["valor"] == 84.91   # valor = litros × €/l
+    assert d["campos"]["data"] == ONTEM and d["campos"]["posto"] == "Intermarché Santa Iria"
+    assert enviado["conteudo"][1]["type"] == "image"
+    r = anonimo.post(f"/abastecer/{codigo}/ler", data={"csrf": _csrf(pg)})
+    assert r.status_code == 400 and "Falta a fotografia" in r.json()["erro"]
+    assert anonimo.post("/abastecer/errado/ler", data={"csrf": _csrf(pg)}).status_code == 404
