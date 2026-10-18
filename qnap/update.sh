@@ -22,6 +22,18 @@ if [ -f "$BASE/ia.env" ]; then
   echo "Sugestões por IA: chave lida de $BASE/ia.env"
 fi
 
+# Extratos bancários (opcional): pasta partilhada da NAS com uma subpasta por banco (Santander/, ActivoBank/…).
+# A app lê-a periodicamente e os ficheiros validados passam para <banco>/importados/. Outra pasta:
+#   EXTRATOS_DIR=/share/Outra/Pasta sh update.sh       (caminho sem espaços)
+EXTRATOS_DIR="${EXTRATOS_DIR:-/share/Extratos}"
+EXTRATOS_OPTS=""
+if [ -d "$EXTRATOS_DIR" ]; then
+  EXTRATOS_OPTS="-v $EXTRATOS_DIR:/importar:rw -e GESTOR_IMPORT_DIR=/importar"
+  echo "Extratos: pasta $EXTRATOS_DIR montada em /importar"
+else
+  echo "Extratos: $EXTRATOS_DIR não existe — leitura automática desligada"
+fi
+
 echo "A obter a imagem mais recente ($IMAGE)..."
 docker pull "$IMAGE"
 
@@ -38,6 +50,7 @@ docker run -d \
   -v "$BASE/data:/data:rw" \
   -v "$BASE/backup:/backup:rw" \
   $IA_OPTS \
+  $EXTRATOS_OPTS \
   "$IMAGE"
 
 echo "A limpar imagens antigas..."

@@ -307,6 +307,14 @@ def _tarefas_app(db: Session, ent: Entidade, prefs: dict, hoje: date, ate: date)
     if n:
         out.append(Item(hoje, f"Validar {n} abastecimento{'s' if n != 1 else ''}", "registados na página sem login", None,
                         f"/patrimonio/abastecimentos?entidade={ent.id}", "validar"))
+    # extratos da pasta partilhada à espera de validação (os desta entidade e os ainda sem conta)
+    from .models import Conta, ImportacaoPendente
+    n = db.scalar(select(func.count()).select_from(ImportacaoPendente).outerjoin(Conta, ImportacaoPendente.conta_id == Conta.id)
+                  .where(ImportacaoPendente.estado == "pendente",
+                         (Conta.entidade_id == ent.id) | ImportacaoPendente.conta_id.is_(None))) or 0
+    if n:
+        out.append(Item(hoje, f"Validar {n} extrato{'s' if n != 1 else ''}", "da pasta partilhada da NAS", None,
+                        "/admin/tarefas#pasta", "validar"))
     return out
 
 

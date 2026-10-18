@@ -8,8 +8,9 @@ from sqlalchemy.orm import Session, selectinload
 from datetime import date
 
 from .. import investimentos, servicos, tarefas
-from ..deps import IntOpcional, auditar, entidade_escolhida, entidades_visiveis, exigir_papel, flash, get_db, render, utilizador_atual
-from ..models import PAPEIS, Conta, Importacao, Utilizador
+from ..deps import (IntOpcional, auditar, entidade_escolhida, entidades_visiveis, exigir_papel, flash, get_db, papel_em,
+                    render, utilizador_atual)
+from ..models import PAPEIS, Conta, Importacao, ImportacaoPendente, Utilizador
 from ..parsers import FormatoDesconhecido, ler_extrato
 from ..seguranca import ler_form
 
@@ -74,6 +75,15 @@ async def previa(request: Request, u: Utilizador = Depends(utilizador_atual), db
     conteudo = await ficheiro.read(servicos.TAMANHO_MAX + 1)
     if len(conteudo) > servicos.TAMANHO_MAX:
         return _pagina(request, db, u, 400, erro="Ficheiro demasiado grande (máx. 10 MB).", conta_id=conta.id)
+    return mostrar_previa(request, db, u, conta, ficheiro.filename, conteudo)
+
+
+def mostrar_previa(request: Request, db: Session, u: Utilizador, conta: Conta, nome: str, conteudo: bytes,
+                   pendente=None):
+    """Pré-visualização de um extrato para uma conta (carregado à mão ou vindo da pasta partilhada da NAS)."""
+    class _F:                       # o código abaixo usa ficheiro.filename
+        filename = nome
+    ficheiro = _F()
     try:
         extrato = ler_extrato(ficheiro.filename, conteudo)
     except FormatoDesconhecido as e:
@@ -128,7 +138,14 @@ async def previa(request: Request, u: Utilizador = Depends(utilizador_atual), db
     novos = [l for l in linhas if not l.duplicado]
     return render(request, "importar/previa.html", conta=conta, extrato=extrato, linhas=linhas,
                   n_novos=len(novos), soma_novos=sum(l.montante for l in novos), avisos=avisos, erros=erros,
-                  sha=sha, nome=ficheiro.filename)
+                  sha=sha, nome=ficheiro.filename, pendente=pendente,
+                  contas_pendente=_contas_para(db, u, pendente) if pendente else [])
+
+
+def _contas_para(db: Session, u: Utilizador, pendente) -> list[Conta]:
+    """Contas que se podem escolher para um extrato da pasta (as ativas que o utilizador pode editar)."""
+    contas = db.scalars(select(Conta).where(Conta.ativa).order_by(Conta.entidade_id, Conta.nome)).all()
+    return [c for c in contas if PAPEIS.get(papel_em(db, u, c.entidade_id) or "", 0) >= PAPEIS["editar"]]
 
 
 @router.post("/confirmar")
@@ -151,6 +168,10 @@ async def confirmar(request: Request, u: Utilizador = Depends(utilizador_atual),
         raise HTTPException(status_code=400, detail=erro_sub or "Moeda do extrato diferente da da conta.")
     imp, msg = servicos.confirmar(db, conta, extrato, nome, sha, u)
     auditar(db, u, "importacao", f"{imp.id}: {conta.nome} — {imp.n_novos} novos, {imp.n_duplicados} duplicados")
+    pend_txt = str(form.get("pendente", ""))
+    pend = db.get(ImportacaoPendente, int(pend_txt)) if pend_txt.isdigit() else None
+    if pend and (pend.estado != "pendente" or pend.sha256 != sha):
+        pend = None
     try:
         db.commit()
     except IntegrityError:
@@ -169,8 +190,20 @@ async def confirmar(request: Request, u: Utilizador = Depends(utilizador_atual),
         pagamentos += f" {emp['estimadas']} prestação(ões) estimada(s) até chegar o extrato do empréstimo."
     if emp["substituidas"]:
         pagamentos += f" {emp['substituidas']} estimativa(s) substituída(s) pelos valores reais."
+    if pend:
+        # extrato da pasta partilhada: validado → fica registado e o ficheiro passa para importados/
+        from datetime import datetime
+        from .. import pasta_importacao
+        pend.estado, pend.conta_id, pend.importacao_id = "validada", conta.id, imp.id
+        pend.tratado_em, pend.tratado_por = datetime.now(), u.id
+        aviso = pasta_importacao.mover_para_importados(request.app.state.defs.import_dir, pend, date.today())
+        pend.nota = aviso
+        db.commit()
+        pagamentos += f" Ficheiro {'movido para importados/' if not aviso else 'NÃO movido: ' + aviso}"
     flash(request, f"Importados {imp.n_novos} movimentos novos ({imp.n_duplicados} já existiam); "
                    f"{imp.n_qualificados} categorizados pelas regras." + pagamentos + (f" {msg}" if msg else ""))
+    if pend:
+        return RedirectResponse("/admin/tarefas#pasta", status_code=303)
     return RedirectResponse(f"/contas/{conta.id}/movimentos", status_code=303)
 
 

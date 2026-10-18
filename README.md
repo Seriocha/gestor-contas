@@ -4,7 +4,7 @@ Gestor financeiro doméstico, multiutilizador e self-hosted, para a NAS QNAP. Es
 importa movimentos de bancos portugueses e gere contas à ordem, cartões, investimentos e
 Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIGN.md).
 
-## Estado: v0.54.0
+## Estado: v0.55.0
 
 - Login com várias pessoas: passwords em argon2, bloqueio ao fim de 5 tentativas falhadas,
   proteção CSRF e invalidação das sessões quando a password muda.
@@ -37,6 +37,14 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.55.0 — Extratos numa pasta partilhada da NAS, lidos automaticamente.** Uma subpasta por banco
+  (`/share/Extratos/Santander/`, `ActivoBank/`…), montada no container em `/importar` (`GESTOR_IMPORT_DIR`; o
+  `qnap/update.sh` monta-a se existir). A app lê a pasta de hora a hora (15 min a 1 dia, em Administração › Tarefas,
+  com «Ler a pasta agora») e cada ficheiro novo (pelo conteúdo) fica **por validar** — nada entra nos movimentos sozinho.
+  A conta é detetada pelo banco (formato e nome da subpasta), tipo e moeda, n.º de conta no ficheiro e, havendo várias,
+  pelos movimentos que já existem. «Ver e validar» mostra a pré-visualização (a conta pode ser mudada); validado, é
+  importado e o ficheiro passa para `<banco>/importados/AAAA-MM-DD_<ficheiro>`. Rejeitado, fica na pasta e não volta a
+  ser proposto. Os por validar aparecem na agenda do Início.
 - **v0.54.0 — Manutenção mais arrumada; editar idas à oficina e associar o movimento.** No separador Manutenção do carro,
   as operações do plano ficam num bloco fechado (com o número em atraso / em breve à vista) e o registo só abre com
   «+ Nova ida à oficina». Ao registar — ou depois, em «Editar» na lista das idas à oficina — pesquisa-se o débito do

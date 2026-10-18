@@ -48,6 +48,19 @@ Opcional, no mesmo ficheiro: `GESTOR_IA_MODELO=claude-haiku-5-5` (o modelo por
 omissão). Copiar a versão nova de `qnap/update.sh` para a NAS (é ela que lê o
 `ia.env`). A chave nunca vai para o repositório nem para o chat.
 
+## Extratos bancários numa pasta partilhada (leitura automática)
+
+1. Criar a pasta partilhada `Extratos` no QTS (Painel de Controlo › Pastas partilhadas) — fica em `/share/Extratos`.
+2. Dentro, uma subpasta por banco: `Santander/`, `ActivoBank/`, `Revolut/`, `BiG/`, `Credito Agricola/`…
+   (o nome ajuda a reconhecer o banco; a conta é detetada pelo formato, n.º de conta e movimentos já importados).
+3. Correr outra vez o `update.sh` (monta `/share/Extratos` em `/importar`). Noutra pasta:
+   `EXTRATOS_DIR=/share/Outra sh update.sh`.
+
+A app lê a pasta de hora a hora (configurável em Administração › Tarefas, onde também há «Ler a pasta agora»).
+Nada é importado sozinho: cada ficheiro novo fica **por validar** em Administração › Tarefas; «Ver e validar» mostra a
+pré-visualização habitual (com a conta, que se pode mudar). Validado, é importado e o ficheiro passa para
+`<banco>/importados/AAAA-MM-DD_<ficheiro>`. Rejeitado, fica na pasta e não volta a ser proposto.
+
 ## Segurança
 
 - **Não abrir a porta 8200 no router.** Acesso de fora só por VPN (QVPN/Tailscale).

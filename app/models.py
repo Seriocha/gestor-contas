@@ -270,6 +270,35 @@ class Importacao(Base):
     utilizador: Mapped[Utilizador | None] = relationship()
 
 
+class ImportacaoPendente(Base):
+    """Extrato encontrado na pasta partilhada da NAS (lida periodicamente): fica à espera de validação pelo
+    administrador (Administração › Tarefas). Validado, é importado como os outros e o ficheiro passa para importados/."""
+    __tablename__ = "importacao_pendente"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    pasta: Mapped[str] = mapped_column(String(120))                    # subpasta (banco)
+    ficheiro: Mapped[str] = mapped_column(String(255))
+    caminho: Mapped[str] = mapped_column(String(500))                  # relativo à pasta partilhada
+    sha256: Mapped[str] = mapped_column(String(64), index=True)
+    parser: Mapped[str | None] = mapped_column(String(30))
+    banco: Mapped[str | None] = mapped_column(String(60))
+    conta_id: Mapped[int | None] = mapped_column(ForeignKey("conta.id", ondelete="SET NULL"))
+    deteccao: Mapped[str | None] = mapped_column(String(200))         # como a conta foi escolhida (ou porque não)
+    n_lidos: Mapped[int] = mapped_column(Integer, default=0)
+    n_novos: Mapped[int | None] = mapped_column(Integer)
+    data_ini: Mapped[date | None] = mapped_column(Date)
+    data_fim: Mapped[date | None] = mapped_column(Date)
+    erro: Mapped[str | None] = mapped_column(String(500))
+    estado: Mapped[str] = mapped_column(String(12), default="pendente")   # pendente | validada | rejeitada | erro
+    nota: Mapped[str | None] = mapped_column(String(300))
+    detetado_em: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, server_default=func.now())
+    tratado_em: Mapped[datetime | None] = mapped_column(DateTime)
+    tratado_por: Mapped[int | None] = mapped_column(ForeignKey("utilizador.id", ondelete="SET NULL"))
+    importacao_id: Mapped[int | None] = mapped_column(ForeignKey("importacao.id", ondelete="SET NULL"))
+
+    conta: Mapped["Conta | None"] = relationship()
+
+
 class Movimento(Base):
     __tablename__ = "movimento"
     __table_args__ = (UniqueConstraint("conta_id", "hash_dedup"),)

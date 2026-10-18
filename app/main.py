@@ -13,7 +13,7 @@ from sqlalchemy.orm import sessionmaker
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import backup, formatos, preferencias, tarefas
+from . import backup, formatos, pasta_importacao, preferencias, tarefas
 from . import patrimonio as pt
 from .config import BASE_DIR, carregar_definicoes
 from .db import criar_engine, url_sqlite
@@ -23,7 +23,7 @@ from .routes import (abastecer, admin, auth, inicio, posicoes, categorias, conta
 from .seed import semear
 
 APP_DIR = Path(__file__).resolve().parent
-VERSAO = "0.54.0"
+VERSAO = "0.55.0"
 
 
 def aplicar_migracoes(db_path: Path) -> None:
@@ -45,7 +45,8 @@ def create_app(data_dir: Path | None = None, backups_automaticos: bool = True) -
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI):
         tarefas_fundo = [asyncio.create_task(backup.ciclo_backups(defs)),
-                         asyncio.create_task(pt.ciclo_revisoes(SessionLocal, lambda: app.state.prefs))] \
+                         asyncio.create_task(pt.ciclo_revisoes(SessionLocal, lambda: app.state.prefs)),
+                         asyncio.create_task(pasta_importacao.ciclo(SessionLocal, defs, lambda: app.state.prefs))] \
             if backups_automaticos else []
         yield
         for t in tarefas_fundo:

@@ -23,6 +23,8 @@ class Definicoes:
     cookie_secure: bool
     backup_intervalo_horas: int
     backup_retencao_dias: int
+    # Pasta partilhada da NAS com os extratos (uma subpasta por banco), lida periodicamente. None = desligado.
+    import_dir: Path | None = None
 
     @property
     def db_path(self) -> Path:
@@ -54,4 +56,5 @@ def carregar_definicoes(data_dir: Path | None = None) -> Definicoes:
         cookie_secure=os.environ.get("GESTOR_COOKIE_SECURE", "0") == "1",
         backup_intervalo_horas=int(os.environ.get("GESTOR_BACKUP_INTERVALO_HORAS", "24")),
         backup_retencao_dias=int(os.environ.get("GESTOR_BACKUP_RETENCAO_DIAS", "30")),
+        import_dir=Path(os.environ["GESTOR_IMPORT_DIR"]) if os.environ.get("GESTOR_IMPORT_DIR") else None,
     )

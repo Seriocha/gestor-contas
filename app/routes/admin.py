@@ -365,8 +365,89 @@ def tarefas(request: Request, admin: Utilizador = Depends(exigir_admin), db: Ses
     from ..models import Abastecimento, Bem
     carros = db.scalars(select(Bem).where(Bem.tipo == "carro").order_by(Bem.entidade_id, Bem.nome)).all()
     n = dict(db.execute(select(Abastecimento.bem_id, func.count()).group_by(Abastecimento.bem_id)).all())
+    from .. import pasta_importacao as pi
+    from ..models import ImportacaoPendente
+    defs = request.app.state.defs
+    pasta_ok, pasta_msg = pi.estado_pasta(defs.import_dir)
+    historico = db.scalars(select(ImportacaoPendente).where(ImportacaoPendente.estado.in_(("validada", "rejeitada")))
+                           .order_by(ImportacaoPendente.tratado_em.desc()).limit(10)).all()
     return render(request, "admin/tarefas.html", carros=carros, n_abast=n,
-                  entidades={e.id: e for e in _entidades(db)})
+                  entidades={e.id: e for e in _entidades(db)}, pasta_ok=pasta_ok, pasta_msg=pasta_msg,
+                  pendentes=pi.pendentes(db), historico=historico, intervalos=pi.INTERVALOS,
+                  intervalo=pi.intervalo_minutos(request.app.state.prefs))
+
+
+@router.post("/pasta/ler")
+async def pasta_ler(request: Request, admin: Utilizador = Depends(exigir_admin), db: Session = Depends(get_db)):
+    from .. import pasta_importacao as pi
+    await ler_form(request)
+    defs = request.app.state.defs
+    r = pi.ler(db, defs.import_dir, defs.data_dir)
+    db.commit()
+    if not r.pasta_ok:
+        flash(request, r.mensagem, "erro")
+    else:
+        n = len(r.novos)
+        msg = f"Pasta lida: {n} extrato{'s' if n != 1 else ''} novo{'s' if n != 1 else ''} por validar"
+        if r.erros:
+            msg += f", {len(r.erros)} com erro"
+        if r.ignorados:
+            msg += f", {r.ignorados} já conhecido{'s' if r.ignorados != 1 else ''}"
+        flash(request, msg + ".")
+    return RedirectResponse("/admin/tarefas#pasta", status_code=303)
+
+
+@router.post("/pasta/intervalo")
+async def pasta_intervalo(request: Request, admin: Utilizador = Depends(exigir_admin), db: Session = Depends(get_db)):
+    from .. import pasta_importacao as pi
+    form = await ler_form(request)
+    v = str(form.get("minutos", ""))
+    if v.isdigit() and int(v) in pi.INTERVALOS:
+        preferencias.gravar(db, "pasta_intervalo_minutos", v)
+        db.commit()
+        request.app.state.prefs = preferencias.carregar(db)
+        flash(request, f"A pasta passa a ser lida a cada {pi.INTERVALOS[int(v)]} (a partir da próxima leitura).")
+    return RedirectResponse("/admin/tarefas#pasta", status_code=303)
+
+
+@router.get("/pasta/{pid}")
+def pasta_validar(request: Request, pid: int, conta: str = "", admin: Utilizador = Depends(exigir_admin),
+                  db: Session = Depends(get_db)):
+    """Pré-visualização de um extrato da pasta (com a conta detetada, ou a escolhida) para validar."""
+    from .. import pasta_importacao as pi
+    from ..models import Conta, ImportacaoPendente
+    from .importar import mostrar_previa
+    p = db.get(ImportacaoPendente, pid)
+    if not p or p.estado != "pendente":
+        flash(request, "Este extrato já não está por validar.", "erro")
+        return RedirectResponse("/admin/tarefas#pasta", status_code=303)
+    c = db.get(Conta, int(conta)) if conta.isdigit() else (db.get(Conta, p.conta_id) if p.conta_id else None)
+    if c is None:
+        c = db.scalars(select(Conta).where(Conta.ativa).order_by(Conta.entidade_id, Conta.nome)).first()
+        if c is None:
+            flash(request, "Ainda não há contas.", "erro")
+            return RedirectResponse("/admin/tarefas#pasta", status_code=303)
+    try:
+        nome, conteudo = pi.extrato_de(p, request.app.state.defs.data_dir)
+    except FileNotFoundError:
+        flash(request, "O conteúdo deste extrato já não está guardado. Rejeita-o e volta a ler a pasta.", "erro")
+        return RedirectResponse("/admin/tarefas#pasta", status_code=303)
+    return mostrar_previa(request, db, admin, c, nome, conteudo, pendente=p)
+
+
+@router.post("/pasta/{pid}/rejeitar")
+async def pasta_rejeitar(request: Request, pid: int, admin: Utilizador = Depends(exigir_admin),
+                         db: Session = Depends(get_db)):
+    from ..models import ImportacaoPendente
+    await ler_form(request)
+    p = db.get(ImportacaoPendente, pid)
+    if not p or p.estado not in ("pendente", "erro"):
+        raise HTTPException(status_code=404, detail="Não encontrado.")
+    p.estado, p.tratado_em, p.tratado_por = "rejeitada", datetime.now(), admin.id
+    auditar(db, admin, "pasta_rejeitada", p.caminho)
+    db.commit()
+    flash(request, f"«{p.ficheiro}» rejeitado: não é importado e não volta a ser proposto (o ficheiro fica na pasta).")
+    return RedirectResponse("/admin/tarefas#pasta", status_code=303)
 
 
 @router.post("/tarefas/fuelio")

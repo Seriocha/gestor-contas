@@ -2,6 +2,22 @@
 {% block titulo %}Pré-visualização{% endblock %}
 {% block conteudo %}
 <h1>Pré-visualização <span class="nota">· {{ conta.nome }} ({{ conta.entidade.nome }})</span></h1>
+{% if pendente %}
+<section class="cartao">
+  <p class="sem-margem">📂 Extrato da pasta partilhada: <strong>{{ pendente.caminho }}</strong>
+    <span class="nota">· encontrado em {{ pendente.detetado_em.strftime('%d/%m/%Y %H:%M') }}{{ ' · conta detetada por ' ~ pendente.deteccao if pendente.deteccao }}</span></p>
+  <form method="get" action="/admin/pasta/{{ pendente.id }}" class="formulario separado" style="max-width: none">
+    <div class="linha">
+      <label>Conta
+        <select name="conta" onchange="this.form.submit()">
+          {% for c in contas_pendente %}<option value="{{ c.id }}" {% if c.id == conta.id %}selected{% endif %}>{{ c.entidade.nome }} · {{ c.nome }}</option>{% endfor %}
+        </select></label>
+      <noscript><button>Mudar</button></noscript>
+    </div>
+  </form>
+  <p class="nota sem-margem">Ao validar, os movimentos novos são importados e o ficheiro passa para <code>{{ pendente.pasta }}/importados/</code>.</p>
+</section>
+{% endif %}
 {% for e in erros %}<div class="aviso aviso-erro">{{ e }}</div>{% endfor %}
 {% for a in avisos %}<div class="aviso aviso-alerta">{{ a }}</div>{% endfor %}
 
@@ -20,11 +36,17 @@
     <input type="hidden" name="conta_id" value="{{ conta.id }}">
     <input type="hidden" name="sha" value="{{ sha }}">
     <input type="hidden" name="nome" value="{{ nome }}">
+    {% if pendente %}
+    <input type="hidden" name="pendente" value="{{ pendente.id }}">
+    <button class="primario">{{ 'Validar e importar %d movimentos' % n_novos if n_novos else 'Validar (nada de novo)' }}</button>
+    <a href="/admin/tarefas#pasta">Voltar</a>
+    {% else %}
     <button class="primario" {% if not n_novos %}disabled{% endif %}>Importar {{ n_novos }} movimentos</button>
     <a href="/importar">Cancelar</a>
+    {% endif %}
   </form>
   {% else %}
-  <p><a href="/importar">Voltar</a></p>
+  <p><a href="{{ '/admin/tarefas#pasta' if pendente else '/importar' }}">Voltar</a></p>
   {% endif %}
 </section>
 

@@ -22,6 +22,8 @@ OMISSAO = {
     "recheio_valor_minimo": "50",          # euros: compras abaixo disto não entram no recheio
     # Página de registo de abastecimentos sem login: código secreto do link (vazio = desligada).
     "abastecer_token": "",
+    # Pasta partilhada da NAS com extratos: de quantos em quantos minutos é lida.
+    "pasta_intervalo_minutos": "60",
 }
 
 

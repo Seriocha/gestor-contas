@@ -3,6 +3,59 @@
 {% block conteudo %}
 <h1>Administração</h1>
 {% include "admin/_menu.html" %}
+<section class="cartao" id="pasta">
+  <div class="cartao-cabecalho">
+    <h2>Extratos da pasta partilhada</h2>
+    {% if pasta_ok %}
+    <form method="post" action="/admin/pasta/ler"><input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="pequeno">🔄 Ler a pasta agora</button></form>
+    {% endif %}
+  </div>
+  {% if pasta_ok %}
+  <p class="nota">Pasta <code>{{ pasta_msg }}</code> — uma subpasta por banco (ex.: <code>Santander/</code>, <code>ActivoBank/</code>, <code>Revolut/</code>).
+    Os ficheiros novos são lidos sozinhos e ficam aqui à espera: nada entra nos movimentos sem validares. Validado, o ficheiro passa
+    para <code>&lt;banco&gt;/importados/</code> com a data à frente.</p>
+  <form method="post" action="/admin/pasta/intervalo" class="linha" style="align-items: end; gap: .6rem">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <label>Ler a pasta a cada
+      <select name="minutos" onchange="this.form.submit()">{% for m, rot in intervalos.items() %}<option value="{{ m }}" {% if m == intervalo %}selected{% endif %}>{{ rot }}</option>{% endfor %}</select></label>
+    <noscript><button class="pequeno">Guardar</button></noscript>
+  </form>
+  {% else %}
+  <div class="aviso">{{ pasta_msg }} Para ligar: monta a pasta partilhada da NAS no container (ex.: <code>-v /share/Extratos:/importar</code>) e
+    define <code>GESTOR_IMPORT_DIR=/importar</code> — o <code>qnap/update.sh</code> faz isto sozinho se existir <code>/share/Extratos</code>.</div>
+  {% endif %}
+
+  {% set por_validar = pendentes | selectattr('estado', 'equalto', 'pendente') | list %}
+  {% set com_erro = pendentes | selectattr('estado', 'equalto', 'erro') | list %}
+  {% if por_validar %}
+  <h3>Por validar ({{ por_validar | length }})</h3>
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th>Ficheiro</th><th>Banco</th><th>Período</th><th>Conta</th><th class="num">Linhas</th><th class="num">Novos</th><th></th></tr></thead>
+    {% for p in por_validar %}
+    <tr><td><strong>{{ p.ficheiro }}</strong><br><span class="nota">{{ p.pasta }}/ · {{ p.detetado_em.strftime('%d/%m %H:%M') }}</span></td>
+      <td>{{ p.banco or '—' }}</td>
+      <td class="sem-quebra">{{ p.data_ini | data if p.data_ini }}{{ ' a ' ~ (p.data_fim | data) if p.data_fim }}</td>
+      <td>{% if p.conta %}{{ p.conta.entidade.nome }} · {{ p.conta.nome }}{% else %}<span class="neg">por escolher</span>{% endif %}
+        {% if p.deteccao %}<br><span class="nota">{{ p.deteccao }}</span>{% endif %}</td>
+      <td class="num">{{ p.n_lidos }}</td><td class="num">{{ p.n_novos if p.n_novos is not none else '—' }}</td>
+      <td class="sem-quebra"><a class="botao pequeno primario" href="/admin/pasta/{{ p.id }}">Ver e validar</a>
+        <form method="post" action="/admin/pasta/{{ p.id }}/rejeitar" style="display: inline" onsubmit="return confirm('Rejeitar este extrato? Não é importado e não volta a ser proposto.')">
+          <input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="ligacao">Rejeitar</button></form></td></tr>
+    {% endfor %}
+  </table></div>
+  {% elif pasta_ok %}<p class="vazio sem-margem">Nenhum extrato por validar.</p>{% endif %}
+  {% if com_erro %}
+  <h3>Não foi possível ler ({{ com_erro | length }})</h3>
+  <ul class="nota">{% for p in com_erro %}<li><strong>{{ p.pasta }}/{{ p.ficheiro }}</strong> — {{ p.erro }}
+    <form method="post" action="/admin/pasta/{{ p.id }}/rejeitar" style="display: inline"><input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="ligacao">Ignorar</button></form></li>{% endfor %}</ul>
+  {% endif %}
+  {% if historico %}
+  <details class="separado"><summary>Últimos tratados</summary>
+    <ul class="nota">{% for p in historico %}<li>{{ p.tratado_em.strftime('%d/%m/%Y %H:%M') }} · {{ p.pasta }}/{{ p.ficheiro }} ·
+      {{ 'validado' if p.estado == 'validada' else 'rejeitado' }}{{ ' → ' ~ p.conta.nome if p.conta and p.estado == 'validada' }}{{ ' · ' ~ p.nota if p.nota }}</li>{% endfor %}</ul>
+  </details>
+  {% endif %}
+</section>
 <section class="cartao">
   <h2>Importar histórico do Fuelio</h2>
   <p class="nota">Os abastecimentos novos registam-se na página de registo (Património › Abastecimentos). Aqui importa-se, uma vez ou para

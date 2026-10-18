@@ -20,8 +20,13 @@ services:
       - GESTOR_COOKIE_SECURE=0
       - GESTOR_BACKUP_INTERVALO_HORAS=24
       - GESTOR_BACKUP_RETENCAO_DIAS=30
+      # Pasta partilhada com os extratos (uma subpasta por banco), montada em /importar (ver volumes).
+      - GESTOR_IMPORT_DIR=/importar
     volumes:
       # Base de dados (gestor.db) e chave das sessões (secret.key).
       - /share/Container/gestor-contas/data:/data:rw
       # Backups diários da base de dados. Incluir esta pasta num job HBS3.
       - /share/Container/gestor-contas/backup:/backup:rw
+      # Extratos bancários: pasta partilhada da NAS (uma subpasta por banco). Lida periodicamente; os ficheiros
+      # validados passam para <banco>/importados/ (por isso :rw).
+      - /share/Extratos:/importar:rw
