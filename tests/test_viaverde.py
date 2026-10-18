@@ -116,7 +116,7 @@ def test_ligar_quando_o_banco_chega_depois(admin, app):
     _post(admin, "/patrimonio?entidade=1", "/patrimonio/atribuir", entidade="1")
     with app.state.SessionLocal() as db:
         assert db.scalar(select(ViaVerde)).movimento.data_mov == date(2026, 10, 31)
-    p = admin.get("/patrimonio?entidade=1").text
+    p = admin.get("/patrimonio/via-verde?entidade=1").text
     assert "sem carro com esta matrícula" in p
 
 

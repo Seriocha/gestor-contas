@@ -235,6 +235,37 @@ def lista(request: Request, arquivadas: IntOpcional = 0, ordem: str = "", agrupa
                   avisos=retificacoes.avisos(db, todas))
 
 
+@router.get("/cartoes")
+def cartoes_todos(request: Request, entidade: IntOpcional = None, u: Utilizador = Depends(utilizador_atual),
+                  db: Session = Depends(get_db)):
+    """Separador Cartões de débito: gastos de cada cartão (pessoa) de todas as contas da entidade."""
+    from .. import cartoes
+    from .. import relatorios as rel
+    visiveis, ent, _ = entidade_escolhida(request, db, u, entidade)
+    if not ent:
+        return render(request, "contas/cartoes_todos.html", entidade=None, visiveis=visiveis)
+    hoje = date.today()
+    de = max(rel.somar_meses(hoje.replace(day=1), -11), rel.inicio_analise(db, ent.id) or date.min)
+    gastos = cartoes.gastos(db, ent.id, de, hoje)
+    contas_ordem = db.scalars(select(Conta).where(Conta.entidade_id == ent.id, Conta.tipo == "ORDEM", Conta.ativa)
+                              .order_by(Conta.nome)).all()
+    return render(request, "contas/cartoes_todos.html", visiveis=visiveis, entidade=ent, gastos=gastos, de=de,
+                  contas_ordem=contas_ordem)
+
+
+@router.get("/emprestimos")
+def emprestimos_todos(request: Request, entidade: IntOpcional = None, u: Utilizador = Depends(utilizador_atual),
+                      db: Session = Depends(get_db)):
+    """Separador Empréstimos: as contas de empréstimo da entidade, com o capital em dívida."""
+    visiveis, ent, _ = entidade_escolhida(request, db, u, entidade)
+    if not ent:
+        return render(request, "contas/emprestimos_todos.html", entidade=None, visiveis=visiveis)
+    contas = db.scalars(select(Conta).where(Conta.entidade_id == ent.id, Conta.tipo == "EMPRESTIMO")
+                        .options(selectinload(Conta.instituicao)).order_by(Conta.ativa.desc(), Conta.nome)).all()
+    return render(request, "contas/emprestimos_todos.html", visiveis=visiveis, entidade=ent,
+                  linhas=[(c, saldo_conta(db, c)) for c in contas])
+
+
 @router.get("/cobertura")
 def ver_cobertura(request: Request, entidade: IntOpcional = None, u: Utilizador = Depends(utilizador_atual),
                   db: Session = Depends(get_db)):

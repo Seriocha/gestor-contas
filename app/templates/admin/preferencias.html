@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block titulo %}Preferências{% endblock %}
+{% block conteudo %}
+<h1>Administração</h1>
+{% include "admin/_menu.html" %}
+<section class="cartao" id="preferencias">
+  <h2>Preferências</h2>
+  <form method="post" action="/admin/preferencias" class="formulario">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <label class="opcao"><input type="checkbox" name="mostrar_iban_completo" value="1" {% if prefs.mostrar_iban_completo == '1' %}checked{% endif %}>
+      Mostrar o NIB/IBAN completo das contas</label>
+    <p class="nota sem-margem">Desligado, aparece só o país e os últimos 4 dígitos (PT50 •••• 1234). Vale para todos os utilizadores.
+      Os NIB gravados antes da v0.11 foram guardados já truncados: volta a escrevê-los em Contas › Editar para os veres completos.</p>
+    <fieldset>
+      <legend>Património</legend>
+      <label class="opcao"><input type="checkbox" name="avaliacao_automatica" value="1" {% if prefs.avaliacao_automatica == '1' %}checked{% endif %}>
+        Rever sozinho o valor das casas e carros (IA) quando passa o prazo de revisão de cada um</label>
+      <p class="nota sem-margem">Corre uma vez por dia e só com a chave da Claude API configurada (ia.env).</p>
+      <label class="opcao"><input type="checkbox" name="mostrar_minha_parte" value="1" {% if prefs.mostrar_minha_parte == '1' %}checked{% endif %}>
+        Mostrar a minha parte nas heranças (quota e 2.º cenário), também no Início da entidade pessoal</label>
+    </fieldset>
+    <fieldset>
+      <legend>Lembrete das tarefas de importação</legend>
+      <label class="opcao"><input type="checkbox" name="tarefas_ativas" value="1" {% if prefs.tarefas_ativas == '1' %}checked{% endif %}>
+        Lembrar as tarefas do mês (agenda do Início e aviso em Contas e fluxo)</label>
+      <div class="linha">
+        <label>Do dia <input type="number" name="tarefas_dia_ini" min="1" max="31" value="{{ prefs.tarefas_dia_ini }}"></label>
+        <label>Até ao dia <input type="number" name="tarefas_dia_fim" min="1" max="31" value="{{ prefs.tarefas_dia_fim }}"></label>
+      </div>
+      <p class="nota sem-margem">Se o último dia for menor que o primeiro, o período passa para o mês seguinte (ex.: 25 a 5).
+        O ciclo de cada mês começa no primeiro dia: uma conta conta como feita se foi importada ou atualizada desde essa data.
+        O separador <a href="/importar/tarefas">Importar › Tarefas do mês</a> está sempre disponível.</p>
+    </fieldset>
+    <div class="acoes-form"><button class="primario">Guardar preferências</button></div>
+  </form>
+</section>
+
+{% endblock %}

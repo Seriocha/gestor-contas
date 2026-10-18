@@ -4,7 +4,7 @@ from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request
 from pydantic import BeforeValidator
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .models import PAPEIS, Auditoria, Entidade, Permissao, Utilizador
@@ -111,8 +111,27 @@ def flash(request: Request, mensagem: str, tipo: str = "ok") -> None:
     request.session.setdefault("flash", []).append([tipo, mensagem])
 
 
+def por_validar(db: Session, u: Utilizador) -> int:
+    """O que espera validação (contador no menu «Importar»): extratos da pasta da NAS (administradores) e
+    abastecimentos registados na página sem login, das entidades que o utilizador vê."""
+    from .models import AbastecimentoPendente, Bem, ImportacaoPendente
+    n = 0
+    if u.is_admin:
+        n += db.scalar(select(func.count()).select_from(ImportacaoPendente).where(ImportacaoPendente.estado == "pendente")) or 0
+    ids = [e.id for e, _ in entidades_visiveis(db, u)]
+    if ids:
+        n += db.scalar(select(func.count()).select_from(AbastecimentoPendente).join(Bem).where(Bem.entidade_id.in_(ids))) or 0
+    return n
+
+
 def render(request: Request, template: str, status_code: int = 200, **ctx):
     ctx.setdefault("utilizador", getattr(request.state, "utilizador", None))
+    if ctx["utilizador"] is not None and "n_por_validar" not in ctx:
+        try:
+            with request.app.state.SessionLocal() as db:
+                ctx["n_por_validar"] = por_validar(db, ctx["utilizador"])
+        except Exception:          # o contador nunca impede a página de abrir
+            ctx["n_por_validar"] = 0
     ctx["flashes"] = request.session.pop("flash", [])
     ctx["csrf_token"] = csrf_token(request)
     return request.app.state.templates.TemplateResponse(request, template, ctx, status_code=status_code)

@@ -1,8 +1,15 @@
-<nav class="separadores">
-  <a href="/admin/utilizadores" {% if request.url.path.startswith('/admin/utilizadores') %}class="ativo"{% endif %}>Utilizadores</a>
-  <a href="/admin/entidades" {% if request.url.path.startswith('/admin/entidades') %}class="ativo"{% endif %}>Entidades</a>
-  <a href="/admin/consolidar" {% if request.url.path.startswith('/admin/consolidar') %}class="ativo"{% endif %}>Consolidação</a>
-  <a href="/admin/recheio" {% if request.url.path.startswith('/admin/recheio') %}class="ativo"{% endif %}>Recheio</a>
-  <a href="/admin/tarefas" {% if request.url.path.startswith('/admin/tarefas') %}class="ativo"{% endif %}>Tarefas</a>
-  <a href="/admin/importadores" {% if request.url.path.startswith('/admin/importadores') %}class="ativo"{% endif %}>Importadores</a>
+{# Separadores da Administração (só administradores). #}
+{% set c = request.url.path %}
+<nav class="abas-pagina" aria-label="Administração">
+  {% for href, rotulo, ativo in [
+      ('/admin/utilizadores', 'Utilizadores', c.startswith('/admin/utilizadores')),
+      ('/admin/entidades', 'Entidades', c.startswith('/admin/entidades')),
+      ('/admin/preferencias', 'Preferências', c.startswith('/admin/preferencias')),
+      ('/contas/cobertura', 'Cobertura', c == '/contas/cobertura'),
+      ('/admin/backups', 'Backups e atividade', c.startswith('/admin/backups')),
+      ('/admin/consolidar', 'Consolidação', c.startswith('/admin/consolidar')),
+      ('/admin/importadores', 'Importadores', c.startswith('/admin/importadores')),
+      ('/admin/fuelio', 'Fuelio', c.startswith('/admin/fuelio'))] %}
+  <a href="{{ href }}" {% if ativo %}class="ativo" aria-current="page"{% endif %}>{{ rotulo }}</a>
+  {% endfor %}
 </nav>

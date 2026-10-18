@@ -1,0 +1,49 @@
+{# Separadores das secções (debaixo do título). Cada macro marca o separador da página atual pelo caminho.
+   Uso: {% from "_abas.html" import abas_patrimonio %} … {{ abas_patrimonio(entidade) }} #}
+{% macro _abas(itens) -%}
+<nav class="abas-pagina" aria-label="Separadores">
+  {% for href, rotulo, ativo, contador in itens %}
+  <a href="{{ href }}" {% if ativo %}class="ativo" aria-current="page"{% endif %}>{{ rotulo }}{% if contador %} <span class="contador">{{ contador }}</span>{% endif %}</a>
+  {% endfor %}
+</nav>
+{%- endmacro %}
+
+{% macro _q(entidade) %}{{ '?entidade=' ~ entidade.id if entidade else '' }}{% endmacro %}
+
+{% macro abas_inicio(entidade=none) -%}
+{% set c = request.url.path %}
+{{ _abas([('/inicio' ~ _q(entidade), 'Resumo', c.startswith('/inicio'), 0),
+          ('/' ~ _q(entidade), 'Contas e fluxo', c == '/', 0)]) }}
+{%- endmacro %}
+
+{% macro abas_movimentos(entidade=none) -%}
+{% set c = request.url.path %}
+{{ _abas([('/movimentos' ~ _q(entidade), 'Lista', c == '/movimentos', 0),
+          ('/movimentos-pares' ~ _q(entidade), 'Pareáveis ↔', c.startswith('/movimentos-pares'), 0)]) }}
+{%- endmacro %}
+
+{% macro abas_contas(entidade=none) -%}
+{% set c = request.url.path %}
+{{ _abas([('/contas' ~ _q(entidade), 'Saldos', c == '/contas', 0),
+          ('/contas/cartoes' ~ _q(entidade), 'Cartões de débito', c == '/contas/cartoes', 0),
+          ('/contas/emprestimos' ~ _q(entidade), 'Empréstimos', c == '/contas/emprestimos', 0)]) }}
+{%- endmacro %}
+
+{% macro abas_patrimonio(entidade=none) -%}
+{% set c = request.url.path %}
+{# Recheio só com o módulo Casas; Abastecimentos e Via Verde só com o módulo Viaturas #}
+{% set casas = not entidade or entidade.tem('imoveis') %}
+{% set carros = not entidade or entidade.tem('viaturas') %}
+{{ _abas([('/patrimonio' ~ _q(entidade), 'Bens', c == '/patrimonio', 0)]
+         + ([('/patrimonio/recheio' ~ _q(entidade), 'Recheio', c == '/patrimonio/recheio', 0)] if casas else [])
+         + ([('/patrimonio/abastecimentos' ~ _q(entidade), 'Abastecimentos', c == '/patrimonio/abastecimentos', 0),
+             ('/patrimonio/via-verde' ~ _q(entidade), 'Via Verde', c == '/patrimonio/via-verde', 0)] if carros else [])) }}
+{%- endmacro %}
+
+{% macro abas_importar() -%}
+{% set c = request.url.path %}
+{{ _abas([('/importar', 'Carregar ficheiro', c == '/importar', 0),
+          ('/importar/validar', 'Por validar', c == '/importar/validar', n_por_validar or 0),
+          ('/importar/tarefas', 'Tarefas do mês', c == '/importar/tarefas', 0),
+          ('/importar/historico', 'Histórico', c == '/importar/historico', 0)]) }}
+{%- endmacro %}

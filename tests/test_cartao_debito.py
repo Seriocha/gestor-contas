@@ -143,7 +143,7 @@ def test_cartao_pela_pasta_partilhada(tmp_path, monkeypatch):
     _post(c, "/contas/nova?entidade=1", nome="Santander ordem", tipo="ORDEM", moeda="EUR", instituicao_id="1")
     _importar_conta(c)
     (raiz / "Santander" / "cartao.xls").write_bytes(xls_debito("1264", SERGIO))
-    c.post("/admin/pasta/ler", data={"csrf": _csrf(c.get("/admin/tarefas"))})
+    c.post("/admin/pasta/ler", data={"csrf": _csrf(c.get("/importar/validar"))})
     with app.state.SessionLocal() as db:
         p = db.scalar(select(ImportacaoPendente))
         assert (p.conta_id, p.n_novos, p.estado) == (1, 3, "pendente")
@@ -153,5 +153,5 @@ def test_cartao_pela_pasta_partilhada(tmp_path, monkeypatch):
     sha = re.search(r'name="sha" value="([0-9a-f]+)"', v.text).group(1)
     r = c.post("/importar/cartao/confirmar", follow_redirects=False,
                data={"csrf": _csrf(v), "conta_id": "1", "sha": sha, "nome": "cartao.xls", "pendente": str(pid)})
-    assert r.headers["location"] == "/admin/tarefas#pasta"
+    assert r.headers["location"] == "/importar/validar"
     assert (raiz / "Santander" / "importados" / f"{date.today().isoformat()}_cartao.xls").exists()

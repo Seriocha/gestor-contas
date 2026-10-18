@@ -30,9 +30,9 @@ def test_atividade_por_periodo(admin, app):
         db.add(Auditoria(quando=datetime.now() - timedelta(days=20), acao="antiga_mes"))
         db.add(Auditoria(quando=datetime.now() - timedelta(days=60), acao="muito_antiga"))
         db.commit()
-    dia = admin.get("/admin/utilizadores?periodo=dia").text
-    semana = admin.get("/admin/utilizadores?periodo=semana").text
-    mes = admin.get("/admin/utilizadores?periodo=mes").text
+    dia = admin.get("/admin/backups?periodo=dia").text
+    semana = admin.get("/admin/backups?periodo=semana").text
+    mes = admin.get("/admin/backups?periodo=mes").text
     assert "antiga_semana" not in dia and "antiga_semana" in semana and "antiga_mes" not in semana
     assert "antiga_mes" in mes and "muito_antiga" not in mes and "Último mês" in mes
 

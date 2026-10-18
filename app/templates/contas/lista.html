@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_abas.html" import abas_contas with context %}
 {% block titulo %}Contas{% endblock %}
 {% block conteudo %}
 <div class="titulo-acoes">
@@ -17,6 +18,7 @@
     <a href="/contas?arquivadas={{ 0 if arquivadas else 1 }}">{{ 'Esconder arquivadas' if arquivadas else 'Mostrar arquivadas' }}</a>
   </div>
 </div>
+{{ abas_contas(entidade) }}
 {% set destino = '/contas' %}{% include "_entidades.html" %}
 {% for b in blocos %}
 <section class="cartao">

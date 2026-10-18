@@ -75,7 +75,7 @@ def test_preferencia_mostrar_iban(admin):
     r = admin.get("/admin/utilizadores")
     admin.post("/admin/preferencias", data={"csrf": _csrf(r), "mostrar_iban_completo": "1"})
     assert "PT50 0018 0003 1234 5678 9012 3" in admin.get("/contas").text
-    r = admin.get("/admin/utilizadores")
+    r = admin.get("/admin/preferencias")
     assert 'name="mostrar_iban_completo" value="1" checked' in r.text
     admin.post("/admin/preferencias", data={"csrf": _csrf(r)})  # desmarcar
     assert "PT50 •••• 0123" in admin.get("/contas").text

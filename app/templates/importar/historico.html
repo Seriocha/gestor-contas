@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% from "_abas.html" import abas_importar with context %}
+{% block titulo %}Histórico de importações{% endblock %}
+{% block conteudo %}
+<div class="titulo-acoes"><h1>Importar</h1></div>
+{{ abas_importar() }}
+<section class="cartao">
+  <h2>Histórico de importações</h2>
+  {% if not historico %}<p class="vazio">Ainda não há importações.</p>{% else %}
+  <div class="rolar">
+  <table class="tabela compacta">
+    <thead><tr><th>Quando</th><th>Conta</th><th>Ficheiro</th><th>Período</th><th class="num">Novos</th><th class="num">Repetidos</th><th>Por</th><th></th></tr></thead>
+    <tbody>
+    {% for i in historico %}
+    <tr class="{{ '' if i.estado == 'confirmada' else 'arquivada' }}">
+      <td>{{ i.criado_em.strftime('%d/%m/%Y %H:%M') }}</td>
+      <td><a href="/contas/{{ i.conta_id }}/movimentos">{{ i.conta.nome }}</a></td>
+      <td class="nota">{{ i.ficheiro_nome }}</td>
+      <td>{{ i.data_ini | data }} a {{ i.data_fim | data }}</td>
+      <td class="num">{{ i.n_novos }}</td>
+      <td class="num">{{ i.n_duplicados }}</td>
+      <td>{{ i.utilizador.nome if i.utilizador else '—' }}</td>
+      <td class="acoes">
+        {% if i.estado == 'confirmada' %}
+        <form method="post" action="/importar/{{ i.id }}/anular" onsubmit="return confirm('Remover os {{ i.n_novos }} movimentos desta importação?')">
+          <input type="hidden" name="csrf" value="{{ csrf_token }}">
+          <button class="ligacao">Anular</button>
+        </form>
+        {% else %}<span class="etiqueta">anulada</span>{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

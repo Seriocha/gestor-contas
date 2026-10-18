@@ -39,14 +39,14 @@
     {% if pendente %}
     <input type="hidden" name="pendente" value="{{ pendente.id }}">
     <button class="primario">{{ 'Validar e importar %d movimentos' % n_novos if n_novos else 'Validar (nada de novo)' }}</button>
-    <a href="/admin/tarefas#pasta">Voltar</a>
+    <a href="/importar/validar">Voltar</a>
     {% else %}
     <button class="primario" {% if not n_novos %}disabled{% endif %}>Importar {{ n_novos }} movimentos</button>
     <a href="/importar">Cancelar</a>
     {% endif %}
   </form>
   {% else %}
-  <p><a href="{{ '/admin/tarefas#pasta' if pendente else '/importar' }}">Voltar</a></p>
+  <p><a href="{{ '/importar/validar' if pendente else '/importar' }}">Voltar</a></p>
   {% endif %}
 </section>
 

@@ -65,7 +65,7 @@
     ligar ligam-se quando importares o extrato do banco desse período.</p>
   {% else %}
   <p class="vazio sem-margem">Sem abastecimentos. Regista-os no telemóvel na <a href="/patrimonio/abastecimentos?entidade={{ b.entidade_id }}">página de registo</a>
-    (o histórico do Fuelio importa-se em Administração › Tarefas).</p>
+    (o histórico do Fuelio importa-se em Administração › Fuelio).</p>
   {% endif %}
   {% if pode_editar and b.vendido %}<p class="nota">Este carro está marcado como {{ 'devolvido' if b.empresa else 'vendido' }} em {{ b.data_venda | data }}: os abastecimentos
     depois dessa data não são atribuídos a ele (Editar para mudar).</p>{% endif %}

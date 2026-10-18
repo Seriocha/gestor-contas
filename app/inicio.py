@@ -314,7 +314,7 @@ def _tarefas_app(db: Session, ent: Entidade, prefs: dict, hoje: date, ate: date)
                          (Conta.entidade_id == ent.id) | ImportacaoPendente.conta_id.is_(None))) or 0
     if n:
         out.append(Item(hoje, f"Validar {n} extrato{'s' if n != 1 else ''}", "da pasta partilhada da NAS", None,
-                        "/admin/tarefas#pasta", "validar"))
+                        "/importar/validar", "validar"))
     return out
 
 

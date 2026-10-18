@@ -36,8 +36,35 @@ def _historico(db: Session, u: Utilizador) -> list[Importacao]:
 
 
 def _pagina(request, db, u, status_code=200, **ctx):
-    return render(request, "importar/form.html", status_code=status_code, contas=_contas_editaveis(db, u),
-                  historico=_historico(db, u), **ctx)
+    return render(request, "importar/form.html", status_code=status_code, contas=_contas_editaveis(db, u), **ctx)
+
+
+@router.get("/historico")
+def historico(request: Request, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
+    return render(request, "importar/historico.html", historico=_historico(db, u))
+
+
+@router.get("/validar")
+def por_validar(request: Request, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
+    """O que espera validação: abastecimentos do telemóvel (por entidade) e, para administradores, os extratos da
+    pasta partilhada da NAS."""
+    from sqlalchemy import func
+    from .. import pasta_importacao as pi
+    from ..models import AbastecimentoPendente, Bem
+    abast = []
+    for e, _ in entidades_visiveis(db, u):
+        n = db.scalar(select(func.count()).select_from(AbastecimentoPendente).join(Bem).where(Bem.entidade_id == e.id)) or 0
+        if n:
+            abast.append((e, n))
+    ctx = {"abastecimentos": abast}
+    if u.is_admin:
+        defs = request.app.state.defs
+        ctx["pasta_ok"], ctx["pasta_msg"] = pi.estado_pasta(defs.import_dir)
+        ctx["pendentes"] = pi.pendentes(db)
+        ctx["historico"] = db.scalars(select(ImportacaoPendente).where(ImportacaoPendente.estado.in_(("validada", "rejeitada")))
+                                      .order_by(ImportacaoPendente.tratado_em.desc()).limit(10)).all()
+        ctx["intervalos"], ctx["intervalo"] = pi.INTERVALOS, pi.intervalo_minutos(request.app.state.prefs)
+    return render(request, "importar/validar.html", **ctx)
 
 
 @router.get("/tarefas")
@@ -199,7 +226,7 @@ async def confirmar_cartao(request: Request, u: Utilizador = Depends(utilizador_
         pend = None
     db.commit()
     flash(request, msg)
-    return RedirectResponse("/admin/tarefas#pasta" if pend else f"/contas/{conta.id}/cartoes", status_code=303)
+    return RedirectResponse("/importar/validar" if pend else f"/contas/{conta.id}/cartoes", status_code=303)
 
 
 def _contas_para(db: Session, u: Utilizador, pendente) -> list[Conta]:
@@ -263,7 +290,7 @@ async def confirmar(request: Request, u: Utilizador = Depends(utilizador_atual),
     flash(request, f"Importados {imp.n_novos} movimentos novos ({imp.n_duplicados} já existiam); "
                    f"{imp.n_qualificados} categorizados pelas regras." + pagamentos + (f" {msg}" if msg else ""))
     if pend:
-        return RedirectResponse("/admin/tarefas#pasta", status_code=303)
+        return RedirectResponse("/importar/validar", status_code=303)
     return RedirectResponse(f"/contas/{conta.id}/movimentos", status_code=303)
 
 

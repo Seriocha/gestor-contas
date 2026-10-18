@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_abas.html" import abas_patrimonio with context %}
 {% from "_parte.html" import parte %}
 {% block titulo %}Património{% endblock %}
 {% macro tabela(linhas, tipo) -%}
@@ -47,6 +48,7 @@
     {% endif %}
   </div>{% endif %}
 </div>
+{{ abas_patrimonio(entidade) }}
 {% set destino = '/patrimonio' %}{% include "_entidades.html" %}
 {% if entidade %}
 {% if entidade.heranca %}<div class="aviso">{{ entidade.nome }} é uma herança{% if entidade.quota is not none %} de que detens {{ entidade.quota_txt }}{% if entidade.quota_futura is not none %} ({{ entidade.quota_futura_txt }} {{ (entidade.quota_futura_nota or 'no 2.º cenário') | lower }}){% endif %}{% endif %}:
@@ -117,33 +119,6 @@
   {% if r.carros %}{{ tabela(r.carros, 'carro') }}{% else %}<p class="vazio sem-margem">Sem carros registados.</p>{% endif %}
 </section>
 
-<section class="cartao" id="via-verde">
-  <h2>Via Verde</h2>
-  <p class="nota sem-margem">Carrega os extratos mensais da Via Verde (CSV, ou os ZIP tal como vêm, vários de uma vez). Cada grupo de
-    linhas liga-se ao débito «Via Verde» do banco que o pagou e cada portagem/parque vai para o carro pela matrícula — indica a
-    matrícula em cada carro. Do extrato não se guardam nome, NIF nem morada.</p>
-  {% if vvr.n %}
-  <div class="kpi-linha">
-    <div class="kpi"><span class="nota">Registos</span><strong>{{ vvr.n }}</strong><span class="nota">{{ vvr.de | data }} a {{ vvr.ate | data }}</span></div>
-    <div class="kpi"><span class="nota">Total</span><strong>{{ vvr.total | eur }}</strong><span class="nota">{{ vvr.ligadas_debitos }} débitos do banco ligados</span></div>
-    {% for mat, bem, n, v in vvr.matriculas %}
-    <div class="kpi"><span class="nota">{{ mat[:2] ~ '-' ~ mat[2:4] ~ '-' ~ mat[4:] if mat | length == 6 else mat }}</span><strong>{{ v | eur }}</strong>
-      <span class="nota">{% if bem %}<a href="/patrimonio/{{ bem.id }}#via-verde">{{ bem.nome }}</a>{% else %}sem carro com esta matrícula{% endif %} · {{ n }}</span></div>
-    {% endfor %}
-  </div>
-  {% if vvr.soltas %}<p class="nota">{{ vvr.soltas }} registo{{ 's' if vvr.soltas != 1 }} ({{ vvr.soltas_total | eur }}) ainda sem débito no banco —
-    ligam-se sozinhos quando importares o extrato do banco desse período.</p>{% endif %}
-  {% endif %}
-  {% if pode_editar %}
-  <form method="post" action="/patrimonio/via-verde" enctype="multipart/form-data" class="formulario">
-    <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="entidade" value="{{ entidade.id }}">
-    <div class="linha">
-      <label>Extratos Via Verde <input type="file" name="ficheiros" accept=".csv,.zip" multiple required></label>
-    </div>
-    <div class="acoes-form"><button>Importar</button></div>
-  </form>
-  {% endif %}
-</section>
 
 {% endif %}
 {% if r.linhas %}

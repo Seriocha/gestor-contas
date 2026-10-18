@@ -1,10 +1,12 @@
 {% extends "base.html" %}
+{% from "_abas.html" import abas_importar with context %}
 {% block titulo %}Tarefas de importação{% endblock %}
 {% block conteudo %}
 <div class="titulo-acoes">
-  <h1>Tarefas de importação</h1>
+  <h1>Importar</h1>
   <a href="/importar">Importar um ficheiro ›</a>
 </div>
+{{ abas_importar() }}
 {% set destino = '/importar/tarefas' %}{% include "_entidades.html" %}
 {% if entidade %}
 <section class="cartao resumo-tarefas">
@@ -15,7 +17,7 @@
   <p class="nota sem-margem">Para cada banco: entra no serviço online, exporta o extrato indicado e importa-o aqui
     (podes sobrepor períodos, os repetidos são ignorados). O lembrete aparece no menu e no painel
     {% if ativas %}entre o dia {{ dia_ini }} e o dia {{ dia_fim }}{% if dia_fim < dia_ini %} do mês seguinte{% endif %}{% else %}— desligado{% endif %}
-    {% if utilizador.is_admin %}· <a href="/admin/utilizadores#preferencias">alterar</a>{% endif %}.</p>
+    {% if utilizador.is_admin %}· <a href="/admin/preferencias">alterar</a>{% endif %}.</p>
 </section>
 
 <div class="grelha-tarefas">

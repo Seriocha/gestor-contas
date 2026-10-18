@@ -43,9 +43,9 @@
     <input type="hidden" name="nome" value="{{ nome }}">
     {% if pendente %}<input type="hidden" name="pendente" value="{{ pendente.id }}">{% endif %}
     <button class="primario">{{ ('Validar e ' if pendente else '') ~ ('ligar %d compras' % p.n_ligam if p.n_ligam else 'guardar o cartão (nada a ligar)') }}</button>
-    <a href="{{ '/admin/tarefas#pasta' if pendente else '/importar' }}">Cancelar</a>
+    <a href="{{ '/importar/validar' if pendente else '/importar' }}">Cancelar</a>
   </form>
   {% if not p.cartao %}<p class="nota">O cartão fica com o nome «Cartão …{{ extrato.conta_ref }}» — muda-o depois para o nome de quem o usa.</p>{% endif %}
 </section>
-{% else %}<p><a href="{{ '/admin/tarefas#pasta' if pendente else '/importar' }}">Voltar</a></p>{% endif %}
+{% else %}<p><a href="{{ '/importar/validar' if pendente else '/importar' }}">Voltar</a></p>{% endif %}
 {% endblock %}

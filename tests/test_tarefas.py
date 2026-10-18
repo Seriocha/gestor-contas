@@ -53,7 +53,8 @@ def test_ecra_de_tarefas(admin, app):
     p = admin.get("/importar/tarefas?entidade=1").text
     assert "Abrir NetBanco Particulares" in p and 'href="https://www.santander.pt"' in p and 'rel="noopener noreferrer"' in p
     assert 'href="/importar?conta=1"' in p and "4 contas por atualizar" in p
-    assert "Tarefas de importação do mês" in admin.get("/importar").text
+    p_imp = admin.get("/importar").text
+    assert 'href="/importar/tarefas"' in p_imp and 'Tarefas do mês</a>' in p_imp
 
 
 def test_lembrete_configuravel(admin, app):

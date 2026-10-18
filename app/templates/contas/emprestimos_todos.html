@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% from "_abas.html" import abas_contas with context %}
+{% block titulo %}Empréstimos{% endblock %}
+{% block conteudo %}
+<div class="titulo-acoes"><h1>Contas</h1></div>
+{{ abas_contas(entidade) }}
+{% set destino = '/contas/emprestimos' %}{% include "_entidades.html" %}
+{% if entidade %}
+<section class="cartao">
+  <h2>Empréstimos</h2>
+  {% if linhas %}
+  <table class="tabela compacta">
+    <thead><tr><th>Empréstimo</th><th>Banco</th><th class="num">Em dívida</th><th>Último movimento</th><th></th></tr></thead>
+    {% for c, s in linhas %}
+    <tr class="{{ 'arquivada' if not c.ativa }}"><td><a href="/contas/{{ c.id }}/emprestimo"><strong>{{ c.nome }}</strong></a></td>
+      <td class="nota">{{ c.instituicao.nome }}</td>
+      <td class="num neg">{{ s.atual | eur(c.moeda) }}</td>
+      <td class="sem-quebra nota">{{ s.data | data if s.data else '—' }}</td>
+      <td><a href="/contas/{{ c.id }}/emprestimo">Ver empréstimo ›</a></td></tr>
+    {% endfor %}
+  </table>
+  {% else %}<p class="vazio sem-margem">Sem empréstimos. Cria uma conta do tipo «Empréstimo (habitação)» em Contas › Saldos.</p>{% endif %}
+</section>
+{% endif %}
+{% endblock %}

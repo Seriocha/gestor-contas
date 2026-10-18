@@ -20,18 +20,28 @@
 {% if utilizador %}
 {% set caminho = request.url.path %}
 {% set em_movimentos = caminho.startswith('/movimentos') or caminho.endswith('/movimentos') %}
-{% set itens_dia = [
-  ('/', 'painel', 'Painel', caminho == '/'),
-  ('/movimentos', 'movimentos', 'Movimentos', em_movimentos),
-  ('/relatorios', 'relatorios', 'Relatórios', caminho.startswith('/relatorios')),
-  ('/importar', 'importar', 'Importar', caminho.startswith('/importar') and not caminho.startswith('/importar/tarefas')),
+{% set em_admin = caminho.startswith('/admin') or caminho == '/contas/cobertura' %}
+{% set n_validar = n_por_validar or 0 %}
+{# (endereço, ícone, rótulo, ativo, contador) por grupo #}
+{% set grupos_menu = [
+  ('Visão geral', [
+    ('/inicio', 'inicio', 'Início', caminho.startswith('/inicio') or caminho == '/', 0),
+    ('/relatorios', 'relatorios', 'Relatórios', caminho.startswith('/relatorios'), 0)]),
+  ('Dinheiro', [
+    ('/movimentos', 'movimentos', 'Movimentos', em_movimentos, 0),
+    ('/contas', 'contas', 'Contas', caminho.startswith('/contas') and not em_movimentos and not em_admin, 0),
+    ('/subscricoes', 'subscricoes', 'Subscrições', caminho.startswith('/subscricoes'), 0),
+    ('/previsoes', 'previsoes', 'Previsões', caminho.startswith('/previsoes'), 0)]),
+  ('Património', [
+    ('/patrimonio', 'patrimonio', 'Património', caminho.startswith('/patrimonio'), 0),
+    ('/viagens', 'viagens', 'Viagens', caminho.startswith('/viagens'), 0)]),
+  ('Dados', [
+    ('/importar', 'importar', 'Importar', caminho.startswith('/importar'), n_validar)]),
+  ('Configuração', [
+    ('/categorias', 'categorias', 'Categorias e regras', caminho.startswith('/categorias') or caminho.startswith('/regras'), 0)]
+    + ([('/admin/utilizadores', 'admin', 'Administração', em_admin, 0)] if utilizador.is_admin else [])),
 ] %}
-{% set itens_lateral = [('/inicio', 'inicio', 'Início', caminho.startswith('/inicio'))] + itens_dia[:3] + [('/viagens', 'viagens', 'Viagens', caminho.startswith('/viagens')), ('/subscricoes', 'subscricoes', 'Subscrições', caminho.startswith('/subscricoes')), ('/patrimonio', 'patrimonio', 'Património', caminho.startswith('/patrimonio'))] + itens_dia[3:] + ([('/importar/tarefas', 'tarefas', 'Tarefas do mês', caminho.startswith('/importar/tarefas'))] if tarefas_janela() else []) %}
-{% set itens_config = [
-  ('/contas', 'contas', 'Contas', caminho.startswith('/contas') and not em_movimentos),
-  ('/categorias', 'categorias', 'Categorias e regras', caminho.startswith('/categorias') or caminho.startswith('/regras')),
-  ('/previsoes', 'previsoes', 'Receitas previstas', caminho.startswith('/previsoes')),
-] + ([('/admin/utilizadores', 'admin', 'Administração', caminho.startswith('/admin'))] if utilizador.is_admin else []) %}
+{% set itens_movel = [grupos_menu[0][1][0], grupos_menu[1][1][0], grupos_menu[0][1][1], grupos_menu[3][1][0]] %}
 
 <header class="barra-movel">
   <a class="marca" href="/inicio">{{ logo() }}<span>Gestor de Contas</span></a>
@@ -44,13 +54,11 @@
     <button type="button" class="botao-icone so-movel" id="fechar-menu" aria-label="Fechar menu">{{ icone('fechar') }}</button>
   </div>
   <nav class="menu">
-    <p class="menu-grupo">Dia a dia</p>
-    {% for href, ic, rotulo, ativo in itens_lateral %}
-    <a href="{{ href }}" {% if ativo %}class="ativo" aria-current="page"{% endif %}>{{ icone(ic) }}<span>{{ rotulo }}</span></a>
+    {% for titulo, itens in grupos_menu %}
+    <p class="menu-grupo">{{ titulo }}</p>
+    {% for href, ic, rotulo, ativo, contador in itens %}
+    <a href="{{ href }}" {% if ativo %}class="ativo" aria-current="page"{% endif %}>{{ icone(ic) }}<span>{{ rotulo }}</span>{% if contador %}<span class="contador" title="{{ contador }} por validar">{{ contador }}</span>{% endif %}</a>
     {% endfor %}
-    <p class="menu-grupo">Configuração</p>
-    {% for href, ic, rotulo, ativo in itens_config %}
-    <a href="{{ href }}" {% if ativo %}class="ativo" aria-current="page"{% endif %}>{{ icone(ic) }}<span>{{ rotulo }}</span></a>
     {% endfor %}
   </nav>
   <div class="lateral-rodape">
@@ -75,8 +83,8 @@
 
 {% if utilizador %}
 <nav class="abas-movel" aria-label="Navegação rápida">
-  {% for href, ic, rotulo, ativo in [itens_lateral[0]] + itens_dia[1:] %}{# Início no lugar do Painel (que fica no menu) #}
-  <a href="{{ href }}" {% if ativo %}class="ativo" aria-current="page"{% endif %}>{{ icone(ic) }}<span>{{ rotulo }}</span></a>
+  {% for href, ic, rotulo, ativo, contador in itens_movel %}
+  <a href="{{ href }}" {% if ativo %}class="ativo" aria-current="page"{% endif %}>{{ icone(ic) }}<span>{{ rotulo }}</span>{% if contador %}<span class="contador">{{ contador }}</span>{% endif %}</a>
   {% endfor %}
   <button type="button" id="abrir-menu-2" aria-controls="lateral" aria-label="Mais opções">{{ icone('mais') }}<span>Mais</span></button>
 </nav>

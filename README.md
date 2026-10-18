@@ -42,6 +42,15 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   explicação, as fontes e a categoria sugerida — «Aplicar a este movimento» ou criar uma regra. Só se envia a descrição, o
   valor, a data e o tipo de conta; a resposta fica guardada por comerciante (a mesma cache das sugestões da
   classificação) e aparece como mais uma ligação no mapa. «Pesquisar na web» abre uma pesquisa pelo comerciante, sem IA.
+- **v0.58.0 — Menus reorganizados.** O menu lateral passa a ter cinco grupos — **Visão geral** (Início, Relatórios),
+  **Dinheiro** (Movimentos, Contas, Subscrições, Previsões), **Património** (Património, Viagens), **Dados** (Importar) e
+  **Configuração** (Categorias e regras, Administração) — e cada secção tem separadores debaixo do título: Início
+  (Resumo · Contas e fluxo, o antigo Painel), Movimentos (Lista · Pareáveis), Contas (Saldos · Cartões de débito ·
+  Empréstimos), Património (Bens · Recheio · Abastecimentos · Via Verde), Importar (Carregar ficheiro · Por validar ·
+  Tarefas do mês · Histórico) e Administração (Utilizadores · Entidades · Preferências · Cobertura · Backups e atividade ·
+  Consolidação · Importadores · Fuelio). «Importar» mostra um contador do que espera validação (extratos da pasta da
+  NAS e abastecimentos do telemóvel), também na barra do telemóvel. As categorias de recheio passam para Património ›
+  Recheio. Os endereços antigos (`/admin/tarefas`, `/admin/recheio`) encaminham para o sítio novo.
 - **v0.57.0 — Cartões de débito: gastos por cartão/pessoa.** O ficheiro de movimentos de cada cartão de débito
   (Santander: «Consulta Movimentos Cartões Débito», .xls) importa-se como os outros — à mão ou pela pasta partilhada —
   mas não cria movimentos: as compras já estão no extrato da conta à ordem, onde não se sabe de que cartão são. Cada
@@ -62,7 +71,7 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   na reciclagem não são propostos). Novo `qnap/criar_pastas_extratos.sh`: cria as subpastas dos bancos na partilha.
 - **v0.55.0 — Extratos numa pasta partilhada da NAS, lidos automaticamente.** Uma subpasta por banco
   (`/share/Extratos/Santander/`, `ActivoBank/`…), montada no container em `/importar` (`GESTOR_IMPORT_DIR`; o
-  `qnap/update.sh` monta-a se existir). A app lê a pasta de hora a hora (15 min a 1 dia, em Administração › Tarefas,
+  `qnap/update.sh` monta-a se existir). A app lê a pasta de hora a hora (15 min a 1 dia, em Importar › Por validar,
   com «Ler a pasta agora») e cada ficheiro novo (pelo conteúdo) fica **por validar** — nada entra nos movimentos sozinho.
   A conta é detetada pelo banco (formato e nome da subpasta), tipo e moeda, n.º de conta no ficheiro e, havendo várias,
   pelos movimentos que já existem. «Ver e validar» mostra a pré-visualização (a conta pode ser mudada); validado, é
@@ -136,7 +145,7 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   começam no início da análise da entidade quando este é mais recente. Na tabela de abastecimentos, a diferença para o
   débito no banco tem coluna própria e cada abastecimento pode ser corrigido (data, hora, km, litros, valor, posto, cheio —
   a leitura de km acompanha), usar o valor do banco num clique, ou apagado. A importação do histórico do Fuelio passa para
-  Administração › Tarefas (escolher o carro e o ficheiro).
+  Administração › Fuelio (escolher o carro e o ficheiro).
 - **v0.44.0 — Ficha do carro em separadores.** Manutenção, Abastecimentos, Via Verde e Despesas e receitas passam a
   separadores (o endereço, ex.: #km, abre o certo). As despesas do carro mostram-se condensadas — total, gráfico por mês
   empilhado pelas maiores categorias e barras por categoria — com link para os movimentos do carro (novo filtro por bem

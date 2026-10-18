@@ -44,8 +44,9 @@ def test_categorias_e_itens_automaticos(admin, app):
         m.categoria_id = tecnologia
         db.commit()
     # marcar a categoria-mãe «Compras» vale para as filhas e cria logo o item da compra já classificada
-    f = admin.get("/admin/recheio")
-    assert "Recheio das casas" in f.text
+    assert admin.get("/admin/recheio", follow_redirects=False).headers["location"] == "/patrimonio/recheio"
+    f = admin.get("/patrimonio/recheio?entidade=1")
+    assert "Que categorias são recheio" in f.text and 'action="/admin/recheio"' in f.text
     admin.post("/admin/recheio", data={"csrf": _csrf(f), "categorias": [str(compras)], "garantia": "36"})
     with app.state.SessionLocal() as db:
         it = db.scalar(select(ItemRecheio))

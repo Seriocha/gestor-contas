@@ -56,8 +56,8 @@ omissão). Copiar a versão nova de `qnap/update.sh` para a NAS (é ela que lê 
 3. Correr outra vez o `update.sh` (monta `/share/Extratos` em `/importar`). Noutra pasta:
    `EXTRATOS_DIR=/share/Outra sh update.sh`.
 
-A app lê a pasta de hora a hora (configurável em Administração › Tarefas, onde também há «Ler a pasta agora»).
-Nada é importado sozinho: cada ficheiro novo fica **por validar** em Administração › Tarefas; «Ver e validar» mostra a
+A app lê a pasta de hora a hora (configurável em Importar › Por validar, onde também há «Ler a pasta agora»).
+Nada é importado sozinho: cada ficheiro novo fica **por validar** em Importar › Por validar; «Ver e validar» mostra a
 pré-visualização habitual (com a conta, que se pode mudar). Validado, é importado e o ficheiro passa para
 `<banco>/importados/AAAA-MM-DD_<ficheiro>`. Rejeitado, fica na pasta e não volta a ser proposto.
 

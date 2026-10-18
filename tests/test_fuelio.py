@@ -68,8 +68,8 @@ def _carro(c, nome, **extra):
 
 def _importar(c, bid, nome, dados):
     """A importação do Fuelio é uma tarefa administrativa (Administração › Tarefas)."""
-    f = c.get("/admin/tarefas")
-    return c.post("/admin/tarefas/fuelio", data={"csrf": _csrf(f), "bem_id": str(bid)},
+    f = c.get("/importar/validar")
+    return c.post("/admin/fuelio", data={"csrf": _csrf(f), "bem_id": str(bid)},
                   files={"ficheiro": (nome, dados, "text/csv")}, follow_redirects=False)
 
 
@@ -136,8 +136,8 @@ def test_banco_depois_e_consolidacao(admin, app):
 def test_fuelio_so_nas_tarefas_e_carro_vendido(admin, app):
     b = _carro(admin, "Velho", data_venda="2026-01-31")
     p = admin.get(f"/patrimonio/{b}").text
-    assert "/fuelio\"" not in p and "Administração › Tarefas" in p and "marcado como vendido em 31/01/2026" in p
-    t = admin.get("/admin/tarefas").text
+    assert f"/patrimonio/{b}/fuelio\"" not in p and "Administração › Fuelio" in p and "marcado como vendido em 31/01/2026" in p
+    t = admin.get("/admin/fuelio").text
     assert "Importar histórico do Fuelio" in t and "Velho" in t
     assert admin.post(f"/patrimonio/{b}/fuelio", data={}).status_code in (404, 405)
 

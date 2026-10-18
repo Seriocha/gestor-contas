@@ -1,7 +1,7 @@
 """Extratos colocados numa pasta partilhada da NAS, lidos periodicamente.
 
 Estrutura: <pasta partilhada>/<banco>/<ficheiro> — uma subpasta por banco (ex.: Santander, ActivoBank, Revolut).
-A leitura (de hora a hora, por omissão, ou com «Ler agora» em Administração › Tarefas) não importa nada: lê cada
+A leitura (de hora a hora, por omissão, ou com «Ler agora» em Importar › Por validar) não importa nada: lê cada
 ficheiro novo, deteta a conta e deixa-o à espera de validação. Validado (com a pré-visualização habitual), é importado
 e o ficheiro passa para <banco>/importados/AAAA-MM-DD_<ficheiro>. Rejeitado, fica onde está e não volta a ser proposto.
 """

@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% from "_abas.html" import abas_patrimonio with context %}
+{% block titulo %}Via Verde{% endblock %}
+{% block conteudo %}
+<div class="titulo-acoes"><h1>Património</h1></div>
+{{ abas_patrimonio(entidade) }}
+{% set destino = '/patrimonio/via-verde' %}{% include "_entidades.html" %}
+{% if entidade %}
+<section class="cartao" id="via-verde">
+  <h2>Via Verde</h2>
+  <p class="nota sem-margem">Carrega os extratos mensais da Via Verde (CSV, ou os ZIP tal como vêm, vários de uma vez). Cada grupo de
+    linhas liga-se ao débito «Via Verde» do banco que o pagou e cada portagem/parque vai para o carro pela matrícula — indica a
+    matrícula em cada carro. Do extrato não se guardam nome, NIF nem morada.</p>
+  {% if vvr.n %}
+  <div class="kpi-linha">
+    <div class="kpi"><span class="nota">Registos</span><strong>{{ vvr.n }}</strong><span class="nota">{{ vvr.de | data }} a {{ vvr.ate | data }}</span></div>
+    <div class="kpi"><span class="nota">Total</span><strong>{{ vvr.total | eur }}</strong><span class="nota">{{ vvr.ligadas_debitos }} débitos do banco ligados</span></div>
+    {% for mat, bem, n, v in vvr.matriculas %}
+    <div class="kpi"><span class="nota">{{ mat[:2] ~ '-' ~ mat[2:4] ~ '-' ~ mat[4:] if mat | length == 6 else mat }}</span><strong>{{ v | eur }}</strong>
+      <span class="nota">{% if bem %}<a href="/patrimonio/{{ bem.id }}#via-verde">{{ bem.nome }}</a>{% else %}sem carro com esta matrícula{% endif %} · {{ n }}</span></div>
+    {% endfor %}
+  </div>
+  {% if vvr.soltas %}<p class="nota">{{ vvr.soltas }} registo{{ 's' if vvr.soltas != 1 }} ({{ vvr.soltas_total | eur }}) ainda sem débito no banco —
+    ligam-se sozinhos quando importares o extrato do banco desse período.</p>{% endif %}
+  {% endif %}
+  {% if pode_editar %}
+  <form method="post" action="/patrimonio/via-verde" enctype="multipart/form-data" class="formulario">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="entidade" value="{{ entidade.id }}">
+    <div class="linha">
+      <label>Extratos Via Verde <input type="file" name="ficheiros" accept=".csv,.zip" multiple required></label>
+    </div>
+    <div class="acoes-form"><button>Importar</button></div>
+  </form>
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}

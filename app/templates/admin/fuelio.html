@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block titulo %}Fuelio{% endblock %}
+{% block conteudo %}
+<h1>Administração</h1>
+{% include "admin/_menu.html" %}
+<section class="cartao">
+  <h2>Importar histórico do Fuelio</h2>
+  <p class="nota">Os abastecimentos novos registam-se na página de registo (Património › Abastecimentos). Aqui importa-se, uma vez ou para
+    acertar, o histórico guardado no Fuelio: no Fuelio, Definições › Cópia de segurança › exportar CSV (ou o ficheiro
+    <code>vehicle-N-sync.csv</code> da pasta de sincronização), um ficheiro por carro. Repetir a importação só acrescenta o que é novo.</p>
+  {% if carros %}
+  <form method="post" action="/admin/fuelio" enctype="multipart/form-data" class="formulario">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <div class="linha">
+      <label>Carro
+        <select name="bem_id" required>
+          <option value="">— escolher —</option>
+          {% for b in carros %}<option value="{{ b.id }}">{{ entidades[b.entidade_id].nome }} · {{ b.nome }}{{ ' · ' ~ b.matricula if b.matricula }}{{ ' (%d abastecimentos)' % n_abast[b.id] if n_abast.get(b.id) }}</option>{% endfor %}
+        </select></label>
+      <label>Ficheiro do Fuelio (CSV ou ZIP) <input type="file" name="ficheiro" accept=".csv,.zip" required></label>
+    </div>
+    <div class="acoes-form"><button class="primario">Importar</button></div>
+  </form>
+  {% else %}<p class="vazio sem-margem">Não há carros registados (Património › + Carro).</p>{% endif %}
+</section>
+{% endblock %}

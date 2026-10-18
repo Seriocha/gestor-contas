@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% block titulo %}Receitas previstas{% endblock %}
+{% block titulo %}Previsões{% endblock %}
 {% block conteudo %}
-<h1>Receitas previstas</h1>
+<h1>Previsões <span class="nota">· receitas previstas</span></h1>
 {% set destino = '/previsoes' %}{% include "_entidades.html" %}
 {% if entidade %}
 <section class="cartao">

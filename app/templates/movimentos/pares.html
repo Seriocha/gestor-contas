@@ -1,10 +1,11 @@
 {% extends "base.html" %}
+{% from "_abas.html" import abas_movimentos with context %}
 {% block titulo %}Movimentos pareáveis{% endblock %}
 {% block conteudo %}
 <div class="titulo-acoes">
-  <h1>Movimentos pareáveis</h1>
-  <a href="/movimentos{% if entidade %}?entidade={{ entidade.id }}{% endif %}">‹ Movimentos</a>
+  <h1>Movimentos</h1>
 </div>
+{{ abas_movimentos(entidade) }}
 {% set destino = '/movimentos-pares' %}{% include "_entidades.html" %}
 {% if entidade %}
 <section class="cartao">

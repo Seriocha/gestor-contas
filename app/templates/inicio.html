@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_abas.html" import abas_inicio with context %}
 {% from "_parte.html" import parte %}
 {% from "_icones_patrimonio.html" import icone_pat %}
 {% block titulo %}Início{% endblock %}
@@ -25,6 +26,7 @@
 {%- endmacro %}
 {% macro pct(x, total) %}{{ ('%.0f' % (x / total * 100)) if total else 0 }}%{% endmacro %}
 {% block conteudo %}
+{{ abas_inicio(entidade) }}
 {% set destino = '/inicio' %}{% include "_entidades.html" %}
 {% if entidade %}
 {% set h = v.hoje %}

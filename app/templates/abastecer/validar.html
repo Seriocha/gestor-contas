@@ -1,11 +1,14 @@
 {% extends "base.html" %}
+{% from "_abas.html" import abas_patrimonio with context %}
 {% block titulo %}Abastecimentos por validar{% endblock %}
 {% block conteudo %}
 <div class="titulo-acoes">
-  <h1>Abastecimentos por validar</h1>
+  <h1>Património</h1>
   {% if entidade %}<a href="/patrimonio?entidade={{ entidade.id }}">‹ Património</a>{% endif %}
 </div>
+{{ abas_patrimonio(entidade) }}
 {% set destino = '/patrimonio/abastecimentos' %}{% include "_entidades.html" %}
+{% if entidade %}<h2 class="titulo-seccao">Abastecimentos por validar</h2>{% endif %}
 {% if entidade %}
 <section class="cartao">
   {% if not pendentes %}<p class="vazio sem-margem">Nada por validar.</p>

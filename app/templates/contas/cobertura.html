@@ -1,10 +1,12 @@
 {% extends "base.html" %}
 {% block titulo %}Cobertura dos dados{% endblock %}
 {% block conteudo %}
-<div class="titulo-acoes">
+{% if utilizador.is_admin %}<h1>Administração</h1>
+{% include "admin/_menu.html" %}
+{% else %}<div class="titulo-acoes">
   <h1>Cobertura dos dados</h1>
   <a href="/contas">‹ Contas</a>
-</div>
+</div>{% endif %}
 {% set destino = '/contas/cobertura' %}{% include "_entidades.html" %}
 {% if entidade %}
 <section class="cartao">

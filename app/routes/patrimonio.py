@@ -44,6 +44,34 @@ def lista(request: Request, entidade: IntOpcional = None, u: Utilizador = Depend
                   pode_editar=PAPEIS[papel] >= PAPEIS["editar"])
 
 
+@router.get("/recheio")
+def recheio_lista(request: Request, entidade: IntOpcional = None, u: Utilizador = Depends(utilizador_atual),
+                  db: Session = Depends(get_db)):
+    """Separador Recheio: os itens de todas as casas da entidade (e, para administradores, que categorias são recheio)."""
+    from ..qualificacao import arvore_categorias
+    visiveis, ent, papel = entidade_escolhida(request, db, u, entidade)
+    if not ent:
+        return render(request, "patrimonio/recheio.html", entidade=None, visiveis=visiveis)
+    hoje = date.today()
+    casas = [(c, recheio.resumo_casa(db, c, hoje)) for c in recheio.casas(db, ent.id)]
+    prefs = request.app.state.prefs
+    return render(request, "patrimonio/recheio.html", visiveis=visiveis, entidade=ent, casas=casas, hoje=hoje,
+                  sem_casa=recheio.sem_casa(db, ent.id),
+                  categorias=[c for c in arvore_categorias(db) if c.natureza == "DESPESA"],
+                  garantia=prefs.get("recheio_garantia_meses", "36"), valor_minimo=prefs.get("recheio_valor_minimo", "50"))
+
+
+@router.get("/via-verde")
+def via_verde_pagina(request: Request, entidade: IntOpcional = None, u: Utilizador = Depends(utilizador_atual),
+                     db: Session = Depends(get_db)):
+    """Separador Via Verde: resumo por matrícula e importação dos extratos."""
+    visiveis, ent, papel = entidade_escolhida(request, db, u, entidade)
+    if not ent:
+        return render(request, "patrimonio/via_verde.html", entidade=None, visiveis=visiveis)
+    return render(request, "patrimonio/via_verde.html", visiveis=visiveis, entidade=ent, vvr=vv.resumo(db, ent.id),
+                  pode_editar=PAPEIS[papel] >= PAPEIS["editar"])
+
+
 def _n_por_validar(db: Session, entidade_id: int) -> int:
     from .abastecer import n_pendentes
     return n_pendentes(db, entidade_id)
@@ -55,7 +83,7 @@ async def importar_via_verde(request: Request, u: Utilizador = Depends(utilizado
     form = await ler_form(request)
     ent_id = int(form["entidade"]) if str(form.get("entidade", "")).isdigit() else 0
     exigir_papel(db, u, ent_id, "editar")
-    voltar = f"/patrimonio?entidade={ent_id}#via-verde"
+    voltar = f"/patrimonio/via-verde?entidade={ent_id}"
     ficheiros = [f for f in form.getlist("ficheiros") if getattr(f, "filename", "")]
     if not ficheiros:
         flash(request, "Escolhe os ficheiros do extrato Via Verde (CSV ou ZIP).", "erro")

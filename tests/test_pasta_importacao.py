@@ -60,7 +60,7 @@ def test_ler_validar_mover_e_rejeitar(admin, app, pasta):
         (pasta / sistema / "apagado.xls").write_bytes(xls_santander(SANT))
     antes = _n_movs(app)
 
-    t = admin.get("/admin/tarefas")
+    t = admin.get("/importar/validar")
     assert "Extratos da pasta partilhada" in t.text and "Ler a pasta agora" in t.text
     p = admin.post("/admin/pasta/ler", data={"csrf": _csrf(t)}).text
     assert "Pasta lida: 2 extratos novos por validar, 1 com erro." in p
@@ -76,7 +76,7 @@ def test_ler_validar_mover_e_rejeitar(admin, app, pasta):
         assert any(i.titulo == "Validar 2 extratos" for i in proximos)
         sid, aid = sant.id, ab.id
     # ler outra vez não repete
-    p = admin.post("/admin/pasta/ler", data={"csrf": _csrf(admin.get("/admin/tarefas"))}).text
+    p = admin.post("/admin/pasta/ler", data={"csrf": _csrf(admin.get("/importar/validar"))}).text
     assert "0 extratos novos por validar, 3 já conhecidos" in p
 
     # validar: pré-visualização com a conta detetada, importa o novo e move o ficheiro
@@ -85,8 +85,8 @@ def test_ler_validar_mover_e_rejeitar(admin, app, pasta):
     sha = re.search(r'name="sha" value="([0-9a-f]+)"', v.text).group(1)
     r = admin.post("/importar/confirmar", follow_redirects=False,
                    data={"csrf": _csrf(v), "conta_id": "1", "sha": sha, "nome": "outubro.xls", "pendente": str(sid)})
-    assert r.headers["location"] == "/admin/tarefas#pasta"
-    assert "movido para importados/" in admin.get("/admin/tarefas").text
+    assert r.headers["location"] == "/importar/validar"
+    assert "movido para importados/" in admin.get("/importar/validar").text
     assert _n_movs(app) == antes + 1
     hoje = date.today().isoformat()
     assert not (pasta / "Santander" / "outubro.xls").exists()
@@ -100,11 +100,11 @@ def test_ler_validar_mover_e_rejeitar(admin, app, pasta):
     v = admin.get(f"/admin/pasta/{aid}?conta=2")
     assert "Santander poupança" in v.text and 'selected>Família · Santander poupança' in v.text
     # rejeitar: fica na pasta, não volta a ser proposto
-    admin.post(f"/admin/pasta/{aid}/rejeitar", data={"csrf": _csrf(admin.get("/admin/tarefas"))})
+    admin.post(f"/admin/pasta/{aid}/rejeitar", data={"csrf": _csrf(admin.get("/importar/validar"))})
     assert (pasta / "ActivoBank" / "mov.xlsx").exists()
     with app.state.SessionLocal() as db:
         assert db.get(ImportacaoPendente, aid).estado == "rejeitada"
-    admin.post("/admin/pasta/ler", data={"csrf": _csrf(admin.get("/admin/tarefas"))})
+    admin.post("/admin/pasta/ler", data={"csrf": _csrf(admin.get("/importar/validar"))})
     with app.state.SessionLocal() as db:
         assert db.scalar(select(func.count()).select_from(ImportacaoPendente)) == 3
 
@@ -114,10 +114,10 @@ def test_intervalo_e_pasta_nao_configurada(tmp_path, monkeypatch):
     app = create_app(tmp_path, backups_automaticos=False)
     c = TestClient(app)
     _post(c, "/setup", nome="Admin", login="admin", password=PW, password2=PW)
-    t = c.get("/admin/tarefas").text
+    t = c.get("/importar/validar").text
     assert "Pasta partilhada não configurada" in t and "Ler a pasta agora" not in t
     assert pi.estado_pasta(tmp_path / "nao-existe")[0] is False
-    c.post("/admin/pasta/intervalo", data={"csrf": _csrf(c.get("/admin/tarefas")), "minutos": "180"})
+    c.post("/admin/pasta/intervalo", data={"csrf": _csrf(c.get("/importar/validar")), "minutos": "180"})
     assert pi.intervalo_minutos(app.state.prefs) == 180
-    c.post("/admin/pasta/intervalo", data={"csrf": _csrf(c.get("/admin/tarefas")), "minutos": "7"})
+    c.post("/admin/pasta/intervalo", data={"csrf": _csrf(c.get("/importar/validar")), "minutos": "7"})
     assert pi.intervalo_minutos(app.state.prefs) == 180

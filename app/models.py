@@ -303,7 +303,7 @@ class MovimentoCartao(Base):
 
 class ImportacaoPendente(Base):
     """Extrato encontrado na pasta partilhada da NAS (lida periodicamente): fica à espera de validação pelo
-    administrador (Administração › Tarefas). Validado, é importado como os outros e o ficheiro passa para importados/."""
+    administrador (Importar › Por validar). Validado, é importado como os outros e o ficheiro passa para importados/."""
     __tablename__ = "importacao_pendente"
 
     id: Mapped[int] = mapped_column(primary_key=True)
