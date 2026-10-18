@@ -4,7 +4,7 @@ Gestor financeiro doméstico, multiutilizador e self-hosted, para a NAS QNAP. Es
 importa movimentos de bancos portugueses e gere contas à ordem, cartões, investimentos e
 Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIGN.md).
 
-## Estado: v0.53.2
+## Estado: v0.53.3
 
 - Login com várias pessoas: passwords em argon2, bloqueio ao fim de 5 tentativas falhadas,
   proteção CSRF e invalidação das sessões quando a password muda.
@@ -37,6 +37,10 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.53.3 — Idas à oficina reconhecidas no plano.** Uma operação escrita em «Outro» conta no item do plano
+  correspondente (sem acentos nem maiúsculas; «Inspeção» ou «IPO» ↔ «Inspeção periódica obrigatória»; uma contida na outra).
+  A mensagem diz que itens do plano foram atualizados e quais ficaram só nas idas à oficina; os erros (ex.: km
+  incoerentes) avisam no topo da página em vez de passarem despercebidos.
 - **v0.53.2 — Adicionar ao recheio a partir do movimento.** Na edição de um débito, «📦 Adicionar ao recheio» (escolhendo
   a casa) cria a ficha do item com a data e o valor da compra, mesmo que a categoria não seja de recheio ou o valor esteja
   abaixo do mínimo, e abre-a para completar. Se o movimento já tem item, mostra a ligação para a ficha.

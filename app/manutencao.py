@@ -10,6 +10,8 @@
   se faltam menos de 1500 km ou 45 dias.
 """
 import calendar
+import re
+import unicodedata
 from dataclasses import dataclass
 from datetime import date, timedelta
 
@@ -97,17 +99,40 @@ def _base(b: Bem) -> tuple[date | None, int | None]:
     return (date(b.ano, 1, 1), 0) if b.ano else (None, None)
 
 
+def _normalizar(texto: str) -> str:
+    t = unicodedata.normalize("NFKD", texto or "").encode("ascii", "ignore").decode().lower()
+    return " ".join(re.findall(r"[a-z0-9]+", t))
+
+
+def _chave(texto: str) -> str:
+    """Nome comparável: sem acentos nem pontuação; a inspeção (IPO) tem sempre a mesma chave."""
+    t = _normalizar(texto)
+    return "inspecao" if "inspec" in t or re.search(r"\bipo\b", t) else t
+
+
+def corresponde(feito: str, do_plano: str) -> bool:
+    """Uma operação registada (do plano ou escrita em «Outro») corresponde a um item do plano: igual, a mesma chave
+    (ex.: «Inspeção» ↔ «Inspeção periódica obrigatória (IPO)») ou uma contida na outra com palavras inteiras."""
+    a, b = _chave(feito), _chave(do_plano)
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    curto, longo = sorted((a, b), key=len)
+    return len(curto) >= 4 and re.search(rf"\b{re.escape(curto)}\b", longo) is not None
+
+
 def estado_itens(b: Bem, hoje: date) -> list[EstadoItem]:
     km_hoje = km_estimados(b, hoje)
     ritmo = km_por_dia(b)
-    feitos = {}                     # nome do item (minúsculas) → (data, km) da última vez
+    feitos = []                     # (nome registado, data, km), do mais antigo para o mais recente
     for m in sorted(b.manutencoes, key=lambda m: (m.data, m.km or 0)):
         for nome in m.lista_itens:
-            feitos[nome.strip().lower()] = (m.data, m.km)
+            feitos.append((nome, m.data, m.km))
     base_data, base_km = _base(b)
     linhas = []
     for it in b.plano:
-        ultima = feitos.get(it.item.strip().lower())
+        ultima = next(((d, k) for nome, d, k in reversed(feitos) if corresponde(nome, it.item)), None)
         ud, uk = ultima if ultima else (None, None)
         de_data, de_km = (ud, uk) if ultima else (base_data, base_km)
         prox_km = de_km + it.intervalo_km if it.intervalo_km and de_km is not None else None

@@ -501,15 +501,15 @@ async def registar_oficina(request: Request, bid: int, u: Utilizador = Depends(u
         data, km = _ler_data_km(form)
         custo = abs(parse_montante(str(form.get("custo")))) if form.get("custo") else None
     except ValueError as e:
-        flash(request, str(e), "erro")
-        return RedirectResponse(f"/patrimonio/{b.id}#manutencao", status_code=303)
+        flash(request, f"Ida à oficina não registada: {e}", "erro")
+        return RedirectResponse(f"/patrimonio/{b.id}", status_code=303)
     mid = str(form.get("movimento_id", ""))
     mov = db.get(Movimento, int(mid)) if mid.isdigit() else None
     if mov and mov.conta.entidade_id != b.entidade_id:
         mov = None
     if not itens:
-        flash(request, "Escolhe o que foi feito (ou escreve em «Outro»).", "erro")
-        return RedirectResponse(f"/patrimonio/{b.id}#manutencao", status_code=303)
+        flash(request, "Ida à oficina não registada: escolhe o que foi feito (ou escreve em «Outro»).", "erro")
+        return RedirectResponse(f"/patrimonio/{b.id}", status_code=303)
     if custo is None and mov:
         custo = -mov.montante
     if km is not None:
@@ -517,8 +517,8 @@ async def registar_oficina(request: Request, bid: int, u: Utilizador = Depends(u
             mt.registar_km(db, b, data, km, origem="oficina")
         except ValueError as e:
             db.rollback()
-            flash(request, str(e), "erro")
-            return RedirectResponse(f"/patrimonio/{b.id}#manutencao", status_code=303)
+            flash(request, f"Ida à oficina não registada: {e} Corrige os km (ou deixa-os em branco).", "erro")
+            return RedirectResponse(f"/patrimonio/{b.id}", status_code=303)
     b.manutencoes.append(Manutencao(bem_id=b.id, data=data, km=km, itens="\n".join(itens), custo=custo,
                                     movimento_id=mov.id if mov else None,
                                     nota=str(form.get("nota", "")).strip()[:300] or None))
@@ -526,7 +526,15 @@ async def registar_oficina(request: Request, bid: int, u: Utilizador = Depends(u
         mov.bem_id, mov.bem_manual = b.id, True
     auditar(db, u, "oficina", f"{b.nome}: {', '.join(itens)}")
     db.commit()
-    flash(request, f"Ida à oficina registada ({len(itens)} operaç{'ões' if len(itens) != 1 else 'ão'}).")
+    msg = f"Ida à oficina de {data:%d/%m/%Y} registada ({len(itens)} operaç{'ões' if len(itens) != 1 else 'ão'})."
+    if b.plano:
+        no_plano = [it.item for it in b.plano if any(mt.corresponde(x, it.item) for x in itens)]
+        fora = [x for x in itens if not any(mt.corresponde(x, it.item) for it in b.plano)]
+        if no_plano:
+            msg += " Plano atualizado: " + ", ".join(no_plano) + "."
+        if fora:
+            msg += " Sem correspondência no plano (fica só nas idas à oficina): " + ", ".join(fora) + "."
+    flash(request, msg)
     return RedirectResponse(f"/patrimonio/{b.id}#manutencao", status_code=303)
 
 

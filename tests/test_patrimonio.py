@@ -1,7 +1,7 @@
 """Património: casas e carros, atribuição das despesas a cada bem, avaliação (IA e à mão) e revisão periódica."""
 import json
 import re
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -289,3 +289,30 @@ def test_periodo_dos_bens_respeita_a_cobertura(admin, app):
         assert c.meses[0] == date(2026, 8, 1) and len(c.meses) == 3          # ago, set, out — sem meses a zero antes
     ficha = admin.get(f"/patrimonio/{golf}").text
     assert "desde 01/08/2026" in ficha
+
+
+def test_inspecao_escrita_em_outro_conta_no_plano(admin, app, monkeypatch):
+    """«Inspeção» escrita em «Outro» atualiza o item «Inspeção periódica» do plano; erros de km avisam e não gravam."""
+    from app import manutencao as mt
+    from app.models import Manutencao
+    bid = _criar(admin, "carro", data_aquisicao="2019-03-01", km="80 000")
+    monkeypatch.setattr(ia, "disponivel", lambda: True)
+    monkeypatch.setattr(ia, "_chamar", lambda *a, **k: json.dumps(PLANO))
+    with app.state.SessionLocal() as db:
+        b = db.get(Bem, bid)
+        mt.gerar_plano(db, b, HOJE)
+        db.commit()
+    dia = (HOJE - timedelta(days=3)).isoformat()
+    r = _post(admin, f"/patrimonio/{bid}", f"/patrimonio/{bid}/oficina", data=dia, km="90 000", outro="Inspeção")
+    assert r.headers["location"] == f"/patrimonio/{bid}"                       # sem âncora: o aviso fica à vista
+    assert "Ida à oficina não registada" in admin.get(f"/patrimonio/{bid}").text
+    with app.state.SessionLocal() as db:
+        assert db.scalar(select(Manutencao)) is None
+    _post(admin, f"/patrimonio/{bid}", f"/patrimonio/{bid}/oficina", data=dia, km="", outro="Inspeção", custo="35,00")
+    p = admin.get(f"/patrimonio/{bid}").text
+    assert "Plano atualizado: Inspeção periódica" in p
+    with app.state.SessionLocal() as db:
+        b = db.get(Bem, bid)
+        insp = {x.item.item: x for x in mt.estado_itens(b, HOJE)}["Inspeção periódica"]
+        assert insp.ultima_data == HOJE - timedelta(days=3) and insp.estado == "ok"
+    assert mt.corresponde("IPO", "Inspeção periódica") and not mt.corresponde("Filtro de ar", "Filtro de óleo")
