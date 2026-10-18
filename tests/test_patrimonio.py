@@ -316,3 +316,59 @@ def test_inspecao_escrita_em_outro_conta_no_plano(admin, app, monkeypatch):
         insp = {x.item.item: x for x in mt.estado_itens(b, HOJE)}["Inspeção periódica"]
         assert insp.ultima_data == HOJE - timedelta(days=3) and insp.estado == "ok"
     assert mt.corresponde("IPO", "Inspeção periódica") and not mt.corresponde("Filtro de ar", "Filtro de óleo")
+
+
+def test_oficina_editar_e_pesquisar_movimento(admin, app):
+    """Plano fechado e registo só com «+ Nova»; pesquisa de débitos (texto, valor, perto da data); editar e associar."""
+    from app.models import Manutencao, Movimento
+    bid = _criar(admin, "carro", km="80 000")
+    _mov(admin, 1, (HOJE - timedelta(days=10)).isoformat(), "35,00", "CENTRO INSPECOES AUTO", sentido="saida")
+    p = admin.get(f"/patrimonio/{bid}").text
+    assert '<details class="separado nova-oficina" id="oficina-nova">' in p and "+ Nova ida à oficina" in p
+    assert "pesquisa_mov.js" in p
+    dia = (HOJE - timedelta(days=10)).isoformat()
+    _post(admin, f"/patrimonio/{bid}", f"/patrimonio/{bid}/oficina", data=dia, outro="Inspeção")
+    with app.state.SessionLocal() as db:
+        m = db.scalar(select(Manutencao))
+        insp = db.scalar(select(Movimento).where(Movimento.descricao_original == "CENTRO INSPECOES AUTO"))
+        mid, insp_id = m.id, insp.id
+        assert m.movimento_id is None
+    assert f'/patrimonio/{bid}/oficina/{mid}/editar">associar movimento' in admin.get(f"/patrimonio/{bid}").text
+    url = f"/patrimonio/{bid}/oficina/movimentos"
+    assert [r["id"] for r in admin.get(url, params={"q": "inspec"}).json()] == [insp_id]
+    por_valor = admin.get(url, params={"q": "35,00"}).json()
+    assert [r["id"] for r in por_valor] == [insp_id] and por_valor[0]["custo"] == "35,00"
+    perto = admin.get(url, params={"data": dia}).json()
+    assert insp_id in [r["id"] for r in perto] and "GALP ALVALADE" not in [r["descricao"] for r in perto]   # combustível não
+    f = admin.get(f"/patrimonio/{bid}/oficina/{mid}/editar")
+    assert f.status_code == 200 and 'value="Inspeção"' in f.text
+    r = admin.post(f"/patrimonio/{bid}/oficina/{mid}/editar", follow_redirects=False,
+                   data={"csrf": _csrf(f), "data": dia, "km": "79 500", "outro": "Inspeção, Escovas", "movimento_id": str(insp_id)})
+    assert r.status_code == 303
+    with app.state.SessionLocal() as db:
+        m = db.get(Manutencao, mid)
+        assert (m.movimento_id, m.custo, m.km, m.lista_itens) == (insp_id, 3500, 79500, ["Inspeção", "Escovas"])
+        assert db.get(Movimento, insp_id).bem_id == bid
+        assert any(x.km == 79500 and x.origem == "oficina" for x in db.get(Bem, bid).registos_km)
+    assert admin.get(url, params={"q": "inspec"}).json()[0]["ligado"]
+    assert not admin.get(url, params={"q": "inspec", "manutencao": str(mid)}).json()[0]["ligado"]
+    # mudar os km da ida à oficina substitui a leitura antiga
+    f = admin.get(f"/patrimonio/{bid}/oficina/{mid}/editar")
+    admin.post(f"/patrimonio/{bid}/oficina/{mid}/editar",
+               data={"csrf": _csrf(f), "data": dia, "km": "79 800", "outro": "Inspeção", "movimento_id": str(insp_id)})
+    with app.state.SessionLocal() as db:
+        kms = [x.km for x in db.get(Bem, bid).registos_km if x.origem == "oficina"]
+        assert kms == [79800]
+    assert admin.get(f"/patrimonio/{bid}/oficina/999/editar").status_code == 404
+
+
+def test_casa_despesas_so_em_grafico(admin, app):
+    """Casa: despesas e receitas condensadas (KPI, gráfico por mês, barras por categoria) e ligação ao detalhe."""
+    _criar(admin)
+    praia = _criar(admin, nome="Casa da praia", uso="ferias", omissao="", padroes="CONDOMINIO PRAIA\nAIRBNB",
+                   valor_aquisicao="", data_aquisicao="")
+    p = admin.get(f"/patrimonio/{praia}").text
+    assert 'data-grafico="despesas_bem"' in p and 'class="barras-categoria"' in p
+    assert "Ver os movimentos desta casa" in p and f"bem={praia}" in p
+    assert "<h3>Por mês</h3>" not in p and "<h3>Movimentos</h3>" not in p and "CONDOMINIO PRAIA SOL</a>" not in p
+    assert "Recebido" in p and "500,00 €" in p

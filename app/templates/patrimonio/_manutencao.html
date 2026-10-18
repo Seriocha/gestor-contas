@@ -1,5 +1,6 @@
+{% from "patrimonio/_oficina_form.html" import form_oficina with context %}
 {# Carros: quilómetros, plano de manutenção (IA) e idas à oficina. Contexto: b, mr, hoje, pode_editar, ia_disponivel,
-   falta_plano, descricao_carro, oficina. #}
+   falta_plano, descricao_carro. #}
 {% macro km(v) %}{{ '{:,}'.format(v).replace(',', ' ') }} km{% endmacro %}
 {% macro intervalo(it) -%}
   {%- if it.intervalo_km %}{{ km(it.intervalo_km) }}{% endif %}{% if it.intervalo_km and it.intervalo_meses %} ou {% endif -%}
@@ -22,6 +23,12 @@
     Com leituras regulares a app estima quando chegas a cada revisão.</div>{% endif %}
 
   {% if b.plano %}
+  {% set n_atraso = mr.itens | selectattr('estado', 'equalto', 'em atraso') | list | length %}
+  {% set n_breve = mr.itens | selectattr('estado', 'equalto', 'em breve') | list | length %}
+  <details class="separado bloco-recolhido" id="plano">
+    <summary><strong>Operações do plano</strong> <span class="nota">({{ b.plano | length }})</span>
+      {% if n_atraso %}<span class="etiqueta etiqueta-erro">{{ n_atraso }} em atraso</span>{% endif %}
+      {% if n_breve %}<span class="etiqueta etiqueta-cor">{{ n_breve }} em breve</span>{% endif %}</summary>
   <div class="rolar"><table class="tabela compacta">
     <thead><tr><th>Operação</th><th>A cada</th><th>Última vez</th><th>Próxima</th><th class="num">Falta</th><th class="num">Custo estimado</th><th>Estado</th></tr></thead>
     <tbody>
@@ -44,6 +51,7 @@
   </table></div>
   <p class="nota">{% if b.plano_notas %}{{ b.plano_notas }} {% endif %}Plano da IA de {{ b.plano_em | data if b.plano_em else '—' }}{{ ' (' ~ b.plano_modelo ~ ')' if b.plano_modelo }} —
     confirma com o livro de manutenção do carro. «Sem registo» conta desde a compra (ou o ano) do carro: regista a última vez que cada operação foi feita.</p>
+  </details>
   {% else %}
   <p class="vazio sem-margem">Ainda sem plano de manutenção. A IA indica as operações e os intervalos do fabricante para este carro.</p>
   {% endif %}
@@ -72,29 +80,10 @@
       <button>Registar</button>
     </form>
   </div>
-  <form method="post" action="/patrimonio/{{ b.id }}/oficina" class="formulario cartao-interno" style="margin-top: 1rem; max-width: none">
-    <input type="hidden" name="csrf" value="{{ csrf_token }}">
-    <h3>Registar ida à oficina</h3>
-    <div class="linha">
-      <label>Data <input type="date" name="data" value="{{ hoje.isoformat() }}" max="{{ hoje.isoformat() }}"></label>
-      <label>Km <input name="km" inputmode="numeric" placeholder="km nesse dia"></label>
-      <label>Custo <input name="custo" inputmode="decimal" placeholder="0,00"></label>
-    </div>
-    {% if b.plano %}
-    <fieldset><legend>O que foi feito</legend>
-      {% for it in b.plano %}<label class="opcao"><input type="checkbox" name="itens" value="{{ it.item }}"> {{ it.item }}</label>{% endfor %}
-    </fieldset>
-    {% endif %}
-    <label>Outro <input name="outro" maxlength="120" placeholder="{{ 'outra operação' if b.plano else 'ex.: revisão completa, pneus' }}"></label>
-    {% if oficina %}
-    <label>Movimento do extrato
-      <select name="movimento_id"><option value="">— nenhum —</option>
-        {% for m in oficina %}<option value="{{ m.id }}">{{ m.data_mov | data }} · {{ m.descricao_original }} · {{ m.montante | eur }}</option>{% endfor %}
-      </select></label>
-    {% endif %}
-    <label>Nota <input name="nota" maxlength="300" placeholder="oficina, o que mais foi visto…"></label>
-    <div class="acoes-form"><button>Registar</button></div>
-  </form>
+  <details class="separado nova-oficina" id="oficina-nova">
+    <summary class="botao">+ Nova ida à oficina</summary>
+    <div class="cartao-interno">{{ form_oficina(b) }}</div>
+  </details>
   {% endif %}
 
   {% if b.manutencoes %}
@@ -104,9 +93,10 @@
     {% for m in b.manutencoes | reverse %}
     <tr><td class="sem-quebra">{{ m.data | data }}</td><td class="num sem-quebra">{{ km(m.km) if m.km is not none else '—' }}</td>
       <td>{{ m.lista_itens | join(' · ') }}{% if m.nota %}<br><span class="nota">{{ m.nota }}</span>{% endif %}
-        {% if m.movimento %}<br><a class="nota" href="/movimentos/{{ m.movimento.id }}">{{ m.movimento.descricao_original }}</a>{% endif %}</td>
+        {% if m.movimento %}<br><a class="nota" href="/movimentos/{{ m.movimento.id }}/detalhe">🏦 {{ m.movimento.descricao_original }} · {{ m.movimento.montante | eur }}</a>{% elif pode_editar %}<br><a class="nota" href="/patrimonio/{{ b.id }}/oficina/{{ m.id }}/editar">associar movimento</a>{% endif %}</td>
       <td class="num">{{ m.custo | eur if m.custo is not none else '—' }}</td>
-      <td>{% if pode_editar %}<form method="post" action="/patrimonio/{{ b.id }}/oficina/{{ m.id }}/apagar" onsubmit="return confirm('Apagar este registo?')">
+      <td class="sem-quebra">{% if pode_editar %}<a href="/patrimonio/{{ b.id }}/oficina/{{ m.id }}/editar">Editar</a>
+        <form method="post" action="/patrimonio/{{ b.id }}/oficina/{{ m.id }}/apagar" onsubmit="return confirm('Apagar este registo?')" style="display: inline">
         <input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="ligacao">Apagar</button></form>{% endif %}</td></tr>
     {% endfor %}
   </table></div>

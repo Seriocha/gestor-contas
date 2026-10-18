@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% from "patrimonio/_oficina_form.html" import form_oficina with context %}
+{% block titulo %}Ida à oficina · {{ b.nome }}{% endblock %}
+{% block conteudo %}
+<div class="titulo-acoes">
+  <h1>Ida à oficina <span class="nota">· {{ b.nome }}{{ ' · ' ~ b.matricula if b.matricula }}</span></h1>
+  <a href="/patrimonio/{{ b.id }}#manutencao">‹ Manutenção</a>
+</div>
+<section class="cartao">{{ form_oficina(b, m) }}</section>
+{% endblock %}
+{% block scripts %}<script src="/static/pesquisa_mov.js?v={{ versao }}"></script>{% endblock %}

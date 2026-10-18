@@ -149,11 +149,13 @@
 
 <section class="cartao" id="despesas">
   <h2>{{ 'Combustível' if b.empresa else 'Despesas e receitas' }} <span class="nota">· desde {{ ini | data }}</span></h2>
-  {% if c.movimentos and b.tipo == 'carro' %}
+  {% if c.movimentos %}
+  {% set n_meses = c.meses | length or 1 %}
   <div class="kpi-linha">
-    <div class="kpi"><span class="nota">Despesas em 12 meses</span><strong>{{ c.despesas | eur }}</strong>
-      <span class="nota">{{ (c.despesas / 12) | round | int | eur }}/mês</span></div>
-    {% if c.receitas %}<div class="kpi"><span class="nota">Recebido</span><strong>{{ c.receitas | eur }}</strong></div>{% endif %}
+    <div class="kpi"><span class="nota">Despesas · {{ n_meses }} {{ 'mês' if n_meses == 1 else 'meses' }}</span><strong>{{ c.despesas | eur }}</strong>
+      <span class="nota">{{ (c.despesas / n_meses) | round | int | eur }}/mês</span></div>
+    {% if c.receitas %}<div class="kpi"><span class="nota">Recebido</span><strong class="pos">{{ c.receitas | eur }}</strong>
+      <span class="nota">saldo {{ (c.receitas - c.despesas) | eur }}</span></div>{% endif %}
   </div>
   {% if graficos.despesas_bem %}<div class="grafico grafico-medio"><canvas data-grafico="despesas_bem" aria-label="Despesas por mês e categoria" role="img"></canvas></div>{% endif %}
   {% set maximo = (c.por_categoria | map(attribute=2) | max) if c.por_categoria else 0 %}
@@ -164,36 +166,7 @@
       <span class="num">{{ total | eur }}</span></li>
     {% endfor %}
   </ul>
-  <p><a class="botao" href="/movimentos?entidade={{ b.entidade_id }}&bem={{ b.id }}&de={{ ini.isoformat() }}">Ver os movimentos deste carro →</a></p>
-  {% elif c.movimentos %}
-  <div class="linha-dupla">
-    <div>
-      <h3>Por categoria</h3>
-      <table class="tabela compacta">
-        {% for nome, cor, total in c.por_categoria %}
-        <tr><td><span class="ponto" style="background: {{ cor }}"></span> {{ nome }}</td><td class="num">{{ total | eur }}</td></tr>
-        {% endfor %}
-      </table>
-    </div>
-    <div>
-      <h3>Por mês</h3>
-      <table class="tabela compacta">
-        {% for rotulo, total in c.por_mes %}<tr><td>{{ rotulo }}</td><td class="num">{{ total | eur }}</td></tr>{% endfor %}
-      </table>
-    </div>
-  </div>
-  <h3>Movimentos</h3>
-  <div class="rolar"><table class="tabela compacta">
-    <thead><tr><th>Data</th><th>Conta</th><th>Descrição</th><th>Categoria</th><th class="num">Montante</th></tr></thead>
-    {% for m in c.movimentos[:50] %}
-    <tr><td class="sem-quebra">{{ m.data_mov | data }}</td><td class="nota">{{ m.conta.nome }}</td>
-      <td><a href="/movimentos/{{ m.id }}">{{ m.descricao_original }}</a></td>
-      <td class="nota">{{ m.categoria.nome_completo if m.categoria else '—' }}</td>
-      {% set v = c.partes.get(m.id, m.montante) %}
-      <td class="num {{ 'neg' if v < 0 else 'pos' }}"><a class="valor-mov" href="/movimentos/{{ m.id }}/detalhe">{{ v | eur }}</a>{% if v != m.montante %}<br><span class="nota">de {{ m.montante | eur }}</span>{% endif %}</td></tr>
-    {% endfor %}
-  </table></div>
-  {% if c.movimentos | length > 50 %}<p class="nota">Mostrados os 50 mais recentes de {{ c.movimentos | length }}.</p>{% endif %}
+  <p><a class="botao" href="/movimentos?entidade={{ b.entidade_id }}&bem={{ b.id }}&de={{ ini.isoformat() }}">Ver os movimentos {{ {'carro': 'deste carro', 'casa': 'desta casa', 'rustico': 'desta propriedade'}.get(b.tipo, 'deste bem') }} →</a></p>
   {% else %}
   <p class="vazio sem-margem">Nenhum movimento ligado a este bem nos últimos 12 meses.
     {% if not b.lista_padroes and not b.omissao %}Indica os textos do extrato ou marca-o «por omissão» (Editar).{% endif %}</p>
@@ -205,6 +178,7 @@
 
 {% block scripts %}
 {% if b.tipo == 'carro' %}
+<script src="/static/pesquisa_mov.js?v={{ versao }}"></script>
 <script>
   // Separadores do carro: mostra uma secção de cada vez; o #endereço (ex.: #km, #manutencao) escolhe a secção.
   (() => {
@@ -227,8 +201,10 @@
       history.replaceState(null, '', '#' + a.dataset.tab);
       mostra(a.dataset.tab);
     }));
-    window.addEventListener('hashchange', peloEndereco);
+    const abrirNova = () => { const d = document.getElementById('oficina-nova'); if (d && location.hash === '#oficina-nova') d.open = true; };
+    window.addEventListener('hashchange', () => { peloEndereco(); abrirNova(); });
     peloEndereco();
+    abrirNova();
   })();
 </script>
 {% endif %}

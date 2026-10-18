@@ -290,11 +290,10 @@ def ficha(request: Request, bid: int, u: Utilizador = Depends(utilizador_atual),
                   ocupacoes=OCUPACOES, aguas=AGUAS, acessos=ACESSOS, tipos_construcao=TIPOS_CONSTRUCAO,
                   construcoes=pt.construcoes_por_artigo(b) if b.tipo == "rustico" else None,
                   graficos={"bem": pt.serie_valor(b),
-                            "despesas_bem": pt.serie_despesas(c) if b.tipo == "carro" else None}, pode_editar=PAPEIS[papel] >= PAPEIS["editar"],
+                            "despesas_bem": pt.serie_despesas(c)}, pode_editar=PAPEIS[papel] >= PAPEIS["editar"],
                   mr=mt.resumo(b, hoje) if b.tipo == "carro" else None,
                   falta_plano=mt.falta_para_plano(b) if b.tipo == "carro" else [],
                   descricao_carro=mt.descricao_carro(b, hoje) if b.tipo == "carro" else "",
-                  oficina=_movs_oficina(db, b, hoje) if b.tipo == "carro" else [],
                   via_verde=vv.do_carro(db, b, ini, hoje) if b.tipo == "carro" else [],
                   consumo=fuelio.consumo(db, b, ini, hoje) if b.tipo == "carro" else None,
                   rech=recheio.resumo_casa(db, b, hoje) if b.tipo == "casa" else None,
@@ -408,16 +407,6 @@ async def apagar_abastecimento(request: Request, bid: int, aid: int, u: Utilizad
     return RedirectResponse(f"/patrimonio/{b.id}#fuelio", status_code=303)
 
 
-def _movs_oficina(db: Session, b: Bem, hoje: date) -> list[Movimento]:
-    """Despesas do carro (não combustível) dos últimos 2 anos, para ligar a uma ida à oficina."""
-    ligados = {m.movimento_id for m in b.manutencoes if m.movimento_id}
-    desde = max(rel.somar_meses(hoje, -24), rel.inicio_analise(db, b.entidade_id) or date.min)
-    movs = db.scalars(select(Movimento).where(Movimento.bem_id == b.id, Movimento.montante < 0,
-                                              Movimento.data_mov >= desde)
-                      .order_by(Movimento.data_mov.desc())).all()
-    return [m for m in movs if m.id not in ligados and not pt.e_combustivel(m)][:40]
-
-
 def _carro(db: Session, u: Utilizador, bid: int) -> Bem:
     b, _ = _bem(db, u, bid, "editar")
     if b.tipo != "carro":
@@ -487,54 +476,156 @@ async def gerar_plano(request: Request, bid: int, u: Utilizador = Depends(utiliz
     return RedirectResponse(f"/patrimonio/{b.id}#manutencao", status_code=303)
 
 
-@router.post("/{bid}/oficina")
-async def registar_oficina(request: Request, bid: int, u: Utilizador = Depends(utilizador_atual),
-                           db: Session = Depends(get_db)):
-    form = await ler_form(request)
-    b = _carro(db, u, bid)
+def _ler_oficina(db: Session, b: Bem, form) -> dict:
+    """Lê o formulário de uma ida à oficina (registar ou editar). ValueError com a mensagem se faltar algo."""
     nomes = {it.item for it in b.plano}
     itens = [str(i) for i in form.getlist("itens") if str(i) in nomes]
-    outro = str(form.get("outro", "")).strip()[:120]
-    if outro:
-        itens.append(outro)
-    try:
-        data, km = _ler_data_km(form)
-        custo = abs(parse_montante(str(form.get("custo")))) if form.get("custo") else None
-    except ValueError as e:
-        flash(request, f"Ida à oficina não registada: {e}", "erro")
-        return RedirectResponse(f"/patrimonio/{b.id}", status_code=303)
+    for outro in str(form.get("outro", "")).replace(";", ",").split(","):
+        outro = outro.strip()[:120]
+        if outro and outro not in itens:
+            itens.append(outro)
+    data, km = _ler_data_km(form)
+    custo = abs(parse_montante(str(form.get("custo")))) if form.get("custo") else None
     mid = str(form.get("movimento_id", ""))
     mov = db.get(Movimento, int(mid)) if mid.isdigit() else None
     if mov and mov.conta.entidade_id != b.entidade_id:
         mov = None
     if not itens:
-        flash(request, "Ida à oficina não registada: escolhe o que foi feito (ou escreve em «Outro»).", "erro")
-        return RedirectResponse(f"/patrimonio/{b.id}", status_code=303)
+        raise ValueError("escolhe o que foi feito (ou escreve em «Outro»).")
     if custo is None and mov:
         custo = -mov.montante
-    if km is not None:
-        try:
-            mt.registar_km(db, b, data, km, origem="oficina")
-        except ValueError as e:
-            db.rollback()
-            flash(request, f"Ida à oficina não registada: {e} Corrige os km (ou deixa-os em branco).", "erro")
-            return RedirectResponse(f"/patrimonio/{b.id}", status_code=303)
-    b.manutencoes.append(Manutencao(bem_id=b.id, data=data, km=km, itens="\n".join(itens), custo=custo,
-                                    movimento_id=mov.id if mov else None,
-                                    nota=str(form.get("nota", "")).strip()[:300] or None))
+    return {"data": data, "km": km, "itens": itens, "custo": custo, "mov": mov,
+            "nota": str(form.get("nota", "")).strip()[:300] or None}
+
+
+def _msg_plano(b: Bem, itens: list[str]) -> str:
+    if not b.plano:
+        return ""
+    msg = ""
+    no_plano = [it.item for it in b.plano if any(mt.corresponde(x, it.item) for x in itens)]
+    fora = [x for x in itens if not any(mt.corresponde(x, it.item) for it in b.plano)]
+    if no_plano:
+        msg += " Plano atualizado: " + ", ".join(no_plano) + "."
+    if fora:
+        msg += " Sem correspondência no plano (fica só nas idas à oficina): " + ", ".join(fora) + "."
+    return msg
+
+
+@router.post("/{bid}/oficina")
+async def registar_oficina(request: Request, bid: int, u: Utilizador = Depends(utilizador_atual),
+                           db: Session = Depends(get_db)):
+    form = await ler_form(request)
+    b = _carro(db, u, bid)
+    try:
+        d = _ler_oficina(db, b, form)
+        if d["km"] is not None:
+            mt.registar_km(db, b, d["data"], d["km"], origem="oficina")
+    except ValueError as e:
+        db.rollback()
+        flash(request, f"Ida à oficina não registada: {e}", "erro")
+        return RedirectResponse(f"/patrimonio/{b.id}", status_code=303)
+    mov = d["mov"]
+    b.manutencoes.append(Manutencao(bem_id=b.id, data=d["data"], km=d["km"], itens="\n".join(d["itens"]), custo=d["custo"],
+                                    movimento_id=mov.id if mov else None, nota=d["nota"]))
     if mov and not mov.bem_id:
         mov.bem_id, mov.bem_manual = b.id, True
-    auditar(db, u, "oficina", f"{b.nome}: {', '.join(itens)}")
+    auditar(db, u, "oficina", f"{b.nome}: {', '.join(d['itens'])}")
     db.commit()
-    msg = f"Ida à oficina de {data:%d/%m/%Y} registada ({len(itens)} operaç{'ões' if len(itens) != 1 else 'ão'})."
-    if b.plano:
-        no_plano = [it.item for it in b.plano if any(mt.corresponde(x, it.item) for x in itens)]
-        fora = [x for x in itens if not any(mt.corresponde(x, it.item) for it in b.plano)]
-        if no_plano:
-            msg += " Plano atualizado: " + ", ".join(no_plano) + "."
-        if fora:
-            msg += " Sem correspondência no plano (fica só nas idas à oficina): " + ", ".join(fora) + "."
-    flash(request, msg)
+    n = len(d["itens"])
+    flash(request, f"Ida à oficina de {d['data']:%d/%m/%Y} registada ({n} operaç{'ões' if n != 1 else 'ão'})."
+                   + _msg_plano(b, d["itens"]))
+    return RedirectResponse(f"/patrimonio/{b.id}#manutencao", status_code=303)
+
+
+def _oficina(db: Session, b: Bem, mid: int) -> Manutencao:
+    m = db.get(Manutencao, mid)
+    if not m or m.bem_id != b.id:
+        raise HTTPException(status_code=404, detail="Não encontrado.")
+    return m
+
+
+@router.get("/{bid}/oficina/movimentos")
+def pesquisar_movimentos_oficina(bid: int, q: str = "", data: str = "", manutencao: str = "",
+                                 u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
+    """Débitos da entidade do carro para associar a uma ida à oficina: por texto ou valor; sem pesquisa, os perto da
+    data (os deste carro primeiro)."""
+    from fastapi.responses import JSONResponse
+    from sqlalchemy import func
+    b, _ = _bem(db, u, bid, "editar")
+    hoje = date.today()
+    try:
+        ref = parse_data(data) if data else hoje
+    except ValueError:
+        ref = hoje
+    consulta = select(Movimento).join(Conta).where(Conta.entidade_id == b.entidade_id, Movimento.montante < 0,
+                                                   ~Movimento.transferencia,
+                                                   Movimento.data_mov >= hoje - timedelta(days=3 * 366))
+    q = q.strip()
+    valor = None
+    if q:
+        try:
+            valor = abs(parse_montante(q))
+        except ValueError:
+            valor = None
+    if valor:
+        consulta = consulta.where(Movimento.montante == -valor)
+    elif q:
+        consulta = consulta.where(func.upper(Movimento.descricao_original).contains(q.upper()))
+    else:
+        consulta = consulta.where(Movimento.data_mov.between(ref - timedelta(days=45), ref + timedelta(days=45)))
+    movs = db.scalars(consulta.order_by(Movimento.data_mov.desc()).limit(300)).all()
+    if not q:
+        movs = [m for m in movs if not pt.e_combustivel(m)]
+    movs.sort(key=lambda m: (m.bem_id != b.id, abs((m.data_mov - ref).days)))
+    excluir = int(manutencao) if manutencao.isdigit() else None
+    ligados = {mid: bem for mid, bem in db.execute(select(Manutencao.movimento_id, Manutencao.bem_id)
+                                                  .where(Manutencao.movimento_id.in_([m.id for m in movs[:25]]),
+                                                         Manutencao.id != (excluir or 0)))}
+    return JSONResponse([{"id": m.id, "data": f"{m.data_mov:%d/%m/%Y}", "descricao": m.descricao_original,
+                          "conta": m.conta.nome, "valor": fmt_montante(m.montante), "custo": montante_para_input(-m.montante),
+                          "deste_carro": m.bem_id == b.id, "ligado": m.id in ligados} for m in movs[:25]])
+
+
+@router.get("/{bid}/oficina/{mid}/editar")
+def editar_oficina(request: Request, bid: int, mid: int, u: Utilizador = Depends(utilizador_atual),
+                   db: Session = Depends(get_db)):
+    b = _carro(db, u, bid)
+    m = _oficina(db, b, mid)
+    visiveis, ent, _ = entidade_escolhida(request, db, u, b.entidade_id)
+    return render(request, "patrimonio/oficina_editar.html", b=b, m=m, hoje=date.today(), entidade=ent,
+                  montante_para_input=montante_para_input)
+
+
+@router.post("/{bid}/oficina/{mid}/editar")
+async def guardar_oficina(request: Request, bid: int, mid: int, u: Utilizador = Depends(utilizador_atual),
+                          db: Session = Depends(get_db)):
+    form = await ler_form(request)
+    b = _carro(db, u, bid)
+    m = _oficina(db, b, mid)
+    try:
+        d = _ler_oficina(db, b, form)
+        if (d["data"], d["km"]) != (m.data, m.km):
+            # a leitura de km desta ida à oficina acompanha a alteração
+            antiga = next((r for r in b.registos_km if r.origem == "oficina" and r.data == m.data and r.km == m.km), None)
+            if antiga:
+                b.registos_km.remove(antiga)
+                db.flush()
+            if d["km"] is not None:
+                mt.registar_km(db, b, d["data"], d["km"], origem="oficina")
+            ultimo = mt.ultimo_registo(b)
+            b.km = ultimo.km if ultimo else b.km
+    except ValueError as e:
+        db.rollback()
+        flash(request, f"Alteração não guardada: {e}", "erro")
+        return RedirectResponse(f"/patrimonio/{b.id}/oficina/{m.id}/editar", status_code=303)
+    mov = d["mov"]
+    m.data, m.km, m.itens, m.custo, m.nota = d["data"], d["km"], "\n".join(d["itens"]), d["custo"], d["nota"]
+    m.movimento_id = mov.id if mov else None
+    if mov and not mov.bem_id:
+        mov.bem_id, mov.bem_manual = b.id, True
+    auditar(db, u, "oficina_editada", f"{b.nome}: {m.data} {', '.join(d['itens'])}")
+    db.commit()
+    flash(request, "Ida à oficina guardada." + (" Movimento associado." if mov else "") + _msg_plano(b, d["itens"]))
     return RedirectResponse(f"/patrimonio/{b.id}#manutencao", status_code=303)
 
 

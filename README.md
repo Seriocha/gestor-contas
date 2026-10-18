@@ -4,7 +4,7 @@ Gestor financeiro doméstico, multiutilizador e self-hosted, para a NAS QNAP. Es
 importa movimentos de bancos portugueses e gere contas à ordem, cartões, investimentos e
 Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIGN.md).
 
-## Estado: v0.53.3
+## Estado: v0.54.0
 
 - Login com várias pessoas: passwords em argon2, bloqueio ao fim de 5 tentativas falhadas,
   proteção CSRF e invalidação das sessões quando a password muda.
@@ -37,6 +37,14 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.54.0 — Manutenção mais arrumada; editar idas à oficina e associar o movimento.** No separador Manutenção do carro,
+  as operações do plano ficam num bloco fechado (com o número em atraso / em breve à vista) e o registo só abre com
+  «+ Nova ida à oficina». Ao registar — ou depois, em «Editar» na lista das idas à oficina — pesquisa-se o débito do
+  extrato por texto ou valor (sem pesquisa, os débitos perto da data, os deste carro primeiro, sem combustível) e
+  associa-se; o custo é preenchido pelo valor. Editar os km substitui a leitura de km dessa ida.
+  Casas e propriedades: «Despesas e receitas» passa a ser só um resumo gráfico (como nos carros) — total e média por mês,
+  recebido e saldo, gráfico por mês empilhado pelas maiores categorias, barras por categoria — com a ligação para os
+  movimentos do bem em vez das tabelas.
 - **v0.53.3 — Idas à oficina reconhecidas no plano.** Uma operação escrita em «Outro» conta no item do plano
   correspondente (sem acentos nem maiúsculas; «Inspeção» ou «IPO» ↔ «Inspeção periódica obrigatória»; uma contida na outra).
   A mensagem diz que itens do plano foram atualizados e quais ficaram só nas idas à oficina; os erros (ex.: km

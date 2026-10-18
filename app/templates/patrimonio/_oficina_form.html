@@ -1,0 +1,39 @@
+{# Formulário de uma ida à oficina (registar ou editar), com pesquisa do movimento do extrato.
+   Importar «with context». Contexto: b, hoje, csrf_token. m = Manutencao a editar (ou none). #}
+{% macro form_oficina(b, m=none) %}
+{% set feitos = m.lista_itens if m else [] %}
+{% set nomes_plano = b.plano | map(attribute='item') | list %}
+<form method="post" action="/patrimonio/{{ b.id }}/oficina{{ '/' ~ m.id ~ '/editar' if m }}" class="formulario oficina-form" style="max-width: none">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  <div class="linha">
+    <label>Data <input type="date" name="data" value="{{ (m.data if m else hoje).isoformat() }}" max="{{ hoje.isoformat() }}"></label>
+    <label>Km <input name="km" inputmode="numeric" placeholder="km nesse dia" value="{{ m.km if m and m.km is not none else '' }}"></label>
+    <label>Custo <input name="custo" inputmode="decimal" placeholder="0,00" value="{{ montante_para_input(m.custo) if m and m.custo is not none else '' }}"></label>
+  </div>
+  {% if b.plano %}
+  <fieldset><legend>O que foi feito</legend>
+    {% for it in b.plano %}<label class="opcao"><input type="checkbox" name="itens" value="{{ it.item }}" {% if it.item in feitos %}checked{% endif %}> {{ it.item }}</label>{% endfor %}
+  </fieldset>
+  {% endif %}
+  {% set outros = feitos | reject('in', nomes_plano) | list %}
+  <label>Outro <input name="outro" maxlength="120" value="{{ outros | join(', ') }}" placeholder="{{ 'outra operação (ex.: inspeção, pneus)' if b.plano else 'ex.: revisão completa, inspeção, pneus' }}"></label>
+  <div class="pesquisa-mov" data-url="/patrimonio/{{ b.id }}/oficina/movimentos" data-manutencao="{{ m.id if m else '' }}">
+    <span class="rotulo-campo">Movimento do extrato</span>
+    <input type="hidden" name="movimento_id" value="{{ m.movimento_id if m and m.movimento_id else '' }}">
+    <div class="mov-escolhido">
+      {% if m and m.movimento %}{% set x = m.movimento %}
+      <span>{{ x.data_mov | data }} · {{ x.descricao_original }} · <strong>{{ x.montante | eur }}</strong> <span class="nota">{{ x.conta.nome }}</span></span>
+      <button type="button" class="ligacao" data-limpar>Tirar</button>
+      {% else %}<span class="nota">nenhum</span>{% endif %}
+    </div>
+    <input type="search" class="mov-pesquisa" placeholder="Pesquisar no extrato: texto ou valor (ex.: oficina, 35,00)" autocomplete="off">
+    <ul class="mov-resultados" hidden></ul>
+    <span class="nota">Sem pesquisa, mostra os débitos perto da data (os deste carro primeiro).</span>
+  </div>
+  <label>Nota <input name="nota" maxlength="300" value="{{ m.nota or '' if m else '' }}" placeholder="oficina, o que mais foi visto…"></label>
+  <div class="acoes-form">
+    <button class="primario">{{ 'Guardar' if m else 'Registar' }}</button>
+    {% if m %}<a href="/patrimonio/{{ b.id }}#manutencao">Cancelar</a>{% endif %}
+  </div>
+</form>
+{% endmacro %}
