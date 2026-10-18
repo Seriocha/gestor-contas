@@ -3,7 +3,7 @@
 {% block conteudo %}
 <h1>{{ 'Editar «' ~ sub.nome ~ '»' if sub else 'Nova subscrição' }} <span class="nota">· {{ entidade.nome }}</span></h1>
 {% if erros %}<div class="aviso aviso-erro"><ul>{% for e in erros %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
-<form method="post" class="formulario" action="{{ '/subscricoes/' ~ sub.id ~ '/editar' if sub else '/subscricoes/nova?entidade=' ~ entidade.id }}">
+<form method="post" class="formulario" action="{{ '/subscricoes/' ~ sub.id ~ '/editar' if sub else '/subscricoes/nova?entidade=' ~ entidade.id ~ ('&mov=' ~ v.mov if v.mov else '') }}">
   <input type="hidden" name="csrf" value="{{ csrf_token }}">
   <label>Serviço
     <select name="servico" id="servico">

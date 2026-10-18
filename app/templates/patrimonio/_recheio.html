@@ -1,0 +1,51 @@
+{# Casa: recheio para o seguro e as garantias. Contexto: b, rech (recheio.Resumo), hoje, pode_editar. #}
+<section class="cartao" id="recheio">
+  <h2>Recheio <span class="nota">· {{ rech.itens | length }} ite{{ 'ns' if rech.itens | length != 1 else 'm' }}</span></h2>
+  <div class="kpi-linha">
+    <div class="kpi"><span class="nota">Valor do recheio</span><strong>{{ rech.total | eur }}</strong>
+      <span class="nota">valor de compra dos itens em uso</span></div>
+    <div class="kpi"><span class="nota">Capital seguro do recheio</span><strong>{{ rech.capital | eur if rech.capital is not none else '—' }}</strong>
+      {% if rech.subseguro %}<span class="nota neg">faltam {{ rech.subseguro | eur }} (subseguro)</span>
+      {% elif rech.capital is not none %}<span class="nota pos">cobre o recheio</span>{% endif %}</div>
+    <div class="kpi"><span class="nota">Garantias a terminar</span><strong>{{ rech.a_terminar | length }}</strong><span class="nota">nos próximos 90 dias</span></div>
+    <div class="kpi"><span class="nota">Pedidos de garantia abertos</span><strong>{{ rech.pedidos_abertos | length }}</strong></div>
+  </div>
+  {% if rech.subseguro %}<div class="aviso aviso-alerta">O recheio vale mais do que o capital seguro: em caso de sinistro, a indemnização pode ser
+    reduzida na proporção (regra proporcional). Considera atualizar o capital do seguro.</div>{% endif %}
+  {% if rech.itens %}
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th>Item</th><th>Compra</th><th class="num">Valor</th><th>Garantia</th><th>Estado</th></tr></thead>
+    <tbody>
+    {% for i in rech.itens %}
+    {% set g = i.estado_garantia(hoje) %}
+    <tr class="{{ 'arquivada' if i.estado == 'abatido' }}">
+      <td><a href="/patrimonio/recheio/{{ i.id }}"><strong>{{ i.nome }}</strong></a>
+        {% if i.marca or i.modelo %}<br><span class="nota">{{ [i.marca, i.modelo] | select | join(' ') }}</span>{% endif %}</td>
+      <td class="sem-quebra">{{ i.data_compra | data if i.data_compra else '—' }}{% if i.loja %}<br><span class="nota">{{ i.loja }}</span>{% endif %}</td>
+      <td class="num">{{ i.valor | eur if i.valor is not none else '—' }}</td>
+      <td class="sem-quebra"><span class="etiqueta {{ {'em garantia': 'etiqueta-ok', 'termina em breve': 'etiqueta-cor', 'expirada': ''}.get(g, '') }}">{{ g }}</span>
+        {% if i.fim_garantia %}<br><span class="nota">até {{ i.fim_garantia | data }}</span>{% endif %}</td>
+      <td>{% if i.pedido_aberto %}<span class="etiqueta etiqueta-erro">pedido de garantia</span>{% else %}{{ {'ativo': 'em uso', 'avariado': 'avariado', 'abatido': 'abatido'}.get(i.estado, i.estado) }}{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}
+  <p class="vazio sem-margem">Sem itens. As compras classificadas em categorias de recheio (Administração › Recheio) entram aqui sozinhas;
+    também podes acrescentar à mão.</p>
+  {% endif %}
+  {% if pode_editar %}
+  <div class="pat-acoes">
+    <form method="post" action="/patrimonio/{{ b.id }}/recheio/novo" class="formulario cartao-interno">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
+      <label>Item à mão <input name="nome" required maxlength="120" placeholder="ex.: Frigorífico, sofá da sala"></label>
+      <button>Acrescentar</button>
+    </form>
+    <form method="post" action="/patrimonio/{{ b.id }}/capital-recheio" class="formulario cartao-interno">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
+      <label>Capital seguro do recheio (apólice) <input name="capital" inputmode="decimal" value="{{ (rech.capital / 100) | string | replace('.', ',') if rech.capital is not none else '' }}" placeholder="0,00"></label>
+      <button>Guardar</button>
+    </form>
+  </div>
+  {% endif %}
+</section>

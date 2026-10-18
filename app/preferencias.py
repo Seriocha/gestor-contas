@@ -17,6 +17,9 @@ OMISSAO = {
     "avaliacao_automatica": "1",
     # Heranças: mostrar a parte do utilizador (quota e 2.º cenário) junto dos valores e no Início da entidade pessoal.
     "mostrar_minha_parte": "1",
+    # Recheio: garantia por omissão dos itens novos (meses).
+    "recheio_garantia_meses": "36",
+    "recheio_valor_minimo": "50",          # euros: compras abaixo disto não entram no recheio
     # Página de registo de abastecimentos sem login: código secreto do link (vazio = desligada).
     "abastecer_token": "",
 }

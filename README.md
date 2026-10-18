@@ -4,7 +4,7 @@ Gestor financeiro doméstico, multiutilizador e self-hosted, para a NAS QNAP. Es
 importa movimentos de bancos portugueses e gere contas à ordem, cartões, investimentos e
 Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIGN.md).
 
-## Estado: v0.48.0
+## Estado: v0.50.0
 
 - Login com várias pessoas: passwords em argon2, bloqueio ao fim de 5 tentativas falhadas,
   proteção CSRF e invalidação das sessões quando a password muda.
@@ -37,6 +37,17 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.50.0 — Movimento associado a uma subscrição.** Na ficha de um débito escolhe-se a subscrição (ou cria-se uma já
+  preenchida a partir dele, ficando associado). O débito associado conta nos pagamentos dessa subscrição mesmo que o texto não
+  bata com o padrão, deixa de contar noutra e de ser sugerido; se a subscrição não tinha texto do extrato, fica com o deste
+  movimento, para os débitos seguintes serem reconhecidos sozinhos.
+- **v0.49.0 — Recheio das casas (seguro e garantias).** Em Administração › Recheio escolhem-se as categorias que são recheio
+  (a marca vale para as subcategorias), a garantia por omissão (36 meses, a garantia legal) e o valor mínimo da compra. Cada
+  compra classificada nessas categorias — à mão, por regra, ao importar ou na consolidação — passa a item do recheio da casa
+  (a do movimento ou a «por omissão»), com data, valor e loja do movimento. Ficha do item: tipo, marca, modelo, n.º de série,
+  características, garantia (fim calculado), contactos do fornecedor (ligar / email com o assunto preenchido / site), estado e
+  pedidos de garantia (aberto, em reparação, resolvido, recusado). Na casa: valor do recheio vs. capital seguro do recheio (aviso
+  de subseguro), garantias a terminar e pedidos abertos; na agenda do Início, fim das garantias e pedidos em curso.
 - **v0.48.0 — A minha parte, condicional e em blocos.** Preferência em Administração «Mostrar a minha parte nas heranças»
   (ligada/desligada). As partes aparecem em blocos distintos (a tua parte · 1/6; por morte da mãe · 1/2) e as variações do
   cabeçalho do Início em blocos simples (este mês; desde …). No Início da entidade pessoal (Família) aparece a tua parte em

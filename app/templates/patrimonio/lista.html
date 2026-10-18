@@ -62,6 +62,11 @@
     <span class="nota">desde {{ r.desde | data }}</span></div>
 </section>
 
+{% if recheio_sem_casa %}
+<div class="aviso">{{ recheio_sem_casa | length }} ite{{ 'ns' if recheio_sem_casa | length != 1 else 'm' }} do recheio sem casa:
+  {% for i in recheio_sem_casa[:5] %}<a href="/patrimonio/recheio/{{ i.id }}">{{ i.nome }}</a>{{ ', ' if not loop.last }}{% endfor %}{{ '…' if recheio_sem_casa | length > 5 }}
+  — escolhe a casa na ficha de cada um (ou marca uma casa «por omissão»).</div>
+{% endif %}
 {% if por_validar %}
 <div class="aviso aviso-alerta"><a href="/patrimonio/abastecimentos?entidade={{ entidade.id }}">{{ por_validar }} abastecimento{{ 's' if por_validar != 1 }}
   por validar</a> (registados na página sem login).</div>

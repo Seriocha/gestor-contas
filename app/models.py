@@ -303,6 +303,8 @@ class Movimento(Base):
     # Bem (casa, carro) a que a despesa/receita diz respeito: separa casa principal, de férias, cada carro…
     bem_id: Mapped[int | None] = mapped_column(ForeignKey("bem.id", ondelete="SET NULL"), index=True)
     bem_manual: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")  # escolhido à mão: a atribuição automática não mexe
+    # Débito de uma subscrição, associado à mão (conta nela mesmo que o texto não bata com o padrão).
+    subscricao_id: Mapped[int | None] = mapped_column(ForeignKey("subscricao.id", ondelete="SET NULL"), index=True)
 
     conta: Mapped[Conta] = relationship()
     par: Mapped["Movimento | None"] = relationship(remote_side="Movimento.id", foreign_keys=[par_id],
@@ -328,6 +330,8 @@ class Categoria(Base):
     natureza: Mapped[str] = mapped_column(String(10))  # DESPESA | RECEITA
     cor: Mapped[str | None] = mapped_column(String(7))
     ordem: Mapped[int] = mapped_column(Integer, default=0)
+    # Compras nesta categoria (e nas filhas) são recheio da casa: entram no inventário para o seguro e as garantias.
+    recheio: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
 
     pai: Mapped["Categoria | None"] = relationship(remote_side="Categoria.id", back_populates="filhas")
     filhas: Mapped[list["Categoria"]] = relationship(back_populates="pai", order_by="Categoria.nome")
@@ -644,6 +648,7 @@ class Bem(Base):
     criado_em: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, server_default=func.now())
 
     # Carros: plano de manutenção (gerado pela IA a partir de marca, modelo, ano e combustível).
+    capital_recheio: Mapped[int | None] = mapped_column(BigInteger)   # capital seguro do recheio (casas), cêntimos
     plano_notas: Mapped[str | None] = mapped_column(Text)
     plano_em: Mapped[date | None] = mapped_column(Date)
     plano_modelo: Mapped[str | None] = mapped_column(String(60))
@@ -779,6 +784,82 @@ class Construcao(Base):
     @property
     def tipo_rotulo(self) -> str:
         return TIPOS_CONSTRUCAO.get(self.tipo or "", "")
+
+
+TIPOS_RECHEIO = {"eletrodomestico": "Eletrodoméstico", "eletronica": "Eletrónica / imagem e som",
+                 "informatica": "Informática / telemóvel", "mobiliario": "Mobiliário", "decoracao": "Decoração / têxteis",
+                 "ferramenta": "Ferramentas / jardim", "outro": "Outro"}
+ESTADOS_RECHEIO = {"ativo": "Em uso", "avariado": "Avariado", "abatido": "Abatido / vendido", "ignorado": "Não é recheio"}
+ESTADOS_PEDIDO = {"aberto": "Aberto", "reparacao": "Em reparação", "resolvido": "Resolvido", "recusado": "Recusado"}
+GARANTIA_LEGAL_MESES = 36       # Portugal, bens novos comprados desde 2022
+
+
+class ItemRecheio(Base):
+    """Bem do recheio de uma casa (eletrodoméstico, televisão, móvel…), criado a partir da compra (movimento) numa
+    categoria marcada como recheio. Ficha para o seguro e para a garantia."""
+    __tablename__ = "item_recheio"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entidade_id: Mapped[int] = mapped_column(ForeignKey("entidade.id", ondelete="CASCADE"), index=True)
+    bem_id: Mapped[int | None] = mapped_column(ForeignKey("bem.id", ondelete="SET NULL"), index=True)   # a casa
+    movimento_id: Mapped[int | None] = mapped_column(ForeignKey("movimento.id", ondelete="SET NULL"), index=True)
+    nome: Mapped[str] = mapped_column(String(120))
+    tipo: Mapped[str | None] = mapped_column(String(16))
+    marca: Mapped[str | None] = mapped_column(String(60))
+    modelo: Mapped[str | None] = mapped_column(String(80))
+    n_serie: Mapped[str | None] = mapped_column(String(60))
+    atributos: Mapped[str | None] = mapped_column(Text)               # classe energética, capacidade, dimensões…
+    data_compra: Mapped[date | None] = mapped_column(Date)
+    valor: Mapped[int | None] = mapped_column(BigInteger)             # cêntimos
+    garantia_meses: Mapped[int] = mapped_column(Integer, default=GARANTIA_LEGAL_MESES, server_default="36")
+    loja: Mapped[str | None] = mapped_column(String(120))
+    contacto_telefone: Mapped[str | None] = mapped_column(String(40))
+    contacto_email: Mapped[str | None] = mapped_column(String(120))
+    contacto_site: Mapped[str | None] = mapped_column(String(200))
+    estado: Mapped[str] = mapped_column(String(10), default="ativo", server_default="ativo")
+    notas: Mapped[str | None] = mapped_column(Text)
+    criado_em: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, server_default=func.now())
+
+    bem: Mapped["Bem | None"] = relationship()
+    movimento: Mapped["Movimento | None"] = relationship()
+    pedidos: Mapped[list["PedidoGarantia"]] = relationship(cascade="all, delete-orphan",
+                                                           order_by="PedidoGarantia.data.desc()")
+
+    @property
+    def fim_garantia(self) -> date | None:
+        if not self.data_compra or not self.garantia_meses:
+            return None
+        import calendar
+        m = self.data_compra.month - 1 + self.garantia_meses
+        a, m = self.data_compra.year + m // 12, m % 12 + 1
+        return date(a, m, min(self.data_compra.day, calendar.monthrange(a, m)[1]))
+
+    def estado_garantia(self, hoje: date) -> str:
+        """em garantia | termina em breve (< 90 dias) | expirada | sem data"""
+        f = self.fim_garantia
+        if not f:
+            return "sem data"
+        if f < hoje:
+            return "expirada"
+        return "termina em breve" if (f - hoje).days <= 90 else "em garantia"
+
+    @property
+    def pedido_aberto(self) -> "PedidoGarantia | None":
+        return next((p for p in self.pedidos if p.estado in ("aberto", "reparacao")), None)
+
+
+class PedidoGarantia(Base):
+    """Pedido de garantia / assistência de um item do recheio."""
+    __tablename__ = "pedido_garantia"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    item_id: Mapped[int] = mapped_column(ForeignKey("item_recheio.id", ondelete="CASCADE"), index=True)
+    data: Mapped[date] = mapped_column(Date)
+    problema: Mapped[str] = mapped_column(Text)
+    referencia: Mapped[str | None] = mapped_column(String(60))        # n.º do processo na loja / marca
+    estado: Mapped[str] = mapped_column(String(10), default="aberto")
+    resolucao: Mapped[str | None] = mapped_column(Text)
+    data_fecho: Mapped[date | None] = mapped_column(Date)
 
 
 class AbastecimentoPendente(Base):

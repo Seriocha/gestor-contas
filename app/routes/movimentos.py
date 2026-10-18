@@ -468,9 +468,19 @@ def editar_form(request: Request, mov_id: int, voltar: str = "", u: Utilizador =
                   manual=e_manual(m), candidatos=_candidatos(db, m) if not par and PAPEIS[papel] >= PAPEIS["editar"] else [],
                   etiquetas=db.scalars(select(Etiqueta).order_by(Etiqueta.nome)).all(),
                   bens=db.scalars(select(Bem).where(Bem.entidade_id == m.conta.entidade_id).order_by(Bem.tipo, Bem.nome)).all(),
+                  subscricoes=_subscricoes_para(db, m),
                   via_verde=db.scalars(select(ViaVerde).where(ViaVerde.movimento_id == m.id)
                                        .order_by(ViaVerde.data, ViaVerde.hora)).all(),
                   pode_editar=PAPEIS[papel] >= PAPEIS["editar"], voltar=_voltar_seguro(voltar))
+
+
+def _subscricoes_para(db: Session, m: Movimento) -> list:
+    """Subscrições da entidade do movimento que podem receber este débito (as não terminadas e a atual)."""
+    from ..models import Subscricao
+    if m.montante >= 0:
+        return []
+    subs = db.scalars(select(Subscricao).where(Subscricao.entidade_id == m.conta.entidade_id).order_by(Subscricao.nome)).all()
+    return [s for s in subs if s.id == m.subscricao_id or not s.data_fim or s.data_fim >= m.data_mov]
 
 
 def _voltar_seguro(voltar: str) -> str:

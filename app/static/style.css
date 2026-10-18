@@ -699,3 +699,7 @@ details.recolher[open] > summary { margin-bottom: 1rem; }
 .parte-bloco strong { font-size: 1rem; }
 .kpi .partes { margin-top: .35rem; }
 .kpi .parte-bloco { padding: .3rem .55rem; }
+
+/* recheio: categorias em colunas */
+.categorias-recheio { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); gap: .8rem; }
+.categorias-recheio fieldset { margin: 0; }

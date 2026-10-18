@@ -98,13 +98,19 @@ def _ler(form, db: Session, entidade_id: int) -> tuple[dict, list[str], dict]:
 
 @router.get("/nova")
 def nova(request: Request, entidade: int, nome: str = "", padrao: str = "", valor: str = "", periodicidade: str = "mensal",
-         dia: str = "", inicio: str = "", conta_id: str = "", categoria_id: str = "", servico: str = "",
+         dia: str = "", inicio: str = "", conta_id: str = "", categoria_id: str = "", servico: str = "", mov: str = "",
          u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
     exigir_papel(db, u, entidade, "editar")
     _, ent, _ = entidade_escolhida(request, db, u, entidade)
+    if mov.isdigit() and not padrao:
+        from ..models import Movimento
+        from ..sugestoes import padrao_de
+        m = db.get(Movimento, int(mov))
+        if m and m.conta.entidade_id == entidade:
+            padrao = (padrao_de(m.descricao_norm or m.descricao_original or "") or "").upper()
     v = {"nome": nome, "padrao": padrao, "valor": valor, "periodicidade": periodicidade, "dia": dia,
          "inicio": inicio or date.today().isoformat(), "conta_id": conta_id, "categoria_id": categoria_id,
-         "servico": servico}
+         "servico": servico, "mov": mov}
     return _form(request, db, ent, v)
 
 
@@ -117,6 +123,13 @@ async def criar(request: Request, entidade: int, u: Utilizador = Depends(utiliza
         return _form(request, db, ent, v, erros=erros, status_code=400)
     s = Subscricao(entidade_id=ent.id, **dados)
     db.add(s)
+    mov = request.query_params.get("mov", "")
+    if mov.isdigit():
+        from ..models import Movimento
+        m = db.get(Movimento, int(mov))
+        if m and m.conta.entidade_id == ent.id:
+            db.flush()
+            m.subscricao_id = s.id
     auditar(db, u, "subscricao_criada", s.nome)
     db.commit()
     flash(request, f"Subscrição «{s.nome}» registada.")
@@ -135,6 +148,42 @@ async def ignorar(request: Request, u: Utilizador = Depends(utilizador_atual), d
         db.commit()
     flash(request, f"«{padrao}» não volta a ser sugerido como subscrição.")
     return RedirectResponse(f"/subscricoes?entidade={ent_id}#sugestoes", status_code=303)
+
+
+@router.post("/movimento/{mid}")
+async def associar_movimento(request: Request, mid: int, u: Utilizador = Depends(utilizador_atual),
+                             db: Session = Depends(get_db)):
+    """Associa (ou desassocia) um movimento a uma subscrição. Se a subscrição ainda não tem texto do extrato,
+    fica com o deste movimento — para os débitos seguintes serem reconhecidos sozinhos."""
+    from ..models import Movimento
+    from ..sugestoes import padrao_de
+    form = await ler_form(request)
+    m = db.get(Movimento, mid)
+    if not m:
+        raise HTTPException(status_code=404, detail="Não encontrado.")
+    exigir_papel(db, u, m.conta.entidade_id, "editar")
+    sid = str(form.get("subscricao_id", ""))
+    s = db.get(Subscricao, int(sid)) if sid.isdigit() else None
+    voltar = str(form.get("voltar", "")) or f"/movimentos/{m.id}"
+    if not voltar.startswith("/") or voltar.startswith("//"):
+        voltar = f"/movimentos/{m.id}"
+    if s and s.entidade_id != m.conta.entidade_id:
+        raise HTTPException(status_code=400, detail="A subscrição é de outra entidade.")
+    m.subscricao_id = s.id if s else None
+    msg = "Movimento sem subscrição."
+    if s:
+        msg = f"Movimento associado a «{s.nome}»."
+        if not s.padrao:
+            p = padrao_de(m.descricao_norm or m.descricao_original or "")
+            if p:
+                s.padrao = p.upper()[:200]
+                msg += f" Os próximos débitos com «{s.padrao}» passam a contar sozinhos."
+        if not m.categoria_id and s.categoria_id and m.qualificado_por != "manual":
+            m.categoria_id, m.qualificado_por = s.categoria_id, "regra"
+    auditar(db, u, "movimento_subscricao", f"{m.id} → {s.nome if s else '—'}")
+    db.commit()
+    flash(request, msg)
+    return RedirectResponse(voltar, status_code=303)
 
 
 @router.get("/{sid}")

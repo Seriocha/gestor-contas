@@ -269,6 +269,22 @@ def _bens(db: Session, ent: Entidade, hoje: date, ate: date) -> tuple[list[Item]
     return agenda, depois
 
 
+def _recheio(db: Session, ent: Entidade, hoje: date, ate: date) -> list[Item]:
+    """Garantias do recheio a terminar e pedidos de garantia em curso."""
+    from .models import ESTADOS_PEDIDO, ItemRecheio
+    out = []
+    for it in db.scalars(select(ItemRecheio).where(ItemRecheio.entidade_id == ent.id, ItemRecheio.estado.in_(("ativo", "avariado")))):
+        p = it.pedido_aberto
+        if p:
+            out.append(Item(hoje, f"Pedido de garantia · {it.nome}", f"{ESTADOS_PEDIDO[p.estado].lower()} desde {p.data:%d/%m/%Y}",
+                            None, f"/patrimonio/recheio/{it.id}#pedidos", "bem"))
+        f = it.fim_garantia
+        if f and hoje <= f <= ate:
+            out.append(Item(f, f"Fim da garantia · {it.nome}", "se houver algum problema, reclama antes desta data", None,
+                            f"/patrimonio/recheio/{it.id}", "bem"))
+    return out
+
+
 def _tarefas_app(db: Session, ent: Entidade, prefs: dict, hoje: date, ate: date) -> list[Item]:
     from . import tarefas
     out = []
@@ -302,6 +318,8 @@ def agenda(db: Session, entidades: list[Entidade], prefs: dict, hoje: date, dias
         itens = _contas(db, ent, hoje, ate) + _receitas(db, ent, hoje, ate) + _tarefas_app(db, ent, prefs, hoje, ate)
         if ent.tem("subscricoes"):
             itens += _subscricoes(db, ent, hoje, ate)
+        if ent.tem("imoveis"):
+            itens += _recheio(db, ent, hoje, ate)
         a, d = _bens(db, ent, hoje, ate)
         for i in itens + a + d:
             i.entidade = ent.nome if len(entidades) > 1 else ""

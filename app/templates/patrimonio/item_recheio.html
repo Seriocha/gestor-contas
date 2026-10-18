@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block titulo %}{{ it.nome }}{% endblock %}
+{% block conteudo %}
+{% set g = it.estado_garantia(hoje) %}
+<div class="titulo-acoes">
+  <h1>{{ it.nome }} <span class="nota">· recheio</span></h1>
+  <div class="acoes-form">{% if it.bem %}<a href="/patrimonio/{{ it.bem.id }}#recheio">‹ {{ it.bem.nome }}</a>{% else %}<a href="/patrimonio?entidade={{ it.entidade_id }}">‹ Património</a>{% endif %}</div>
+</div>
+
+<section class="kpi-grelha">
+  <div class="cartao kpi"><span class="nota">Compra</span><strong>{{ it.valor | eur if it.valor is not none else '—' }}</strong>
+    <span class="nota">{{ it.data_compra | data if it.data_compra else 'sem data' }}{{ ' · ' ~ it.loja if it.loja }}</span></div>
+  <div class="cartao kpi"><span class="nota">Garantia</span><strong>{{ g }}</strong>
+    <span class="nota">{% if it.fim_garantia %}até {{ it.fim_garantia | data }} ({{ it.garantia_meses }} meses){% else %}indica a data da compra{% endif %}</span></div>
+  <div class="cartao kpi"><span class="nota">Estado</span><strong>{{ estados[it.estado] }}</strong>
+    {% if it.pedido_aberto %}<span class="nota neg">pedido de garantia {{ estados_pedido[it.pedido_aberto.estado] | lower }}</span>{% endif %}</div>
+  {% if it.movimento %}<div class="cartao kpi"><span class="nota">Movimento</span><strong><a href="/movimentos/{{ it.movimento.id }}">{{ it.movimento.data_mov | data }}</a></strong>
+    <span class="nota">{{ it.movimento.descricao_original }}</span></div>{% endif %}
+</section>
+
+<section class="cartao">
+  <h2>Ficha</h2>
+  <form method="post" class="formulario" style="max-width: none">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <div class="linha">
+      <label>Nome <input name="nome" value="{{ it.nome }}" required maxlength="120"></label>
+      <label>Tipo <select name="tipo"><option value="">—</option>{% for k, r in tipos.items() %}<option value="{{ k }}" {% if it.tipo == k %}selected{% endif %}>{{ r }}</option>{% endfor %}</select></label>
+      <label>Casa <select name="bem_id"><option value="">— sem casa —</option>{% for c in casas %}<option value="{{ c.id }}" {% if it.bem_id == c.id %}selected{% endif %}>{{ c.nome }}</option>{% endfor %}</select></label>
+    </div>
+    <div class="linha">
+      <label>Marca <input name="marca" value="{{ it.marca or '' }}" maxlength="60"></label>
+      <label>Modelo <input name="modelo" value="{{ it.modelo or '' }}" maxlength="80"></label>
+      <label>N.º de série <input name="n_serie" value="{{ it.n_serie or '' }}" maxlength="60"></label>
+    </div>
+    <label>Características <textarea name="atributos" rows="2" placeholder="ex.: Classe energética A++, 9 kg, 1400 rpm, 60×85×60 cm">{{ it.atributos or '' }}</textarea></label>
+    <div class="linha">
+      <label>Data da compra <input type="date" name="data_compra" value="{{ it.data_compra.isoformat() if it.data_compra else '' }}"></label>
+      <label>Valor <input name="valor" inputmode="decimal" value="{{ (it.valor / 100) | string | replace('.', ',') if it.valor is not none else '' }}"></label>
+      <label>Garantia (meses) <input type="number" name="garantia_meses" min="0" max="240" value="{{ it.garantia_meses }}"></label>
+    </div>
+    <fieldset><legend>Fornecedor</legend>
+      <div class="linha">
+        <label>Loja / fornecedor <input name="loja" value="{{ it.loja or '' }}" maxlength="120"></label>
+        <label>Telefone <input name="contacto_telefone" value="{{ it.contacto_telefone or '' }}" maxlength="40" inputmode="tel"></label>
+      </div>
+      <div class="linha">
+        <label>Email <input name="contacto_email" value="{{ it.contacto_email or '' }}" maxlength="120" type="email"></label>
+        <label>Site / apoio ao cliente <input name="contacto_site" value="{{ it.contacto_site or '' }}" maxlength="200" placeholder="https://"></label>
+      </div>
+      {% if it.contacto_telefone or it.contacto_email or it.contacto_site %}<p class="nota">
+        {% if it.contacto_telefone %}<a href="tel:{{ it.contacto_telefone | replace(' ', '') }}">Ligar</a>{% endif %}
+        {% if it.contacto_email %} · <a href="mailto:{{ it.contacto_email }}?subject={{ ('Garantia: ' ~ it.nome ~ (' — n.º de série ' ~ it.n_serie if it.n_serie else '')) | urlencode }}">Enviar email</a>{% endif %}
+        {% if it.contacto_site %} · <a href="{{ it.contacto_site }}" target="_blank" rel="noopener noreferrer">Site</a>{% endif %}</p>{% endif %}
+    </fieldset>
+    <div class="linha">
+      <label>Estado <select name="estado">{% for k, r in estados.items() %}<option value="{{ k }}" {% if it.estado == k %}selected{% endif %}>{{ r }}</option>{% endfor %}</select></label>
+    </div>
+    <label>Notas <textarea name="notas" rows="2" placeholder="ex.: fatura na pasta Casa/Faturas, extensão de garantia…">{{ it.notas or '' }}</textarea></label>
+    {% if pode_editar %}<div class="acoes-form"><button class="primario">Guardar</button>
+      <button class="perigo" formaction="/patrimonio/recheio/{{ it.id }}/apagar" formnovalidate
+              onclick="return confirm('{{ 'Marcar como «não é recheio»?' if it.movimento_id else 'Apagar este item?' }}')">{{ 'Não é recheio' if it.movimento_id else 'Apagar' }}</button></div>{% endif %}
+  </form>
+</section>
+
+<section class="cartao" id="pedidos">
+  <h2>Pedidos de garantia</h2>
+  {% if g == 'expirada' %}<div class="aviso">A garantia terminou em {{ it.fim_garantia | data }}.</div>{% endif %}
+  {% for p in it.pedidos %}
+  <form method="post" action="/patrimonio/recheio/{{ it.id }}/pedidos" class="formulario cartao-interno" style="max-width: none; margin-top: .8rem">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="id" value="{{ p.id }}">
+    <h3>{{ p.data | data }} <span class="etiqueta {{ {'aberto': 'etiqueta-erro', 'reparacao': 'etiqueta-cor', 'resolvido': 'etiqueta-ok'}.get(p.estado, '') }}">{{ estados_pedido[p.estado] }}</span>
+      {% if p.data_fecho %}<span class="nota">fechado a {{ p.data_fecho | data }}</span>{% endif %}</h3>
+    <p class="sem-margem">{{ p.problema }}</p>
+    <div class="linha">
+      <label>Referência do processo <input name="referencia" value="{{ p.referencia or '' }}" maxlength="60"></label>
+      <label>Estado <select name="estado">{% for k, r in estados_pedido.items() %}<option value="{{ k }}" {% if p.estado == k %}selected{% endif %}>{{ r }}</option>{% endfor %}</select></label>
+    </div>
+    <label>Resolução <input name="resolucao" value="{{ p.resolucao or '' }}" placeholder="ex.: substituída a placa; trocado por novo"></label>
+    {% if pode_editar %}<div class="acoes-form"><button>Atualizar</button></div>{% endif %}
+  </form>
+  {% else %}<p class="vazio sem-margem">Sem pedidos.</p>{% endfor %}
+  {% if pode_editar %}
+  <form method="post" action="/patrimonio/recheio/{{ it.id }}/pedidos" class="formulario cartao-interno" style="max-width: none; margin-top: 1rem">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <h3>Novo pedido de garantia</h3>
+    <div class="linha">
+      <label>Data <input type="date" name="data" value="{{ hoje.isoformat() }}"></label>
+      <label>Referência <input name="referencia" maxlength="60" placeholder="n.º do processo (opcional)"></label>
+    </div>
+    <label>Problema <textarea name="problema" rows="2" required placeholder="ex.: não aquece; ecrã com riscas"></textarea></label>
+    <p class="nota">{% if g in ('em garantia', 'termina em breve') %}Em garantia até {{ it.fim_garantia | data }}: leva a fatura (ou este movimento) à loja ou ao fabricante.{% endif %}</p>
+    <div class="acoes-form"><button class="primario">Registar pedido</button></div>
+  </form>
+  {% endif %}
+</section>
+{% endblock %}

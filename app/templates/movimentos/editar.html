@@ -129,6 +129,19 @@
   </table></div>
   <p class="nota">Nos custos de cada carro, este débito reparte-se pela matrícula de cada linha.</p>
   {% endif %}
+  {% if pode_editar and m.montante < 0 %}
+  <form method="post" action="/subscricoes/movimento/{{ m.id }}" class="separado formulario">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="voltar" value="/movimentos/{{ m.id }}">
+    <label>Subscrição / assinatura
+      <select name="subscricao_id" onchange="this.form.submit()"><option value="">— nenhuma —</option>
+        {% for s in subscricoes %}<option value="{{ s.id }}" {% if m.subscricao_id == s.id %}selected{% endif %}>{{ s.nome }} · {{ s.valor | eur }}</option>{% endfor %}
+      </select></label>
+    <noscript><button>Guardar subscrição</button></noscript>
+    <p class="nota sem-margem">Associado, este débito conta como pagamento da subscrição (mesmo que o texto seja diferente).
+      {% if m.subscricao_id %}<a href="/subscricoes/{{ m.subscricao_id }}">Ver a subscrição</a> ·{% endif %}
+      <a href="/subscricoes/nova?{{ {'entidade': m.conta.entidade_id, 'nome': m.descricao_original[:60], 'valor': ('%.2f' % (-m.montante / 100)).replace('.', ','), 'dia': m.data_mov.day, 'inicio': m.data_mov.isoformat(), 'conta_id': m.conta_id, 'categoria_id': m.categoria_id or '', 'mov': m.id} | urlencode }}">Criar uma subscrição a partir deste movimento</a></p>
+  </form>
+  {% endif %}
   {% if bens %}
   <form method="post" action="/patrimonio/movimento/{{ m.id }}" class="separado formulario">
     <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="voltar" value="/movimentos/{{ m.id }}">

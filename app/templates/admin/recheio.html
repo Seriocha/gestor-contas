@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block titulo %}Recheio{% endblock %}
+{% block conteudo %}
+<h1>Administração</h1>
+{% include "admin/_menu.html" %}
+<section class="cartao">
+  <h2>Recheio das casas</h2>
+  <p class="nota">Escolhe as categorias de despesa que são recheio (eletrodomésticos, tecnologia, mobiliário…). Cada compra classificada
+    numa delas — à mão, por regra, ao importar ou na consolidação — passa a ser um item do recheio da casa (a do movimento ou a casa
+    «por omissão»), com a data e o valor da compra, para o seguro e para as garantias. Marcar uma categoria vale também para as suas
+    subcategorias. Ao guardar, as compras já classificadas nestas categorias passam logo ao recheio.</p>
+  <form method="post" class="formulario">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <div class="categorias-recheio">
+      {% for raiz in categorias %}
+      <fieldset>
+        <legend><label class="opcao"><input type="checkbox" name="categorias" value="{{ raiz.id }}" {% if raiz.recheio %}checked{% endif %}> <strong>{{ raiz.nome }}</strong></label></legend>
+        {% for c in raiz.filhas %}
+        <label class="opcao"><input type="checkbox" name="categorias" value="{{ c.id }}" {% if c.recheio or raiz.recheio %}checked{% endif %}
+          {% if raiz.recheio %}disabled title="Incluída pela categoria-mãe"{% endif %}> {{ c.nome }}</label>
+        {% endfor %}
+      </fieldset>
+      {% endfor %}
+    </div>
+    <div class="linha">
+      <label>Garantia por omissão dos itens novos (meses)
+        <input type="number" name="garantia" min="1" max="240" value="{{ garantia }}"></label>
+      <label>Só compras a partir de (€)
+        <input type="number" name="valor_minimo" min="0" max="100000" value="{{ valor_minimo }}"></label>
+    </div>
+    <p class="nota">Em Portugal, bens novos comprados desde 2022 têm 3 anos de garantia legal (36 meses). Em cada item podes mudar.
+      As compras abaixo do valor mínimo (consumíveis, pequenas compras) não entram no recheio.</p>
+    <div class="acoes-form"><button class="primario">Guardar</button></div>
+  </form>
+</section>
+{% endblock %}

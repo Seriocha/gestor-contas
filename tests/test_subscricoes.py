@@ -4,6 +4,7 @@ from datetime import date
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from app import subscricoes as sb
 from app.main import create_app
@@ -117,3 +118,32 @@ def test_falha_antiga_nao_poe_em_atraso(admin, app):
         db.commit()
         e = sb.estado(db, db.get(Subscricao, sid), HOJE)
     assert e.falhas == [date(2026, 8, 2)] and e.situacao == "em dia"
+
+
+def test_associar_movimento_na_ficha(admin, app):
+    from app.models import Movimento
+    from tests.test_app import _csrf
+    sid = _criar(admin, nome="Ginásio", servico="", valor="35,00", dia="5", inicio="2026-07-05", padrao="")
+    _mov(admin, 1, "2026-09-05", "35,00", "TRF 0042 SEPA DD PT12", sentido="saida")      # texto que não diz nada
+    with app.state.SessionLocal() as db:
+        mid = db.scalar(select(Movimento.id).where(Movimento.descricao_original == "TRF 0042 SEPA DD PT12"))
+    ficha = admin.get(f"/movimentos/{mid}")
+    assert "Subscrição / assinatura" in ficha.text and "Ginásio" in ficha.text and "Criar uma subscrição a partir" in ficha.text
+    admin.post(f"/subscricoes/movimento/{mid}", data={"csrf": _csrf(ficha), "subscricao_id": str(sid)})
+    with app.state.SessionLocal() as db:
+        s = db.get(Subscricao, sid)
+        assert db.get(Movimento, mid).subscricao_id == sid and s.padrao        # ficou com o texto do extrato
+        e = sb.estado(db, s, HOJE)
+        assert mid in [m.id for m in e.pagos] and e.total_pago == 3500
+    # criar uma subscrição a partir de outro movimento associa-o logo
+    _mov(admin, 1, "2026-09-10", "9,99", "APPLE.COM/BILL", sentido="saida")
+    with app.state.SessionLocal() as db:
+        m2 = db.scalar(select(Movimento.id).where(Movimento.descricao_original == "APPLE.COM/BILL"))
+    f = admin.get(f"/subscricoes/nova?entidade=1&nome=iCloud&valor=9,99&dia=10&inicio=2026-09-10&mov={m2}")
+    assert "APPLE" in f.text and f"mov={m2}" in f.text
+    r = admin.post(f"/subscricoes/nova?entidade=1&mov={m2}", data={"csrf": _csrf(f), "nome": "iCloud", "valor": "9,99",
+                   "periodicidade": "mensal", "dia": "10", "inicio": "2026-09-10", "padrao": "APPLE.COM"}, follow_redirects=False)
+    assert r.status_code == 303
+    with app.state.SessionLocal() as db:
+        nova = db.scalar(select(Subscricao).where(Subscricao.nome == "iCloud"))
+        assert db.get(Movimento, m2).subscricao_id == nova.id

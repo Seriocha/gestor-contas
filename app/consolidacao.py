@@ -22,6 +22,7 @@ PASSOS = {
     "fuelio": ("Abastecimentos (Fuelio)", "liga os abastecimentos aos débitos do banco e passa-os para o carro certo"),
     "bens": ("Despesas das casas e carros", "revê a atribuição de cada movimento a um bem (padrões e «por omissão»)"),
     "via_verde": ("Via Verde", "liga as linhas da Via Verde aos débitos do banco; a repartição pelos carros segue as matrículas"),
+    "recheio": ("Recheio das casas", "cria os itens do recheio das compras classificadas em categorias de recheio"),
     "retificacoes": ("Saldos retificados", "recalcula os acertos das contas de investimento, aforro e cartão refeição"),
 }
 SEM_REGRAS = {"EMPRESTIMO", "INVESTIMENTO", "AFORRO", "PENSOES"}
@@ -85,6 +86,9 @@ def consolidar(db: Session, ent: Entidade, passos: set[str]) -> dict[str, int]:
             r["bens"] = n
     if "via_verde" in passos:
         r["via_verde"] = viaverde.ligar(db, ent.id)
+    if "recheio" in passos:
+        from . import recheio
+        r["recheio"] = recheio.preencher(db, ent.id)
     if "retificacoes" in passos:
         retificaveis = [c for c in contas if retificacoes.retificavel(c)]
         retificacoes.recalcular_contas(db, retificaveis)

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from .. import ia
 from .. import manutencao as mt
-from .. import fuelio
+from .. import fuelio, recheio
 from .. import viaverde as vv
 from .. import patrimonio as pt
 from .. import relatorios as rel
@@ -39,6 +39,7 @@ def lista(request: Request, entidade: IntOpcional = None, u: Utilizador = Depend
     hoje = date.today()
     return render(request, "patrimonio/lista.html", visiveis=visiveis, entidade=ent, r=pt.resumo(db, ent.id, hoje),
                   vvr=vv.resumo(db, ent.id), por_validar=_n_por_validar(db, ent.id),
+                  recheio_sem_casa=recheio.sem_casa(db, ent.id),
                   usos=USOS_BEM, hoje=hoje, ia_disponivel=ia.disponivel(),
                   pode_editar=PAPEIS[papel] >= PAPEIS["editar"])
 
@@ -296,6 +297,7 @@ def ficha(request: Request, bid: int, u: Utilizador = Depends(utilizador_atual),
                   oficina=_movs_oficina(db, b, hoje) if b.tipo == "carro" else [],
                   via_verde=vv.do_carro(db, b, ini, hoje) if b.tipo == "carro" else [],
                   consumo=fuelio.consumo(db, b, ini, hoje) if b.tipo == "carro" else None,
+                  rech=recheio.resumo_casa(db, b, hoje) if b.tipo == "casa" else None,
                   consumo_total=fuelio.consumo(db, b, date.min, hoje) if b.tipo == "carro" else None)
 
 
@@ -602,6 +604,159 @@ async def apagar_construcao(request: Request, bid: int, cid: int, u: Utilizador 
     db.commit()
     flash(request, f"Construção «{c.designacao}» apagada.")
     return RedirectResponse(f"/patrimonio/{b.id}#construcoes", status_code=303)
+
+
+# ------------------------------------------------------------------ recheio das casas
+def _item(db: Session, u: Utilizador, iid: int, minimo: str = "ver"):
+    from ..models import ItemRecheio
+    it = db.get(ItemRecheio, iid)
+    if not it:
+        raise HTTPException(status_code=404, detail="Não encontrado.")
+    return it, exigir_papel(db, u, it.entidade_id, minimo)
+
+
+@router.get("/recheio/{iid}")
+def ficha_item(request: Request, iid: int, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
+    from ..models import ESTADOS_PEDIDO, ESTADOS_RECHEIO, TIPOS_RECHEIO
+    it, papel = _item(db, u, iid)
+    visiveis, ent, _ = entidade_escolhida(request, db, u, it.entidade_id)
+    casas = db.scalars(select(Bem).where(Bem.entidade_id == it.entidade_id, Bem.tipo == "casa").order_by(Bem.nome)).all()
+    return render(request, "patrimonio/item_recheio.html", visiveis=visiveis, entidade=ent, it=it, casas=casas,
+                  tipos=TIPOS_RECHEIO, estados=ESTADOS_RECHEIO, estados_pedido=ESTADOS_PEDIDO, hoje=date.today(),
+                  pode_editar=PAPEIS[papel] >= PAPEIS["editar"])
+
+
+def _ler_item(form, db: Session, entidade_id: int, erros: list) -> dict:
+    from ..models import ESTADOS_RECHEIO, TIPOS_RECHEIO
+    v = {k: str(form.get(k, "")).strip() for k in ("nome", "tipo", "marca", "modelo", "n_serie", "atributos", "data_compra",
+                                                     "valor", "garantia_meses", "loja", "contacto_telefone",
+                                                     "contacto_email", "contacto_site", "estado", "notas", "bem_id")}
+    if not v["nome"]:
+        erros.append("Indica o nome do item.")
+    try:
+        data = parse_data(v["data_compra"]) if v["data_compra"] else None
+    except ValueError:
+        data = None
+        erros.append("Data da compra inválida.")
+    try:
+        valor = abs(parse_montante(v["valor"])) if v["valor"] else None
+    except ValueError:
+        valor = None
+        erros.append("Valor inválido.")
+    garantia = _inteiro(v["garantia_meses"], "Garantia (meses)", erros, 0, 240)
+    casa = db.get(Bem, int(v["bem_id"])) if v["bem_id"].isdigit() else None
+    return dict(nome=v["nome"][:120], tipo=v["tipo"] if v["tipo"] in TIPOS_RECHEIO else None, marca=v["marca"][:60] or None,
+                modelo=v["modelo"][:80] or None, n_serie=v["n_serie"][:60] or None, atributos=v["atributos"] or None,
+                data_compra=data, valor=valor, garantia_meses=garantia if garantia is not None else 0,
+                loja=v["loja"][:120] or None, contacto_telefone=v["contacto_telefone"][:40] or None,
+                contacto_email=v["contacto_email"][:120] or None, contacto_site=v["contacto_site"][:200] or None,
+                estado=v["estado"] if v["estado"] in ESTADOS_RECHEIO else "ativo", notas=v["notas"] or None,
+                bem_id=casa.id if casa and casa.entidade_id == entidade_id and casa.tipo == "casa" else None)
+
+
+@router.post("/recheio/{iid}")
+async def guardar_item(request: Request, iid: int, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
+    form = await ler_form(request)
+    it, _ = _item(db, u, iid, "editar")
+    erros = []
+    dados = _ler_item(form, db, it.entidade_id, erros)
+    if erros:
+        flash(request, " ".join(erros), "erro")
+        return RedirectResponse(f"/patrimonio/recheio/{it.id}", status_code=303)
+    for k, v in dados.items():
+        setattr(it, k, v)
+    auditar(db, u, "recheio_item", f"{it.nome} ({it.estado})")
+    db.commit()
+    flash(request, "Item guardado." if it.estado != "ignorado" else "Marcado como «não é recheio» (sai do inventário).")
+    return RedirectResponse(f"/patrimonio/{it.bem_id}#recheio" if it.bem_id and it.estado == "ignorado"
+                            else f"/patrimonio/recheio/{it.id}", status_code=303)
+
+
+@router.post("/{bid}/recheio/novo")
+async def novo_item(request: Request, bid: int, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
+    """Item do recheio sem compra no extrato (ex.: comprado antes, oferecido)."""
+    from ..models import ItemRecheio
+    form = await ler_form(request)
+    b, _ = _bem(db, u, bid, "editar")
+    nome = str(form.get("nome", "")).strip()[:120]
+    if not nome:
+        flash(request, "Indica o nome do item.", "erro")
+        return RedirectResponse(f"/patrimonio/{b.id}#recheio", status_code=303)
+    from .. import recheio
+    it = ItemRecheio(entidade_id=b.entidade_id, bem_id=b.id, nome=nome, garantia_meses=recheio.garantia_omissao(db))
+    db.add(it)
+    db.commit()
+    return RedirectResponse(f"/patrimonio/recheio/{it.id}", status_code=303)
+
+
+@router.post("/recheio/{iid}/apagar")
+async def apagar_item(request: Request, iid: int, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
+    await ler_form(request)
+    it, _ = _item(db, u, iid, "editar")
+    voltar = f"/patrimonio/{it.bem_id}#recheio" if it.bem_id else f"/patrimonio?entidade={it.entidade_id}"
+    if it.movimento_id:
+        it.estado = "ignorado"          # com compra no extrato: fica marcado, para não voltar a ser criado
+        msg = "Marcado como «não é recheio»."
+    else:
+        db.delete(it)
+        msg = "Item apagado."
+    db.commit()
+    flash(request, msg)
+    return RedirectResponse(voltar, status_code=303)
+
+
+@router.post("/recheio/{iid}/pedidos")
+async def pedido_garantia(request: Request, iid: int, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
+    """Novo pedido de garantia (sem id) ou atualização do estado de um existente (com id)."""
+    from ..models import ESTADOS_PEDIDO, PedidoGarantia
+    form = await ler_form(request)
+    it, _ = _item(db, u, iid, "editar")
+    pid = str(form.get("id", ""))
+    estado = str(form.get("estado", "aberto"))
+    estado = estado if estado in ESTADOS_PEDIDO else "aberto"
+    try:
+        data = parse_data(str(form.get("data", ""))) if form.get("data") else date.today()
+    except ValueError:
+        data = date.today()
+    p = next((x for x in it.pedidos if str(x.id) == pid), None) if pid.isdigit() else None
+    if p:
+        p.estado = estado
+        p.resolucao = str(form.get("resolucao", "")).strip() or p.resolucao
+        p.referencia = str(form.get("referencia", "")).strip()[:60] or p.referencia
+        if estado in ("resolvido", "recusado") and not p.data_fecho:
+            p.data_fecho = date.today()
+        if it.estado == "avariado" and estado == "resolvido":
+            it.estado = "ativo"
+        msg = "Pedido de garantia atualizado."
+    else:
+        problema = str(form.get("problema", "")).strip()
+        if not problema:
+            flash(request, "Descreve o problema.", "erro")
+            return RedirectResponse(f"/patrimonio/recheio/{it.id}#pedidos", status_code=303)
+        it.pedidos.append(PedidoGarantia(item_id=it.id, data=data, problema=problema, estado="aberto",
+                                         referencia=str(form.get("referencia", "")).strip()[:60] or None))
+        if it.estado == "ativo":
+            it.estado = "avariado"
+        msg = "Pedido de garantia registado."
+    auditar(db, u, "pedido_garantia", f"{it.nome}: {estado}")
+    db.commit()
+    flash(request, msg)
+    return RedirectResponse(f"/patrimonio/recheio/{it.id}#pedidos", status_code=303)
+
+
+@router.post("/{bid}/capital-recheio")
+async def capital_recheio(request: Request, bid: int, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
+    form = await ler_form(request)
+    b, _ = _bem(db, u, bid, "editar")
+    txt = str(form.get("capital", "")).strip()
+    try:
+        b.capital_recheio = abs(parse_montante(txt)) if txt else None
+    except ValueError as e:
+        flash(request, f"Capital inválido: {e}", "erro")
+        return RedirectResponse(f"/patrimonio/{b.id}#recheio", status_code=303)
+    db.commit()
+    flash(request, "Capital seguro do recheio guardado.")
+    return RedirectResponse(f"/patrimonio/{b.id}#recheio", status_code=303)
 
 
 @router.post("/{bid}/avaliar")

@@ -66,9 +66,18 @@ def regras_ativas(db: Session) -> list[Regra]:
     return db.scalars(select(Regra).where(Regra.ativa).order_by(Regra.prioridade, Regra.id)).all()
 
 
+def _recheio(db: Session | None, m: Movimento) -> None:
+    """Compra numa categoria de recheio → item no recheio da casa (ver recheio.py)."""
+    if db is not None and m.categoria_id:
+        from . import recheio
+        recheio.registar(db, m)
+
+
 def aplicar_regra(regra: Regra, m: Movimento) -> None:
     if regra.categoria_id:
         m.categoria_id = regra.categoria_id
+        from sqlalchemy.orm import object_session
+        _recheio(object_session(m), m)
     if regra.marcar_transferencia:
         m.transferencia = True
     if regra.excluir:
@@ -102,6 +111,7 @@ def qualificar_manual(db: Session, m: Movimento, *, categoria_id=..., transferen
     as regras não voltem a mexer-lhe."""
     if categoria_id is not ...:
         m.categoria_id = categoria_id if categoria_id and db.get(Categoria, categoria_id) else None
+        _recheio(db, m)
     if transferencia is not ...:
         m.transferencia = bool(transferencia)
     if excluido is not ...:

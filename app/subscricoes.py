@@ -122,9 +122,12 @@ def _corte(db: Session, entidade_id: int) -> date | None:
 
 
 def pagamentos(db: Session, s: Subscricao, hoje: date) -> list[Movimento]:
-    """Débitos da subscrição no extrato (pelo padrão, na conta indicada ou em qualquer conta da entidade)."""
+    """Débitos da subscrição no extrato: os associados à mão (na ficha do movimento) e os que batem com o padrão
+    (na conta indicada ou em qualquer conta da entidade) — menos os associados a outra subscrição."""
+    ligados = db.scalars(select(Movimento).where(Movimento.subscricao_id == s.id)
+                         .options(selectinload(Movimento.conta))).all() if s.id else []
     if not s.padrao:
-        return []
+        return sorted(ligados, key=lambda m: m.data_mov)
     contas = [s.conta_id] if s.conta_id else list(db.scalars(select(Conta.id).where(Conta.entidade_id == s.entidade_id)))
     ate = (s.data_fim or hoje) + timedelta(days=TOLERANCIA_DIAS)
     desde = s.data_inicio - timedelta(days=TOLERANCIA_DIAS)
@@ -136,7 +139,10 @@ def pagamentos(db: Session, s: Subscricao, hoje: date) -> list[Movimento]:
         Movimento.data_mov.between(desde, ate))
         .options(selectinload(Movimento.conta)).order_by(Movimento.data_mov)).all()
     rx = compilar(s.padrao, "contem")
-    return [m for m in movs if rx.search((m.descricao_norm or m.descricao_original or "").upper())]
+    pelo_padrao = [m for m in movs if rx.search((m.descricao_norm or m.descricao_original or "").upper())
+                   and m.subscricao_id in (None, s.id)]
+    por_id = {m.id: m for m in pelo_padrao + list(ligados)}
+    return sorted(por_id.values(), key=lambda m: (m.data_mov, m.id))
 
 
 @dataclass
@@ -176,7 +182,7 @@ def estado(db: Session, s: Subscricao, hoje: date) -> Estado:
     if s.data_inicio > hoje:
         e.situacao = "ainda não começou"
         return e
-    if not s.padrao:
+    if not s.padrao and not pagos:
         e.situacao = "sem padrão"
         return e
     # até onde há extratos: a data do último movimento da conta (ou de qualquer conta da entidade)
@@ -250,7 +256,7 @@ def detetar(db: Session, entidade_id: int, hoje: date, meses: int = 18) -> list[
     grupos = defaultdict(list)
     for m in movs:
         texto = (m.descricao_norm or m.descricao_original or "").upper()
-        if texto.startswith(EXCLUIR) or any(rx.search(texto) for rx in cobertos):
+        if m.subscricao_id or texto.startswith(EXCLUIR) or any(rx.search(texto) for rx in cobertos):
             continue
         cat = do_catalogo(texto)
         chave = ("cat", cat[0]) if cat else ("rec", padrao_de(texto))

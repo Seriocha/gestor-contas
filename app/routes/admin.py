@@ -324,6 +324,41 @@ async def consolidar(request: Request, admin: Utilizador = Depends(exigir_admin)
     return RedirectResponse("/admin/consolidar", status_code=303)
 
 
+@router.get("/recheio")
+def recheio_form(request: Request, admin: Utilizador = Depends(exigir_admin), db: Session = Depends(get_db)):
+    from ..models import Categoria
+    from ..qualificacao import arvore_categorias
+    return render(request, "admin/recheio.html", categorias=[c for c in arvore_categorias(db) if c.natureza == "DESPESA"],
+                  garantia=request.app.state.prefs.get("recheio_garantia_meses", "36"),
+                  valor_minimo=request.app.state.prefs.get("recheio_valor_minimo", "50"))
+
+
+@router.post("/recheio")
+async def recheio_guardar(request: Request, admin: Utilizador = Depends(exigir_admin), db: Session = Depends(get_db)):
+    """Categorias de recheio e garantia por omissão; cria logo os itens das compras já classificadas nelas."""
+    from .. import recheio
+    from ..models import Categoria
+    form = await ler_form(request)
+    marcadas = {int(x) for x in form.getlist("categorias") if str(x).isdigit()}
+    for c in db.scalars(select(Categoria)):
+        c.recheio = c.id in marcadas
+    g = str(form.get("garantia", "")).strip()
+    if g.isdigit() and 0 < int(g) <= 240:
+        preferencias.gravar(db, "recheio_garantia_meses", str(int(g)))
+    vm = str(form.get("valor_minimo", "")).strip()
+    if vm.isdigit() and int(vm) <= 100000:
+        preferencias.gravar(db, "recheio_valor_minimo", str(int(vm)))
+    db.flush()
+    db.info.pop("recheio_cats", None)
+    n = sum(recheio.preencher(db, e.id) for e in _entidades(db))
+    auditar(db, admin, "recheio_categorias", f"{len(marcadas)} categorias; {n} itens criados")
+    db.commit()
+    request.app.state.prefs = preferencias.carregar(db)
+    flash(request, f"Categorias de recheio guardadas." + (f" {n} compra{'s' if n != 1 else ''} já classificada{'s' if n != 1 else ''} "
+                                                         f"{'passaram' if n != 1 else 'passou'} ao recheio." if n else ""))
+    return RedirectResponse("/admin/recheio", status_code=303)
+
+
 @router.get("/tarefas")
 def tarefas(request: Request, admin: Utilizador = Depends(exigir_admin), db: Session = Depends(get_db)):
     """Tarefas administrativas pontuais (ex.: importar o histórico do Fuelio)."""
