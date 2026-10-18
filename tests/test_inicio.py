@@ -88,7 +88,7 @@ def test_cortica_e_heranca_no_inicio(admin, app):
         assert cortica.data == date(HOJE.year + 1, 6, 1) and cortica.entidade == "Herança"
     p = admin.get("/inicio?entidade=2").text
     assert "A tua parte · 1/6</span><strong>100.000,00 €" in p and "Por morte da mãe · 1/2</span><strong>300.000,00 €" in p
-    assert "Por entidade" in p
+    assert "Património por entidade</h2>" in p
 
 
 def test_heranca_no_inicio_da_familia_e_preferencia(admin, app):
@@ -107,3 +107,31 @@ def test_heranca_no_inicio_da_familia_e_preferencia(admin, app):
     assert app.state.prefs["mostrar_minha_parte"] == "0"
     assert "herancas-transpostas" not in admin.get("/inicio?entidade=1").text
     assert "A tua parte" not in admin.get("/inicio?entidade=2").text
+
+
+def test_layout_personalizado_por_utilizador(admin):
+    from app import layout_inicio
+    r = admin.get("/inicio?entidade=1")
+    assert 'id="personalizar"' in r.text and "inicio_layout.js" in r.text
+    ordem = re.findall(r'data-bloco="(\w+)"', r.text)
+    assert ordem[:5] == ["topo", "composicao", "detalhe", "evolucao", "agenda"]
+    csrf = re.search(r'data-csrf="([^"]+)"', r.text).group(1)
+    novo = [{"id": "agenda", "w": 4, "on": True}, {"id": "topo", "w": 8, "on": True},
+            {"id": "composicao", "w": 6, "on": False}, {"id": "xpto", "w": 6}, {"id": "agenda", "w": 12}]
+    r = admin.post("/inicio/layout", data={"csrf": csrf, "layout": json.dumps(novo)})
+    assert r.json()["ok"]
+    r = admin.get("/inicio?entidade=1")
+    ordem = re.findall(r'data-bloco="(\w+)"', r.text)
+    assert ordem[:3] == ["agenda", "topo", "composicao"] and "xpto" not in ordem
+    assert 'data-bloco="agenda" data-w="4"' in r.text
+    assert 'class="bloco-inicio oculto" data-bloco="composicao"' in r.text
+    # largura inválida → a de omissão; blocos em falta voltam no fim
+    assert layout_inicio.normalizar([{"id": "detalhe", "w": 5}])[0] == {"id": "detalhe", "w": 8, "on": True}
+    assert [b["id"] for b in layout_inicio.normalizar([{"id": "agenda"}])][-1] == "entidades"
+    # JSON inválido e CSRF errado são recusados
+    assert admin.post("/inicio/layout", data={"csrf": csrf, "layout": "{x"}).status_code == 400
+    assert admin.post("/inicio/layout", data={"csrf": "mau", "layout": ""}).status_code == 400
+    # repor
+    assert admin.post("/inicio/layout", data={"csrf": csrf, "layout": ""}).json()["ok"]
+    r = admin.get("/inicio?entidade=1")
+    assert re.findall(r'data-bloco="(\w+)"', r.text)[:2] == ["topo", "composicao"]

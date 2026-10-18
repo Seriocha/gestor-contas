@@ -21,7 +21,37 @@
 {% set destino = '/inicio' %}{% include "_entidades.html" %}
 {% if entidade %}
 {% set h = v.hoje %}
-{# ---------------------------------------------------------------- cabeçalho: património líquido #}
+<div class="inicio-acoes">
+  <button type="button" class="pequeno" id="personalizar" title="Mudar a ordem, a largura e os blocos visíveis desta página">✎ Personalizar</button>
+</div>
+<div class="barra-personalizar" id="barra-personalizar" data-csrf="{{ csrf_token }}" hidden>
+  <span><strong>A personalizar o Início.</strong> <span class="nota">Arrasta pelo ⠿ (ou usa ↑ ↓), escolhe a largura e oculta o que não queres ver.
+    Fica só para ti.</span></span>
+  <span class="barra-botoes">
+    <button type="button" class="pequeno ligacao" data-acao="repor" {% if not personalizado %}disabled{% endif %}>Repor original</button>
+    <button type="button" class="pequeno" data-acao="cancelar">Cancelar</button>
+    <button type="button" class="pequeno primario" data-acao="guardar">Guardar</button>
+  </span>
+</div>
+
+<div class="inicio-blocos" id="inicio-blocos">
+{% for b in layout %}
+{% if not (b.id == 'entidades' and totais | length < 2) %}
+<div class="bloco-inicio{{ ' oculto' if not b.on }}" data-bloco="{{ b.id }}" data-w="{{ b.w }}" data-on="{{ 1 if b.on else 0 }}" style="--w: {{ b.w }}">
+  <div class="bloco-ferramentas">
+    <span class="bloco-pega" title="Arrastar para mudar de sítio" aria-hidden="true">⠿</span>
+    <strong class="bloco-nome">{{ blocos[b.id][0] }}</strong>
+    <span class="bloco-larguras" role="group" aria-label="Largura">
+      {% for w, r in larguras.items() %}<button type="button" data-largura="{{ w }}" aria-pressed="{{ 'true' if w == b.w else 'false' }}" title="Largura: {{ r }}">{{ r }}</button>{% endfor %}
+    </span>
+    <span class="bloco-mover">
+      <button type="button" data-mover="-1" title="Subir" aria-label="Subir">↑</button>
+      <button type="button" data-mover="1" title="Descer" aria-label="Descer">↓</button>
+    </span>
+    <button type="button" class="bloco-ver" data-ver>{{ 'Ocultar' if b.on else 'Mostrar' }}</button>
+  </div>
+
+{% if b.id == 'topo' %}
 <section class="cartao inicio-topo">
   <div class="inicio-topo-texto">
     <span class="sobretitulo">Património líquido · {{ entidade.nome }}</span>
@@ -54,84 +84,89 @@
   {% if v.datas | length > 1 %}<div class="inicio-topo-linha"><canvas data-grafico="inicio_linha" aria-label="Evolução do património líquido" role="img"></canvas></div>{% endif %}
 </section>
 
-{# ---------------------------------------------------------------- composição + detalhe #}
-<div class="inicio-grelha">
-  <section class="cartao">
-    <h2>Composição dos ativos</h2>
-    {% if grupos %}
-    <div class="grafico grafico-donut"><canvas data-grafico="inicio_composicao" aria-label="Composição dos ativos" role="img"></canvas>
-      <div class="donut-centro"><span class="nota">Ativos</span><strong>{{ total_ativos | eur }}</strong></div></div>
-    <ul class="legenda-grupos">
-      {% for g in grupos %}<li><span class="ponto" style="background: {{ g.cor }}"></span>{{ g.titulo }}<strong>{{ pct(g.total, total_ativos) }}</strong></li>{% endfor %}
-    </ul>
-    {% else %}<p class="vazio sem-margem">Sem ativos registados.</p>{% endif %}
-  </section>
+{% elif b.id == 'composicao' %}
+<section class="cartao">
+  <h2>Composição dos ativos</h2>
+  {% if grupos %}
+  <div class="grafico grafico-donut"><canvas data-grafico="inicio_composicao" aria-label="Composição dos ativos" role="img"></canvas>
+    <div class="donut-centro"><span class="nota">Ativos</span><strong>{{ total_ativos | eur }}</strong></div></div>
+  <ul class="legenda-grupos">
+    {% for g in grupos %}<li><span class="ponto" style="background: {{ g.cor }}"></span>{{ g.titulo }}<strong>{{ pct(g.total, total_ativos) }}</strong></li>{% endfor %}
+  </ul>
+  {% else %}<p class="vazio sem-margem">Sem ativos registados.</p>{% endif %}
+</section>
 
-  <section class="cartao">
-    <h2>Detalhe dos ativos</h2>
-    <div class="grupos-ativos">
-      {% for g in grupos %}
-      <div class="grupo-ativo" style="--cor-grupo: {{ g.cor }}">
-        <div class="grupo-cabecalho"><span>{{ g.titulo }}</span><strong>{{ g.total | eur }}</strong></div>
-        <div class="tiles">
-          {% for t in g.itens[:6] %}
-          <a class="tile" href="{{ t.href or '#' }}" title="{{ t.rotulo }} · {{ t.valor | eur }}">
-            <span class="tile-icone">{{ icone_pat(t.icone) }}</span>
-            <span class="tile-rotulo">{{ t.rotulo }}</span>
-            <strong class="tile-valor">{{ t.valor | eur }}</strong>
-            {% if t.nota %}<span class="nota">{{ t.nota }}</span>{% endif %}
-          </a>
-          {% endfor %}
-        </div>
-      </div>
-      {% else %}<p class="vazio sem-margem">Sem ativos.</p>{% endfor %}
-    </div>
-    {% if passivos.itens %}
-    <div class="grupo-ativo grupo-passivo" style="--cor-grupo: {{ passivos.cor }}">
-      <div class="grupo-cabecalho"><span>Passivos</span><strong class="neg">{{ passivos.total | eur }}</strong></div>
+{% elif b.id == 'detalhe' %}
+<section class="cartao">
+  <h2>Detalhe dos ativos</h2>
+  <div class="grupos-ativos">
+    {% for g in grupos %}
+    <div class="grupo-ativo" style="--cor-grupo: {{ g.cor }}">
+      <div class="grupo-cabecalho"><span>{{ g.titulo }}</span><strong>{{ g.total | eur }}</strong></div>
       <div class="tiles">
-        {% for t in passivos.itens %}
-        <a class="tile" href="{{ t.href or '#' }}">
+        {% for t in g.itens[:6] %}
+        <a class="tile" href="{{ t.href or '#' }}" title="{{ t.rotulo }} · {{ t.valor | eur }}">
           <span class="tile-icone">{{ icone_pat(t.icone) }}</span>
           <span class="tile-rotulo">{{ t.rotulo }}</span>
-          <strong class="tile-valor neg">{{ t.valor | eur }}</strong>
-          <span class="nota">{{ t.nota }}</span>
+          <strong class="tile-valor">{{ t.valor | eur }}</strong>
+          {% if t.nota %}<span class="nota">{{ t.nota }}</span>{% endif %}
         </a>
         {% endfor %}
       </div>
     </div>
-    {% endif %}
-  </section>
-</div>
-
-{# ---------------------------------------------------------------- evolução + agenda #}
-<div class="linha-dupla inicio-baixo">
-  <section class="cartao">
-    <h2>Evolução <span class="nota">· ativos, passivos e património líquido</span></h2>
-    {% if v.datas | length > 1 %}
-    <div class="grafico grafico-medio"><canvas data-grafico="inicio_evolucao" aria-label="Ativos, passivos e património líquido" role="img"></canvas></div>
-    {% endif %}
-    {% if totais | length > 1 %}
-    <h3>Por entidade</h3>
-    <table class="tabela compacta">
-      {% for e, liq in totais %}
-      <tr><td><a href="/inicio?entidade={{ e.id }}">{{ e.nome }}</a>{% if e.heranca and e.quota is not none %} <span class="nota">herança, a tua parte {{ e.quota_txt }}</span>{% endif %}</td>
-        <td class="num">{{ liq | eur }}{% if e.heranca and e.quota is not none %}<br><span class="nota">{{ e.parte(liq) | eur }}</span>{% endif %}</td></tr>
+    {% else %}<p class="vazio sem-margem">Sem ativos.</p>{% endfor %}
+  </div>
+  {% if passivos.itens %}
+  <div class="grupo-ativo grupo-passivo" style="--cor-grupo: {{ passivos.cor }}">
+    <div class="grupo-cabecalho"><span>Passivos</span><strong class="neg">{{ passivos.total | eur }}</strong></div>
+    <div class="tiles">
+      {% for t in passivos.itens %}
+      <a class="tile" href="{{ t.href or '#' }}">
+        <span class="tile-icone">{{ icone_pat(t.icone) }}</span>
+        <span class="tile-rotulo">{{ t.rotulo }}</span>
+        <strong class="tile-valor neg">{{ t.valor | eur }}</strong>
+        <span class="nota">{{ t.nota }}</span>
+      </a>
       {% endfor %}
-    </table>
-    {% endif %}
-  </section>
+    </div>
+  </div>
+  {% endif %}
+</section>
 
-  <section class="cartao" id="agenda">
-    <h2>Agenda <span class="nota">· próximos {{ horizonte }} dias</span></h2>
-    {% if proximos %}
-    <ul class="agenda">{% for i in proximos %}{{ item_agenda(i) }}{% endfor %}</ul>
-    {% else %}<p class="vazio sem-margem">Nada marcado para os próximos {{ horizonte }} dias.</p>{% endif %}
-    {% if depois %}
-    <h3>Mais à frente</h3>
-    <ul class="agenda">{% for i in depois %}{{ item_agenda(i) }}{% endfor %}</ul>
-    {% endif %}
-  </section>
+{% elif b.id == 'evolucao' %}
+<section class="cartao">
+  <h2>Evolução <span class="nota">· ativos, passivos e património líquido</span></h2>
+  {% if v.datas | length > 1 %}
+  <div class="grafico grafico-medio"><canvas data-grafico="inicio_evolucao" aria-label="Ativos, passivos e património líquido" role="img"></canvas></div>
+  {% else %}<p class="vazio sem-margem">Ainda não há histórico suficiente.</p>{% endif %}
+</section>
+
+{% elif b.id == 'agenda' %}
+<section class="cartao" id="agenda">
+  <h2>Agenda <span class="nota">· próximos {{ horizonte }} dias</span></h2>
+  {% if proximos %}
+  <ul class="agenda">{% for i in proximos %}{{ item_agenda(i) }}{% endfor %}</ul>
+  {% else %}<p class="vazio sem-margem">Nada marcado para os próximos {{ horizonte }} dias.</p>{% endif %}
+  {% if depois %}
+  <h3>Mais à frente</h3>
+  <ul class="agenda">{% for i in depois %}{{ item_agenda(i) }}{% endfor %}</ul>
+  {% endif %}
+</section>
+
+{% elif b.id == 'entidades' %}
+<section class="cartao">
+  <h2>Património por entidade</h2>
+  <table class="tabela compacta">
+    {% for e, liq in totais %}
+    <tr><td><a href="/inicio?entidade={{ e.id }}">{{ e.nome }}</a>{% if e.heranca and e.quota is not none %} <span class="nota">herança, a tua parte {{ e.quota_txt }}</span>{% endif %}</td>
+      <td class="num">{{ liq | eur }}{% if e.heranca and e.quota is not none %}<br><span class="nota">{{ e.parte(liq) | eur }}</span>{% endif %}</td></tr>
+    {% endfor %}
+  </table>
+</section>
+{% endif %}
+</div>
+{% endif %}
+{% endfor %}
 </div>
 {% endif %}
 {% endblock %}
@@ -140,5 +175,6 @@
 <script type="application/json" id="dados-graficos">{{ graficos | tojson }}</script>
 <script src="/static/vendor/chart.umd.min.js?v={{ versao }}"></script>
 <script src="/static/graficos.js?v={{ versao }}"></script>
+<script src="/static/inicio_layout.js?v={{ versao }}"></script>
 {% endif %}
 {% endblock %}

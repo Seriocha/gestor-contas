@@ -4,7 +4,7 @@ Gestor financeiro doméstico, multiutilizador e self-hosted, para a NAS QNAP. Es
 importa movimentos de bancos portugueses e gere contas à ordem, cartões, investimentos e
 Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIGN.md).
 
-## Estado: v0.51.0
+## Estado: v0.52.0
 
 - Login com várias pessoas: passwords em argon2, bloqueio ao fim de 5 tentativas falhadas,
   proteção CSRF e invalidação das sessões quando a password muda.
@@ -37,6 +37,11 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.52.0 — Início personalizável na própria página.** O botão «✎ Personalizar» põe a página em modo de edição:
+  cada bloco (património líquido, composição, detalhe dos ativos, evolução, agenda, património por entidade) pode ser
+  arrastado pelo ⠿ (ou movido com ↑ ↓ no telemóvel), ter a largura ¼, ⅓, ½, ⅔ ou inteira, e ser ocultado/mostrado.
+  «Guardar» grava a disposição só para o utilizador que a fez; «Repor original» volta à de omissão. No telemóvel os blocos
+  ocupam sempre a largura toda.
 - **v0.51.0 — Registo de abastecimentos no telemóvel.** A página sem login foi refeita para o telefone: letras e campos
   grandes, carros em botões, km com a última leitura (aviso se for menor), €/l calculado à medida, posto com sugestões e
   botão «Registar» sempre visível. Aparecem os carros da empresa com data de devolução futura; o ecrã de validação mostra

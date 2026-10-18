@@ -1,11 +1,14 @@
 """Início (página de entrada): património em gráfico e agenda das próximas tarefas."""
+import json
 from datetime import date
 
 from fastapi import APIRouter, Depends, Request
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
-from .. import inicio, preferencias
+from .. import inicio, layout_inicio, preferencias
 from ..deps import IntOpcional, entidade_escolhida, get_db, render, utilizador_atual
+from ..seguranca import ler_form
 from ..models import Utilizador
 
 router = APIRouter()
@@ -34,4 +37,22 @@ def pagina(request: Request, entidade: IntOpcional = None, u: Utilizador = Depen
     return render(request, "inicio.html", visiveis=visiveis, entidade=ent, v=v, hoje=hoje, totais=totais,
                   proximos=proximos, depois=depois, horizonte=inicio.HORIZONTE, grupos=grupos, passivos=passivos,
                   total_ativos=total_ativos, variacao=inicio.variacao_mensal(v), herancas=herancas,
-                  graficos=inicio.graficos(v, hoje, grupos))
+                  graficos=inicio.graficos(v, hoje, grupos), layout=layout_inicio.ler(db, u.id),
+                  blocos=layout_inicio.BLOCOS, larguras=layout_inicio.LARGURAS,
+                  personalizado=layout_inicio.personalizado(db, u.id))
+
+
+@router.post("/inicio/layout")
+async def gravar_layout(request: Request, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
+    """Grava a disposição dos blocos do Início (só deste utilizador). layout vazio = repor a de omissão."""
+    form = await ler_form(request)
+    txt = str(form.get("layout", "")).strip()
+    try:
+        itens = json.loads(txt) if txt else None
+    except json.JSONDecodeError:
+        return JSONResponse({"ok": False, "erro": "Layout inválido."}, status_code=400)
+    if itens is not None and not isinstance(itens, list):
+        return JSONResponse({"ok": False, "erro": "Layout inválido."}, status_code=400)
+    layout_inicio.gravar(db, u.id, itens)
+    db.commit()
+    return JSONResponse({"ok": True, "layout": layout_inicio.ler(db, u.id)})
