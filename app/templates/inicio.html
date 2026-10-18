@@ -27,10 +27,25 @@
     <span class="sobretitulo">Património líquido · {{ entidade.nome }}</span>
     <strong class="valor-grande">{{ h.liquido | eur }}</strong>
     {% set dv, dp = variacao %}
-    <span class="nota">Variação mensal
-      <strong class="{{ 'pos' if dv > 0 else 'neg' if dv < 0 }}">{{ '+' if dv > 0 }}{{ dv | eur }}{% if dp is not none %} ({{ '+' if dp > 0 }}{{ ('%.1f' % dp).replace('.', ',') }}%){% endif %}</strong>
-      {% if v.datas | length > 1 %}· {{ '+' if v.variacao_ano > 0 }}{{ v.variacao_ano | eur }} desde {{ v.datas[0] | data }}{% endif %}</span>
+    <div class="variacoes">
+      <span class="var-chip {{ 'pos' if dv > 0 else 'neg' if dv < 0 }}"><span>{{ '▲' if dv > 0 else '▼' if dv < 0 else '•' }} {{ '+' if dv > 0 }}{{ dv | eur }}</span>
+        <small>{% if dp is not none %}{{ '+' if dp > 0 }}{{ ('%.1f' % dp).replace('.', ',') }}% · {% endif %}este mês</small></span>
+      {% if v.datas | length > 1 %}
+      {% set va = v.variacao_ano %}
+      <span class="var-chip {{ 'pos' if va > 0 else 'neg' if va < 0 }}"><span>{{ '+' if va > 0 }}{{ va | eur }}</span>
+        <small>desde {{ ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'][v.datas[0].month - 1] }} {{ v.datas[0].year }}</small></span>
+      {% endif %}
+    </div>
     {{ parte(entidade, h.liquido) }}
+    {% if herancas %}
+    <div class="herancas-transpostas">
+      {% for e, liq, minha in herancas %}
+      <a class="parte-bloco heranca" href="/inicio?entidade={{ e.id }}"><span class="parte-rotulo">{{ e.nome }} · {{ e.quota_futura_txt }}{{ ' (' ~ e.quota_futura_nota | lower ~ ')' if e.quota_futura_nota }}</span>
+        <strong>{{ minha | eur }}</strong><span class="nota">de {{ liq | eur }}</span></a>
+      {% endfor %}
+      <span class="parte-bloco total"><span class="parte-rotulo">{{ entidade.nome }} + herança</span><strong>{{ (h.liquido + herancas | sum(attribute=2)) | eur }}</strong></span>
+    </div>
+    {% endif %}
     <div class="inicio-topo-kpis">
       <span><span class="ponto" style="background: #2a78d6"></span> Ativos <strong>{{ h.ativos | eur }}</strong></span>
       <span><span class="ponto" style="background: #e34948"></span> Passivos <strong>{{ h.passivos | eur }}</strong></span>

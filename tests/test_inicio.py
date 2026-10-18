@@ -70,7 +70,7 @@ def test_patrimonio_com_bens_e_agenda(admin, app):
     dados = json.loads(re.search(r'id="dados-graficos">(.*?)</script>', p, re.S).group(1))
     comp = {x["nome"]: x["valor"] for x in dados["inicio_composicao"]}
     assert comp == {"Ativos bancários": 5000.0, "Património imóvel": 250000.0}       # o carro sem valor não entra
-    assert "Detalhe dos ativos" in p and "Contas à ordem" in p and "Variação mensal" in p and "Passivos" in p
+    assert "Detalhe dos ativos" in p and "Contas à ordem" in p and "este mês" in p and "Passivos" in p
     assert 'data-grafico="inicio_linha"' in p and 'class="tile"' in p
     assert 'href="/inicio"' in p                                                       # menu / logótipo
 
@@ -87,5 +87,23 @@ def test_cortica_e_heranca_no_inicio(admin, app):
         cortica = next(i for i in todos if i.titulo.startswith("Tiragem da cortiça"))
         assert cortica.data == date(HOJE.year + 1, 6, 1) and cortica.entidade == "Herança"
     p = admin.get("/inicio?entidade=2").text
-    assert "a tua parte (1/6): 100.000,00 €" in p and "Por morte da mãe (1/2): 300.000,00 €" in p
+    assert "A tua parte · 1/6</span><strong>100.000,00 €" in p and "Por morte da mãe · 1/2</span><strong>300.000,00 €" in p
     assert "Por entidade" in p
+
+
+def test_heranca_no_inicio_da_familia_e_preferencia(admin, app):
+    from tests.test_app import _csrf
+    _post(admin, "/admin/entidades/2", nome="Herança", tipo="heranca", quota="1/6", quota_futura="1/2",
+          quota_futura_nota="Por morte da mãe", modulos=["imoveis"], modulos_presentes="1")
+    _post(admin, "/patrimonio/novo?entidade=2&tipo=rustico", nome="Monte", uso="exploracao", area_ha="100",
+          localizacao="Ourique", revisao_meses="0", valor_aquisicao="600.000,00")
+    familia = admin.get("/inicio?entidade=1").text
+    assert "herancas-transpostas" in familia and "Herança · 1/2" in familia and "300.000,00 €" in familia
+    assert "Família + herança" in familia
+    assert "este mês" in familia and 'class="var-chip' in familia
+    # preferência desligada: nada da minha parte, nem a herança transposta
+    f = admin.get("/admin/utilizadores")
+    admin.post("/admin/preferencias", data={"csrf": _csrf(f), "tarefas_ativas": "1", "avaliacao_automatica": "1"})
+    assert app.state.prefs["mostrar_minha_parte"] == "0"
+    assert "herancas-transpostas" not in admin.get("/inicio?entidade=1").text
+    assert "A tua parte" not in admin.get("/inicio?entidade=2").text

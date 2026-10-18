@@ -42,6 +42,8 @@
       <label class="opcao"><input type="checkbox" name="avaliacao_automatica" value="1" {% if prefs.avaliacao_automatica == '1' %}checked{% endif %}>
         Rever sozinho o valor das casas e carros (IA) quando passa o prazo de revisão de cada um</label>
       <p class="nota sem-margem">Corre uma vez por dia e só com a chave da Claude API configurada (ia.env).</p>
+      <label class="opcao"><input type="checkbox" name="mostrar_minha_parte" value="1" {% if prefs.mostrar_minha_parte == '1' %}checked{% endif %}>
+        Mostrar a minha parte nas heranças (quota e 2.º cenário), também no Início da entidade pessoal</label>
     </fieldset>
     <fieldset>
       <legend>Lembrete das tarefas de importação</legend>

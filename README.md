@@ -4,7 +4,7 @@ Gestor financeiro doméstico, multiutilizador e self-hosted, para a NAS QNAP. Es
 importa movimentos de bancos portugueses e gere contas à ordem, cartões, investimentos e
 Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIGN.md).
 
-## Estado: v0.47.0
+## Estado: v0.48.0
 
 - Login com várias pessoas: passwords em argon2, bloqueio ao fim de 5 tentativas falhadas,
   proteção CSRF e invalidação das sessões quando a password muda.
@@ -37,6 +37,10 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.48.0 — A minha parte, condicional e em blocos.** Preferência em Administração «Mostrar a minha parte nas heranças»
+  (ligada/desligada). As partes aparecem em blocos distintos (a tua parte · 1/6; por morte da mãe · 1/2) e as variações do
+  cabeçalho do Início em blocos simples (este mês; desde …). No Início da entidade pessoal (Família) aparece a tua parte em
+  cada herança — só o 2.º cenário (1/2) — e o total «Família + herança».
 - **v0.47.0 — Início mais gráfico.** Cabeçalho com o património líquido em destaque, variação mensal e mini-gráfico;
   composição dos ativos em quatro grupos (ativos bancários, investimentos, património imóvel, carros) com percentagens;
   detalhe dos ativos em cartões com ícone (contas à ordem, poupança, carteira digital, cada fundo, cada casa ou propriedade,

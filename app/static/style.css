@@ -679,3 +679,23 @@ details.recolher[open] > summary { margin-bottom: 1rem; }
   .inicio-topo, .inicio-grelha { grid-template-columns: 1fr; }
   .inicio-topo-linha { height: 110px; }
 }
+
+/* ------------------------------------------------------------------ variações e partes da herança em blocos */
+.variacoes { display: flex; flex-wrap: wrap; gap: .5rem; margin: .2rem 0 .4rem; }
+.var-chip { display: inline-flex; flex-direction: column; padding: .35rem .7rem; border-radius: var(--raio-p);
+  background: var(--superficie-2); border: 1px solid var(--linha); line-height: 1.2; }
+.var-chip > span { font-weight: 700; }
+.var-chip small { color: var(--suave); font-size: .75rem; }
+.var-chip.pos > span { color: var(--pos); }
+.var-chip.neg > span { color: var(--neg); }
+.partes, .herancas-transpostas { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .5rem; }
+.parte-bloco { display: inline-flex; flex-direction: column; padding: .4rem .7rem; border-radius: var(--raio-p); line-height: 1.25;
+  background: color-mix(in srgb, var(--destaque) 12%, transparent); border: 1px solid color-mix(in srgb, var(--destaque) 35%, transparent);
+  color: var(--texto); text-decoration: none; }
+.parte-bloco.futura { background: color-mix(in srgb, var(--previsto) 12%, transparent); border-color: color-mix(in srgb, var(--previsto) 35%, transparent); }
+.parte-bloco.heranca { background: color-mix(in srgb, #1baf7a 12%, transparent); border-color: color-mix(in srgb, #1baf7a 35%, transparent); }
+.parte-bloco.total { background: var(--superficie-2); border-color: var(--linha-forte); }
+.parte-rotulo { font-size: .72rem; color: var(--suave); text-transform: uppercase; letter-spacing: .04em; font-weight: 700; }
+.parte-bloco strong { font-size: 1rem; }
+.kpi .partes { margin-top: .35rem; }
+.kpi .parte-bloco { padding: .3rem .55rem; }

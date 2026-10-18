@@ -45,7 +45,7 @@ def test_editar_entidade_heranca(admin, app):
     _post(admin, "/admin/entidades", "/admin/entidades", nome="Herança Avós", tipo="heranca", quota="25")
     with app.state.SessionLocal() as db:
         assert db.query(Entidade).filter_by(nome="Herança Avós").one().quota == 25
-    assert "a tua parte (1/3)" in admin.get("/?entidade=2").text
+    assert "A tua parte · 1/3" in admin.get("/?entidade=2").text
 
 
 def _rustico(c, **extra):
@@ -79,7 +79,7 @@ def test_propriedade_rustica_cortica_e_ia(admin, app, monkeypatch):
         db.commit()
         assert a.valor == 90000000 and "7500 €/ha" in a.justificacao
     p = admin.get(f"/patrimonio/{bid}").text
-    assert "próxima em 2035" in p and "faltam 9 anos" in p and "Montado de sobro" in p and "a tua parte (1/4): 225.000,00 €" in p
+    assert "próxima em 2035" in p and "faltam 9 anos" in p and "Montado de sobro" in p and "A tua parte · 1/4</span><strong>225.000,00 €" in p
     lista = admin.get("/patrimonio?entidade=2").text
     assert "Propriedades rústicas" in lista and "próxima em 2035" in lista and "é uma herança" in lista
     assert "recebeu 8.000,00 €" in lista                                   # a venda da cortiça (padrão) conta no prédio

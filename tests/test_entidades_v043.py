@@ -50,7 +50,7 @@ def test_quota_em_dois_cenarios_e_modulos(admin, app):
     assert "→ 1/2" in admin.get("/admin/entidades").text
     p = admin.get("/patrimonio?entidade=2").text
     assert "+ Propriedade rústica" in p and "+ Carro" not in p and "Via Verde" not in p
-    assert "a tua parte (1/6)" in p and "Por morte da mãe (1/2)" in p
+    assert "A tua parte · 1/6" in p and "Por morte da mãe · 1/2" in p
     assert _post(admin, "/patrimonio/novo?entidade=2&tipo=carro", nome="X").status_code == 400
     assert "não usa subscrições" in admin.get("/subscricoes?entidade=2").text
     assert "não usa viagens" in admin.get("/viagens?entidade=2").text

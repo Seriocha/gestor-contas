@@ -23,7 +23,7 @@ from .routes import (abastecer, admin, auth, inicio, posicoes, categorias, conta
 from .seed import semear
 
 APP_DIR = Path(__file__).resolve().parent
-VERSAO = "0.47.0"
+VERSAO = "0.48.0"
 
 
 def aplicar_migracoes(db_path: Path) -> None:
@@ -62,6 +62,7 @@ def create_app(data_dir: Path | None = None, backups_automaticos: bool = True) -
     templates.env.filters["data"] = formatos.fmt_data
     templates.env.globals["versao"] = VERSAO
     templates.env.globals["tarefas_janela"] = lambda: tarefas.na_janela(app.state.prefs, date.today())
+    templates.env.globals["mostrar_parte"] = lambda: preferencias.ligada(app.state.prefs, "mostrar_minha_parte")
     templates.env.filters["iban"] = lambda v: v if preferencias.ligada(app.state.prefs, "mostrar_iban_completo")         else formatos.mascarar_iban(v)
     templates.env.filters["pct"] = lambda v: "—" if v is None else f"{v:+.1f}%".replace(".", ",")
     app.state.templates = templates

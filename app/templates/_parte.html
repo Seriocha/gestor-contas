@@ -1,7 +1,12 @@
-{# A parte do utilizador num valor de uma herança: quota atual e, se houver, a do 2.º cenário. #}
+{# A parte do utilizador num valor de uma herança: quota atual e, se houver, a do 2.º cenário — em blocos.
+   Só aparece com a preferência «Mostrar a minha parte» ligada (Administração). #}
 {% macro parte(e, valor) -%}
-{% if e and e.heranca and e.quota is not none and valor is not none -%}
-<span class="nota parte-heranca">a tua parte ({{ e.quota_txt }}): {{ e.parte(valor) | eur }}
-  {%- if e.quota_futura is not none %}<br>{{ e.quota_futura_nota or '2.º cenário' }} ({{ e.quota_futura_txt }}): {{ e.parte_futura(valor) | eur }}{% endif %}</span>
+{% if e and e.heranca and e.quota is not none and valor is not none and mostrar_parte() -%}
+<span class="partes">
+  <span class="parte-bloco"><span class="parte-rotulo">A tua parte · {{ e.quota_txt }}</span><strong>{{ e.parte(valor) | eur }}</strong></span>
+  {%- if e.quota_futura is not none %}
+  <span class="parte-bloco futura"><span class="parte-rotulo">{{ e.quota_futura_nota or '2.º cenário' }} · {{ e.quota_futura_txt }}</span><strong>{{ e.parte_futura(valor) | eur }}</strong></span>
+  {%- endif %}
+</span>
 {%- endif %}
 {%- endmacro %}
