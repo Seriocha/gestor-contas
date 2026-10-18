@@ -39,7 +39,8 @@ def pagina(request: Request, entidade: IntOpcional = None, u: Utilizador = Depen
                   total_ativos=total_ativos, variacao=inicio.variacao_mensal(v), herancas=herancas,
                   graficos=inicio.graficos(v, hoje, grupos), layout=layout_inicio.ler(db, u.id),
                   blocos=layout_inicio.BLOCOS, larguras=layout_inicio.LARGURAS,
-                  personalizado=layout_inicio.personalizado(db, u.id))
+                  personalizado=layout_inicio.personalizado(db, u.id), colunas=layout_inicio.ler_colunas(db, u.id),
+                  opcoes_colunas=layout_inicio.COLUNAS)
 
 
 @router.post("/inicio/layout")
@@ -54,5 +55,10 @@ async def gravar_layout(request: Request, u: Utilizador = Depends(utilizador_atu
     if itens is not None and not isinstance(itens, list):
         return JSONResponse({"ok": False, "erro": "Layout inválido."}, status_code=400)
     layout_inicio.gravar(db, u.id, itens)
+    try:
+        colunas = json.loads(str(form.get("colunas", "") or "{}")) if itens is not None else {}
+    except json.JSONDecodeError:
+        colunas = {}
+    layout_inicio.gravar_colunas(db, u.id, colunas)
     db.commit()
     return JSONResponse({"ok": True, "layout": layout_inicio.ler(db, u.id)})

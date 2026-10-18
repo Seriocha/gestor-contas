@@ -16,6 +16,13 @@
   {% if i.valor is not none %}<div class="agenda-valor num {{ 'pos' if i.valor > 0 else 'neg' }}">{{ '+' if i.valor > 0 }}{{ i.valor | eur }}</div>{% endif %}
 </li>
 {%- endmacro %}
+{% macro escolher_colunas(chave) -%}
+<span class="grupo-colunas" data-grupo="{{ chave }}" role="group" aria-label="Colunas">
+  {% set atual = colunas.get(chave) %}
+  <button type="button" data-colunas="" aria-pressed="{{ 'true' if not atual else 'false' }}" title="Automático">Auto</button>
+  {%- for n in opcoes_colunas %}<button type="button" data-colunas="{{ n }}" aria-pressed="{{ 'true' if atual == n else 'false' }}" title="{{ n }} coluna{{ 's' if n != 1 }}">{{ n }}</button>{% endfor %}
+</span>
+{%- endmacro %}
 {% macro pct(x, total) %}{{ ('%.0f' % (x / total * 100)) if total else 0 }}%{% endmacro %}
 {% block conteudo %}
 {% set destino = '/inicio' %}{% include "_entidades.html" %}
@@ -102,8 +109,8 @@
   <div class="grupos-ativos">
     {% for g in grupos %}
     <div class="grupo-ativo" style="--cor-grupo: {{ g.cor }}">
-      <div class="grupo-cabecalho"><span>{{ g.titulo }}</span><strong>{{ g.total | eur }}</strong></div>
-      <div class="tiles">
+      <div class="grupo-cabecalho"><span>{{ g.titulo }}</span>{{ escolher_colunas(g.chave) }}<strong>{{ g.total | eur }}</strong></div>
+      <div class="tiles" data-grupo="{{ g.chave }}" data-colunas="{{ colunas.get(g.chave, '') }}"{% if colunas.get(g.chave) %} style="--colunas: {{ colunas[g.chave] }}"{% endif %}>
         {% for t in g.itens[:6] %}
         <a class="tile" href="{{ t.href or '#' }}" title="{{ t.rotulo }} · {{ t.valor | eur }}">
           <span class="tile-icone">{{ icone_pat(t.icone) }}</span>
@@ -118,8 +125,8 @@
   </div>
   {% if passivos.itens %}
   <div class="grupo-ativo grupo-passivo" style="--cor-grupo: {{ passivos.cor }}">
-    <div class="grupo-cabecalho"><span>Passivos</span><strong class="neg">{{ passivos.total | eur }}</strong></div>
-    <div class="tiles">
+    <div class="grupo-cabecalho"><span>Passivos</span>{{ escolher_colunas('passivos') }}<strong class="neg">{{ passivos.total | eur }}</strong></div>
+    <div class="tiles" data-grupo="passivos" data-colunas="{{ colunas.get('passivos', '') }}"{% if colunas.get('passivos') %} style="--colunas: {{ colunas['passivos'] }}"{% endif %}>
       {% for t in passivos.itens %}
       <a class="tile" href="{{ t.href or '#' }}">
         <span class="tile-icone">{{ icone_pat(t.icone) }}</span>

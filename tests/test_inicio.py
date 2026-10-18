@@ -140,3 +140,23 @@ def test_layout_personalizado_por_utilizador(admin):
     assert admin.post("/inicio/layout", data={"csrf": csrf, "layout": ""}).json()["ok"]
     r = admin.get("/inicio?entidade=1")
     assert re.findall(r'data-bloco="(\w+)"', r.text)[:2] == ["topo", "composicao"]
+
+
+def test_colunas_por_grupo_do_detalhe(admin, app):
+    from app import layout_inicio
+    r = admin.get("/inicio?entidade=1")
+    assert 'class="grupo-colunas" data-grupo="bancarios"' in r.text and 'data-grupo="bancarios" data-colunas=""' in r.text
+    csrf = re.search(r'data-csrf="([^"]+)"', r.text).group(1)
+    layout = json.dumps(layout_inicio.omissao())
+    r = admin.post("/inicio/layout", data={"csrf": csrf, "layout": layout,
+                                           "colunas": json.dumps({"bancarios": 1, "xpto": 2, "passivos": 9})})
+    assert r.json()["ok"]
+    with app.state.SessionLocal() as db:
+        assert layout_inicio.ler_colunas(db, 1) == {"bancarios": 1}
+        assert layout_inicio.personalizado(db, 1)                   # layout de omissão, mas com colunas
+    p = admin.get("/inicio?entidade=1").text
+    assert 'data-grupo="bancarios" data-colunas="1" style="--colunas: 1"' in p
+    assert 'data-colunas="1" aria-pressed="true"' in p
+    admin.post("/inicio/layout", data={"csrf": csrf, "layout": ""})        # repor original limpa também as colunas
+    with app.state.SessionLocal() as db:
+        assert layout_inicio.ler_colunas(db, 1) == {} and not layout_inicio.personalizado(db, 1)

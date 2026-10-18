@@ -65,7 +65,7 @@ def ler(db: Session, utilizador_id: int) -> list[dict]:
 
 
 def personalizado(db: Session, utilizador_id: int) -> bool:
-    return db.get(Definicao, chave(utilizador_id)) is not None
+    return (db.get(Definicao, chave(utilizador_id)) or db.get(Definicao, chave_colunas(utilizador_id))) is not None
 
 
 def gravar(db: Session, utilizador_id: int, itens: list[dict] | None) -> None:
@@ -80,3 +80,46 @@ def gravar(db: Session, utilizador_id: int, itens: list[dict] | None) -> None:
         d.valor = texto
     else:
         db.add(Definicao(chave=chave(utilizador_id), valor=texto))
+
+
+# ------------------------------------------------------------------ colunas dos cartões em cada grupo do «Detalhe dos ativos»
+GRUPOS_DETALHE = ("bancarios", "investimentos", "imoveis", "carros", "passivos")
+COLUNAS = (1, 2, 3, 4)                       # sem valor = automático (cabem os que couberem)
+
+
+def chave_colunas(utilizador_id: int) -> str:
+    return f"inicio_colunas.u{utilizador_id}"
+
+
+def normalizar_colunas(dados) -> dict[str, int]:
+    out = {}
+    for g, n in (dados or {}).items() if isinstance(dados, dict) else []:
+        try:
+            n = int(n)
+        except (TypeError, ValueError):
+            continue
+        if g in GRUPOS_DETALHE and n in COLUNAS:
+            out[g] = n
+    return out
+
+
+def ler_colunas(db: Session, utilizador_id: int) -> dict[str, int]:
+    d = db.get(Definicao, chave_colunas(utilizador_id))
+    if not d:
+        return {}
+    return normalizar_colunas(dict(p.split(":", 1) for p in d.valor.split(",") if p.count(":") == 1))
+
+
+def gravar_colunas(db: Session, utilizador_id: int, dados) -> None:
+    """dados: {grupo: n.º de colunas}; vazio (ou None) = automático em todos."""
+    cols = normalizar_colunas(dados)
+    d = db.get(Definicao, chave_colunas(utilizador_id))
+    if not cols:
+        if d:
+            db.delete(d)
+        return
+    texto = ",".join(f"{g}:{n}" for g, n in cols.items())
+    if d:
+        d.valor = texto
+    else:
+        db.add(Definicao(chave=chave_colunas(utilizador_id), valor=texto))

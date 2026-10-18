@@ -35,6 +35,15 @@
     if (!document.body.classList.contains('a-personalizar')) return;
     const b = e.target.closest('.bloco-inicio');
     if (!b) return;
+    const col = e.target.closest('.grupo-colunas [data-colunas]');
+    if (col) {
+      const grupo = col.closest('.grupo-colunas').dataset.grupo, n = col.dataset.colunas;
+      const tiles = grelha.querySelector(`.tiles[data-grupo="${grupo}"]`);
+      tiles.dataset.colunas = n;
+      if (n) tiles.style.setProperty('--colunas', n); else tiles.style.removeProperty('--colunas');
+      col.parentElement.querySelectorAll('[data-colunas]').forEach(x => x.setAttribute('aria-pressed', String(x === col)));
+      return;
+    }
     const largura = e.target.closest('[data-largura]');
     const mover = e.target.closest('[data-mover]');
     if (largura) definirLargura(b, Number(largura.dataset.largura));
@@ -85,6 +94,9 @@
     const fd = new FormData();
     fd.append('csrf', barra.dataset.csrf);
     fd.append('layout', layout);
+    const colunas = {};
+    grelha.querySelectorAll('.tiles[data-grupo]').forEach(x => { if (x.dataset.colunas) colunas[x.dataset.grupo] = Number(x.dataset.colunas); });
+    fd.append('colunas', JSON.stringify(colunas));
     const r = await fetch('/inicio/layout', { method: 'POST', body: fd });
     const d = await r.json().catch(() => ({}));
     if (!r.ok || !d.ok) throw new Error(d.erro || 'Não foi possível guardar.');
