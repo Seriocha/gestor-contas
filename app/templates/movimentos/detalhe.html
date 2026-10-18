@@ -20,6 +20,15 @@
 <div class="titulo-acoes">
   <h1>Movimento</h1>
   <span class="acoes-titulo">
+    {% if nav %}
+    <span class="nav-registos" aria-label="Navegar na lista">
+      {% if nav.anterior %}<a class="botao pequeno" id="nav-anterior" href="/movimentos/{{ nav.anterior }}/detalhe?voltar={{ voltar | urlencode }}"
+         title="Anterior na lista (tecla ←)" aria-label="Movimento anterior">←</a>{% else %}<span class="botao pequeno desativado" aria-hidden="true">←</span>{% endif %}
+      <span class="nota">{{ nav.pos }} de {{ nav.n }}</span>
+      {% if nav.seguinte %}<a class="botao pequeno" id="nav-seguinte" href="/movimentos/{{ nav.seguinte }}/detalhe?voltar={{ voltar | urlencode }}"
+         title="Seguinte na lista (tecla →)" aria-label="Movimento seguinte">→</a>{% else %}<span class="botao pequeno desativado" aria-hidden="true">→</span>{% endif %}
+    </span>
+    {% endif %}
     <a href="{{ voltar }}">‹ Voltar</a>
     {% if pode_editar %}<a class="botao pequeno" href="/movimentos/{{ m.id }}?voltar={{ voltar | urlencode }}">✎ Editar</a>{% endif %}
   </span>
@@ -62,6 +71,14 @@
 {% endif %}
 {% endblock %}
 {% block scripts %}
+<script>
+// ← / → : movimento anterior / seguinte da lista de onde se veio (não quando se escreve num campo)
+document.addEventListener('keydown', e => {
+  if (e.altKey || e.ctrlKey || e.metaKey || e.target.closest('input, textarea, select, [contenteditable]')) return;
+  const alvo = document.getElementById(e.key === 'ArrowLeft' ? 'nav-anterior' : e.key === 'ArrowRight' ? 'nav-seguinte' : '');
+  if (alvo) { e.preventDefault(); location.href = alvo.href; }
+});
+</script>
 <script>
 // «Analisar com IA»: mostra os passos enquanto a IA trabalha (a resposta chega de uma vez) e troca a secção pelo resultado
 document.addEventListener('submit', async e => {

@@ -4,7 +4,7 @@ Gestor financeiro doméstico, multiutilizador e self-hosted, para a NAS QNAP. Es
 importa movimentos de bancos portugueses e gere contas à ordem, cartões, investimentos e
 Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIGN.md).
 
-## Estado: v0.58.0
+## Estado: v0.58.1
 
 - Login com várias pessoas: passwords em argon2, bloqueio ao fim de 5 tentativas falhadas,
   proteção CSRF e invalidação das sessões quando a password muda.
@@ -37,6 +37,9 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.58.1 — Detalhe do movimento: anterior / seguinte.** Setas ← e → (e as teclas ← →) passam ao movimento anterior
+  ou seguinte da lista de onde se veio, com os mesmos filtros (texto, datas, valores, tipo, categoria, etiqueta, bem,
+  cartão, conta) e a mesma ordenação; mostra «N de total».
 - **v0.58.0 — Análise do movimento.** No detalhe de um movimento, «🔎 Análise do movimento»: «Analisar com IA» pergunta à
   Claude API (com pesquisa na web, quando a conta o permite) quem é o comerciante, a atividade, o local e o site, com uma
   explicação, as fontes e a categoria sugerida — «Aplicar a este movimento» ou criar uma regra. Só se envia a descrição, o

@@ -886,3 +886,8 @@ body.a-personalizar .grupo-cabecalho { flex-wrap: wrap; }
 .menu a .contador, .abas-movel a .contador { margin-left: auto; }
 .abas-movel a { position: relative; }
 .abas-movel a .contador { position: absolute; top: .2rem; right: calc(50% - 1.4rem); }
+
+/* detalhe do movimento: anterior / seguinte na lista */
+.nav-registos { display: inline-flex; align-items: center; gap: .4rem; }
+.nav-registos .botao { min-width: 2.4rem; justify-content: center; font-size: 1.05rem; }
+.botao.desativado { opacity: .35; pointer-events: none; }

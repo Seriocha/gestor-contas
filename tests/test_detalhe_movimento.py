@@ -127,3 +127,29 @@ def test_analise_do_movimento_pela_ia(admin, app, monkeypatch):
     monkeypatch.setattr(ia, "_chamar", lambda *a, **k: "sem json")
     r = admin.post(f"/movimentos/{mid}/analisar", data={"csrf": _csrf(admin.get(f"/movimentos/{mid}/detalhe")), "fragmento": "1"})
     assert r.status_code == 502 and "Não foi possível analisar" in r.text and "Galp" in r.text    # a análise anterior fica
+
+
+def test_navegar_anterior_seguinte_respeita_filtro_e_ordem(admin, app):
+    from urllib.parse import quote
+    d = (HOJE - timedelta(days=1)).isoformat()
+    _mov(admin, 1, d, "10,00", "CAFE A", sentido="saida")
+    _mov(admin, 1, d, "30,00", "CAFE B", sentido="saida")
+    with app.state.SessionLocal() as db:
+        ids = {m.descricao_original: m.id for m in db.scalars(select(Movimento))}
+    det = lambda mid, voltar: admin.get(f"/movimentos/{mid}/detalhe?voltar={quote(voltar)}").text
+    # lista filtrada por «CAFE» e ordenada pelo montante (do mais negativo): B (-30), A (-10)
+    voltar = "/movimentos?entidade=1&q=CAFE&ordem=montante"
+    p = det(ids["CAFE B"], voltar)
+    assert "1 de 2" in p and f'href="/movimentos/{ids["CAFE A"]}/detalhe?voltar=' in p and 'id="nav-anterior"' not in p
+    p = det(ids["CAFE A"], voltar)
+    assert "2 de 2" in p and f'id="nav-anterior" href="/movimentos/{ids["CAFE B"]}/detalhe' in p and 'id="nav-seguinte"' not in p
+    # ordem inversa troca os vizinhos
+    p = det(ids["CAFE A"], "/movimentos?entidade=1&q=CAFE&ordem=-montante")
+    assert "1 de 2" in p and f'id="nav-seguinte" href="/movimentos/{ids["CAFE B"]}/detalhe' in p
+    # sem filtro: todos os movimentos da entidade (5), pela data mais recente primeiro
+    assert " de 5" in det(ids["CAFE A"], "/movimentos?entidade=1")
+    # lista de uma conta: só os dessa conta
+    assert "1 de 1" in det(ids["TRF DE SANTANDER"], "/contas/2/movimentos")
+    # movimento fora do filtro, ou vindo de outra página: sem setas
+    assert "nav-registos" not in det(ids["GALP AV REPUBLICA"], voltar)
+    assert "nav-registos" not in det(ids["CAFE A"], "/subscricoes/1")

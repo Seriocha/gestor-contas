@@ -180,6 +180,66 @@ def _calendario(db: Session, base, *, conta_id, categoria, etiqueta, tipo, q, vm
     }
 
 
+def _base_lista(db: Session, q, ent: Entidade, *, bem: int | None, cartao: int | None, anteriores) -> tuple:
+    """Base da lista de movimentos de uma entidade: bem, cartão de débito e cobertura dos dados (por omissão só desde
+    o início da análise). Devolve (consulta, bem, cartão) — bem/cartão a None se não forem desta entidade."""
+    from ..models import CartaoDebito, MovimentoCartao
+    base = q.join(Conta).where(Conta.entidade_id == ent.id)
+    # Movimentos de um bem (casa, carro…): o filtro vai na base, para valer em tudo (calendário, totais, lote).
+    bem_obj = db.get(Bem, bem) if bem else None
+    if bem_obj and bem_obj.entidade_id == ent.id:
+        base = base.where(Movimento.bem_id == bem_obj.id)
+    else:
+        bem_obj = None
+    # Compras de um cartão de débito (pessoa): os débitos ligados às linhas do ficheiro do cartão.
+    cartao_obj = db.get(CartaoDebito, cartao) if cartao else None
+    if cartao_obj and cartao_obj.conta.entidade_id == ent.id:
+        base = base.where(Movimento.id.in_(select(MovimentoCartao.movimento_id).where(MovimentoCartao.cartao_id == cartao_obj.id)))
+    else:
+        cartao_obj = None
+    if ent.data_inicio and not anteriores:
+        base = base.where(Movimento.data_mov >= ent.data_inicio)
+    return base, bem_obj, cartao_obj
+
+
+def _vizinhos(db: Session, u: Utilizador, m: Movimento, voltar: str) -> dict | None:
+    """Anterior e seguinte do movimento na lista de onde se veio (o «voltar» traz os filtros e a ordenação), pela
+    ordem em que aparecem nessa lista. None se não se vier de uma lista de movimentos ou o movimento não estiver nela."""
+    from urllib.parse import parse_qs, urlsplit
+    partes = urlsplit(voltar)
+    qs = {k: v[-1] for k, v in parse_qs(partes.query).items()}
+    conta = None
+    achado = re.fullmatch(r"/contas/(\d+)/movimentos", partes.path)
+    if achado:
+        conta = db.get(Conta, int(achado.group(1)))
+        if not conta:
+            return None
+    elif partes.path != "/movimentos":
+        return None
+    ent_id = conta.entidade_id if conta else (int(qs["entidade"]) if qs.get("entidade", "").isdigit() else m.conta.entidade_id)
+    if ent_id != m.conta.entidade_id or not papel_em(db, u, ent_id):
+        return None
+    try:
+        d_de, d_ate = parse_data(qs.get("de", "")), parse_data(qs.get("ate", ""))
+        v_min = abs(parse_montante(qs["vmin"])) if qs.get("vmin", "").strip() else None
+        v_max = abs(parse_montante(qs["vmax"])) if qs.get("vmax", "").strip() else None
+    except ValueError:
+        return None
+    base, _, _ = _base_lista(db, select(Movimento.id), db.get(Entidade, ent_id), bem=_int(qs.get("bem")),
+                             cartao=_int(qs.get("cartao")), anteriores=qs.get("anteriores") == "1")
+    tipo = qs.get("tipo", "")
+    filtro = _filtrar(base, conta_id=conta.id if conta else None, categoria=_int(qs.get("categoria")),
+                      etiqueta=_int(qs.get("etiqueta")), tipo=tipo if tipo in TIPOS_FILTRO else "", texto=qs.get("q", ""),
+                      d_de=d_de, d_ate=d_ate, vmin=v_min, vmax=v_max)
+    ids = db.scalars(_ordenar(filtro, qs.get("ordem", "-data"))).all()
+    try:
+        i = ids.index(m.id)
+    except ValueError:
+        return None
+    return {"pos": i + 1, "n": len(ids), "anterior": ids[i - 1] if i > 0 else None,
+            "seguinte": ids[i + 1] if i + 1 < len(ids) else None}
+
+
 def _listar(request: Request, db: Session, u: Utilizador, *, entidade: int | None, conta: Conta | None,
             categoria: int, etiqueta: int, tipo: str, q: str, de: str, ate: str, pagina: int,
             vmin: str = "", vmax: str = "", ordem: str = "-data", anteriores: int = 0, mes: str = "",
@@ -203,21 +263,8 @@ def _listar(request: Request, db: Session, u: Utilizador, *, entidade: int | Non
     except ValueError as e:
         v_min = v_max = None
         erro = str(e)
-    base = select(Movimento).join(Conta).where(Conta.entidade_id == ent.id)
-    # Movimentos de um bem (casa, carro…): o filtro vai na base, para valer em tudo (calendário, totais, lote).
-    bem_obj = db.get(Bem, bem) if bem else None
-    if bem_obj and bem_obj.entidade_id == ent.id:
-        base = base.where(Movimento.bem_id == bem_obj.id)
-    else:
-        bem_obj = None
-    # Compras de um cartão de débito (pessoa): os débitos ligados às linhas do ficheiro do cartão.
-    from ..models import CartaoDebito, MovimentoCartao
-    cartao_obj = db.get(CartaoDebito, cartao) if cartao else None
-    if cartao_obj and cartao_obj.conta.entidade_id == ent.id:
-        base = base.where(Movimento.id.in_(select(MovimentoCartao.movimento_id).where(MovimentoCartao.cartao_id == cartao_obj.id)))
-    else:
-        cartao_obj = None
-    # Cobertura dos dados: por omissão só se veem os movimentos desde o início da análise.
+    base, bem_obj, cartao_obj = _base_lista(db, select(Movimento), ent, bem=bem, cartao=cartao, anteriores=anteriores)
+    # Cobertura dos dados: quantos ficam escondidos por serem de antes do início da análise.
     corte = ent.data_inicio
     ocultos = 0
     if corte:
@@ -226,8 +273,6 @@ def _listar(request: Request, db: Session, u: Utilizador, *, entidade: int | Non
         if conta:
             q_antes = q_antes.where(Movimento.conta_id == conta.id)
         ocultos = db.scalar(q_antes)
-        if not anteriores:
-            base = base.where(Movimento.data_mov >= corte)
     filtro = _filtrar(base, conta_id=conta.id if conta else None, categoria=categoria, etiqueta=etiqueta,
                       tipo=tipo, texto=q, d_de=d_de, d_ate=d_ate, vmin=v_min, vmax=v_max)
     sub = filtro.with_only_columns(Movimento.montante).subquery()
@@ -528,7 +573,8 @@ def detalhe(request: Request, mov_id: int, voltar: str = "", u: Utilizador = Dep
     papel = exigir_papel(db, u, m.conta.entidade_id, "ver")
     mapa = ligacoes.do_movimento(db, m, lambda ent_id: papel_em(db, u, ent_id) is not None)
     from .. import ia
-    return render(request, "movimentos/detalhe.html", m=m, mapa=mapa, voltar=_voltar_seguro(voltar),
+    voltar = _voltar_seguro(voltar)
+    return render(request, "movimentos/detalhe.html", m=m, mapa=mapa, voltar=voltar, nav=_vizinhos(db, u, m, voltar),
                   pode_editar=PAPEIS[papel] >= PAPEIS["editar"], analise=ia.analise_de(db, m),
                   ia_disponivel=ia.disponivel())
 
