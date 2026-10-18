@@ -17,7 +17,7 @@ from ..models import CORES, PAPEIS, Bem, Categoria, Conta, Entidade, Etiqueta, M
 from ..qualificacao import aplicar_regras, arvore_categorias, qualificar_manual, repor
 from ..servicos import normalizar_descricao
 from ..seguranca import ler_form
-from .. import investimentos, retificacoes, servicos, posicoes
+from .. import investimentos, recheio, retificacoes, servicos, posicoes
 from .. import relatorios as rel
 from ..servicos import resumo_cartao, saldo_conta
 
@@ -471,7 +471,40 @@ def editar_form(request: Request, mov_id: int, voltar: str = "", u: Utilizador =
                   subscricoes=_subscricoes_para(db, m),
                   via_verde=db.scalars(select(ViaVerde).where(ViaVerde.movimento_id == m.id)
                                        .order_by(ViaVerde.data, ViaVerde.hora)).all(),
+                  item_recheio=recheio.do_movimento(db, m), casas=recheio.casas(db, m.conta.entidade_id),
+                  casa_sugerida=recheio.casa_para(db, m),
                   pode_editar=PAPEIS[papel] >= PAPEIS["editar"], voltar=_voltar_seguro(voltar))
+
+
+@router.post("/movimentos/{mov_id}/recheio")
+async def adicionar_recheio(request: Request, mov_id: int, u: Utilizador = Depends(utilizador_atual),
+                            db: Session = Depends(get_db)):
+    """Adiciona a compra ao recheio de uma casa (à mão, mesmo sem categoria de recheio) e abre a ficha do item."""
+    form = await ler_form(request)
+    m = db.get(Movimento, mov_id)
+    if not m:
+        raise HTTPException(status_code=404, detail="Não encontrado.")
+    exigir_papel(db, u, m.conta.entidade_id, "editar")
+    existente = recheio.do_movimento(db, m)
+    if existente:
+        if existente.estado == "ignorado":
+            existente.estado = "ativo"
+            db.commit()
+        return RedirectResponse(f"/patrimonio/recheio/{existente.id}", status_code=303)
+    bid = str(form.get("bem_id", ""))
+    casa = db.get(Bem, int(bid)) if bid.isdigit() else None
+    if casa and (casa.entidade_id != m.conta.entidade_id or casa.tipo != "casa"):
+        casa = None
+    item = recheio.registar(db, m, forcar=True, casa=casa)
+    if not item:
+        flash(request, "Só uma compra (débito que não seja transferência) pode entrar no recheio.", "erro")
+        return RedirectResponse(f"/movimentos/{m.id}", status_code=303)
+    if casa is None and bid == "":
+        item.bem_id = None
+    auditar(db, u, "recheio_manual", f"{m.id} → {item.nome}")
+    db.commit()
+    flash(request, "Adicionado ao recheio — completa a ficha (nome, marca, modelo, garantia).")
+    return RedirectResponse(f"/patrimonio/recheio/{item.id}", status_code=303)
 
 
 @router.get("/movimentos/{mov_id}/detalhe")

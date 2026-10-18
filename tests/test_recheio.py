@@ -115,3 +115,33 @@ def test_ficha_garantia_pedido_e_seguro(admin, app):
         assert db.get(ItemRecheio, iid).estado == "ignorado"
         from app import recheio
         assert recheio.preencher(db, 1) == 0
+
+
+def test_adicionar_ao_recheio_a_partir_do_movimento(admin, app):
+    """Na edição de um movimento: «Adicionar ao recheio» mesmo sem categoria de recheio e abaixo do valor mínimo."""
+    d = (date.today() - timedelta(days=5)).isoformat()
+    _mov(admin, 1, d, "29,90", "LOJA ABC CANDEEIRO", sentido="saida")
+    _mov(admin, 1, d, "100,00", "REEMBOLSO")
+    with app.state.SessionLocal() as db:
+        compra, credito = db.scalars(select(Movimento).order_by(Movimento.id)).all()
+        ids = compra.id, credito.id
+    p = admin.get(f"/movimentos/{ids[0]}").text
+    assert "Adicionar ao recheio" in p and '<option value="1" selected>Casa</option>' in p
+    assert "Adicionar ao recheio" not in admin.get(f"/movimentos/{ids[1]}").text       # créditos não
+    r = admin.post(f"/movimentos/{ids[0]}/recheio", data={"csrf": _csrf(admin.get(f"/movimentos/{ids[0]}")), "bem_id": "1"},
+                   follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"].startswith("/patrimonio/recheio/")
+    with app.state.SessionLocal() as db:
+        item = db.scalars(select(ItemRecheio)).one()
+        assert (item.movimento_id, item.bem_id, item.valor, item.data_compra.isoformat()) == (ids[0], 1, 2990, d)
+    p = admin.get(f"/movimentos/{ids[0]}").text
+    assert "Adicionar ao recheio" not in p and f'href="/patrimonio/recheio/{item.id}"' in p
+    # segunda vez: não duplica, abre a ficha existente
+    r = admin.post(f"/movimentos/{ids[0]}/recheio", data={"csrf": _csrf(admin.get(f"/movimentos/{ids[0]}"))},
+                   follow_redirects=False)
+    assert r.headers["location"] == f"/patrimonio/recheio/{item.id}"
+    r = admin.post(f"/movimentos/{ids[1]}/recheio", data={"csrf": _csrf(admin.get(f"/movimentos/{ids[1]}"))},
+                   follow_redirects=False)
+    assert r.headers["location"] == f"/movimentos/{ids[1]}"
+    with app.state.SessionLocal() as db:
+        assert db.scalars(select(ItemRecheio)).all().__len__() == 1

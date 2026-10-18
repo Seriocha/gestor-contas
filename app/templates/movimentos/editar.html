@@ -152,6 +152,27 @@
     <noscript><button>Guardar bem</button></noscript>
   </form>
   {% endif %}
+  {% if item_recheio %}
+  <p class="separado">📦 No recheio{{ ' de ' ~ item_recheio.bem.nome if item_recheio.bem }}:
+    <a href="/patrimonio/recheio/{{ item_recheio.id }}"><strong>{{ item_recheio.nome }}</strong></a>
+    {% if item_recheio.estado == 'ignorado' %}<span class="etiqueta">ignorado</span>{% endif %}</p>
+  {% elif m.montante < 0 and not m.transferencia %}
+  <form method="post" action="/movimentos/{{ m.id }}/recheio" class="separado formulario">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <div class="linha">
+      {% if casas %}
+      <label>Recheio da casa
+        <select name="bem_id">
+          {% for b in casas %}<option value="{{ b.id }}" {% if casa_sugerida and casa_sugerida.id == b.id %}selected{% endif %}>{{ b.nome }}</option>{% endfor %}
+          <option value="" {% if not casa_sugerida %}selected{% endif %}>— sem casa (escolher depois) —</option>
+        </select></label>
+      {% endif %}
+      <button type="submit" class="alinhar-fundo">📦 Adicionar ao recheio</button>
+    </div>
+    <p class="nota sem-margem">Cria a ficha do bem (eletrodoméstico, móvel, televisão…) com a data e o valor desta compra, para o
+      seguro e a garantia — mesmo que a categoria não seja de recheio.</p>
+  </form>
+  {% endif %}
   {% if manual %}
   <form method="post" action="/movimentos/{{ m.id }}/apagar" class="separado" onsubmit="return confirm('Apagar este movimento?')">
     <input type="hidden" name="csrf" value="{{ csrf_token }}">

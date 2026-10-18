@@ -54,18 +54,19 @@ def _tipo(cat: Categoria | None) -> str | None:
     return next((t for k, t in TIPO_POR_CATEGORIA.items() if k in nome), None)
 
 
-def registar(db: Session, m: Movimento) -> ItemRecheio | None:
-    """Cria o item de recheio da compra, se a categoria for de recheio e ainda não houver item para este movimento."""
-    if m.montante is None or m.montante >= 0 or m.transferencia or not m.categoria_id or m.categoria_id not in categorias(db):
+def registar(db: Session, m: Movimento, forcar: bool = False, casa: Bem | None = None) -> ItemRecheio | None:
+    """Cria o item de recheio da compra, se a categoria for de recheio e ainda não houver item para este movimento.
+    forcar=True (botão na edição do movimento): cria mesmo sem categoria de recheio e abaixo do valor mínimo."""
+    if m.montante is None or m.montante >= 0 or m.transferencia:
         return None
-    if -m.montante < valor_minimo(db):
+    if not forcar and (not m.categoria_id or m.categoria_id not in categorias(db) or -m.montante < valor_minimo(db)):
         return None
     if m.id is None:
         db.flush()
     if db.scalar(select(ItemRecheio.id).where(ItemRecheio.movimento_id == m.id)):
         return None
     from .sugestoes import padrao_de
-    casa = casa_para(db, m)
+    casa = casa or casa_para(db, m)
     ent_id = m.conta.entidade_id if m.conta else db.get(Conta, m.conta_id).entidade_id
     cat = m.categoria or db.get(Categoria, m.categoria_id)
     loja = padrao_de(m.descricao_norm or m.descricao_original or "") or None
@@ -77,6 +78,15 @@ def registar(db: Session, m: Movimento) -> ItemRecheio | None:
     db.add(item)
     db.flush()
     return item
+
+
+def do_movimento(db: Session, m: Movimento) -> ItemRecheio | None:
+    return db.scalars(select(ItemRecheio).where(ItemRecheio.movimento_id == m.id)).first()
+
+
+def casas(db: Session, entidade_id: int) -> list[Bem]:
+    return [b for b in db.scalars(select(Bem).where(Bem.entidade_id == entidade_id, Bem.tipo == "casa").order_by(Bem.nome))
+            if not b.vendido]
 
 
 def registar_varios(db: Session, movs) -> int:
