@@ -4,7 +4,7 @@ Gestor financeiro doméstico, multiutilizador e self-hosted, para a NAS QNAP. Es
 importa movimentos de bancos portugueses e gere contas à ordem, cartões, investimentos e
 Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIGN.md).
 
-## Estado: v0.60.0
+## Estado: v0.60.1
 
 - Login com várias pessoas: passwords em argon2, bloqueio ao fim de 5 tentativas falhadas,
   proteção CSRF e invalidação das sessões quando a password muda.
@@ -37,6 +37,8 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.60.1 — Paperless: pedido à API sem versão fixa.** O Gestor pedia a versão 5 da API e o Paperless-ngx atual
+  respondia 406; passa a pedir a versão por omissão (e as miniaturas como imagem).
 - **v0.60.0 — Documentos do Paperless-ngx.** Instalação do Paperless-ngx na NAS ao lado do Gestor (`qnap/paperless/`:
   porta 8300, OCR em português, Redis + SQLite, rede Docker `nas-apps`) e cópia dos documentos que já existem numa pasta
   partilhada (as subpastas viram etiquetas; os originais ficam intactos). Com `paperless.env` (URL e token da API), o

@@ -38,8 +38,9 @@ def _pedido(caminho: str, params: dict | None = None, binario: bool = False):
     url = f"{url_api()}{caminho}"
     if params:
         url += "?" + urllib.parse.urlencode({k: v for k, v in params.items() if v not in (None, "")})
-    pedido = urllib.request.Request(url, headers={"Authorization": f"Token {os.environ.get('GESTOR_PAPERLESS_TOKEN', '')}",
-                                                  "Accept": "application/json; version=5"})
+    # Sem fixar a versão da API («application/json; version=N» dá 406 quando o Paperless já não a suporta)
+    pedido = urllib.request.Request(url, headers={"Authorization": f"Token {os.environ.get('GESTOR_PAPERLESS_TOKEN', '').strip()}",
+                                                  "Accept": "*/*" if binario else "application/json"})
     try:
         with urllib.request.urlopen(pedido, timeout=20) as r:
             dados = r.read()

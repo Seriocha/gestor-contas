@@ -106,3 +106,29 @@ def test_documentos_no_item_do_recheio(admin, app, api):
     with app.state.SessionLocal() as db:
         assert db.scalar(select(DocumentoLigado)).item_recheio_id == iid
     assert admin.get("/documentos/procurar?alvo=xpto&alvo_id=1").status_code == 404
+
+
+def test_pedido_sem_versao_fixa_da_api(monkeypatch):
+    """O pedido não fixa a versão da API (com «version=5» o Paperless atual responde 406) e leva o token."""
+    import io
+    monkeypatch.setenv("GESTOR_PAPERLESS_URL", "http://paperless:8000/")
+    monkeypatch.setenv("GESTOR_PAPERLESS_TOKEN", "abc123 ")
+    vistos = []
+
+    class Resposta(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def urlopen(pedido, timeout=0):
+        vistos.append(pedido)
+        return Resposta(b'{"results": []}')
+    monkeypatch.setattr(paperless.urllib.request, "urlopen", urlopen)
+    assert paperless._pedido("/api/documents/", {"query": "worten", "vazio": ""}) == {"results": []}
+    p = vistos[0]
+    assert p.full_url == "http://paperless:8000/api/documents/?query=worten"
+    assert p.get_header("Accept") == "application/json" and p.get_header("Authorization") == "Token abc123"
+    paperless._pedido("/api/documents/7/thumb/", binario=True)
+    assert vistos[1].get_header("Accept") == "*/*"
