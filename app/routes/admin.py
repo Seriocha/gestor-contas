@@ -501,7 +501,7 @@ def pasta_validar(request: Request, pid: int, conta: str = "", admin: Utilizador
         return RedirectResponse("/importar/validar", status_code=303)
     c = db.get(Conta, int(conta)) if conta.isdigit() else (db.get(Conta, p.conta_id) if p.conta_id else None)
     if c is None:
-        c = db.scalars(select(Conta).where(Conta.ativa).order_by(Conta.entidade_id, Conta.nome)).first()
+        c = pi.sugerir_conta(db, p, request.app.state.defs.data_dir) or             db.scalars(select(Conta).where(Conta.ativa).order_by(Conta.entidade_id, Conta.nome)).first()
         if c is None:
             flash(request, "Ainda não há contas.", "erro")
             return RedirectResponse("/importar/validar", status_code=303)

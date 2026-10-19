@@ -37,6 +37,10 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.62.1 — Conta certa para os extratos em PDF do Santander.** O extrato consolidado só é proposto para contas à
+  ordem; sem conta detetada, a pré-visualização abre numa conta do mesmo banco (não na 1.ª da lista); a conta sem IBAN
+  aprende-o do extrato ao validar, e os extratos seguintes já a encontram sozinhos. Extratos vindos do Paperless dizem
+  isso na pré-visualização (não «passa para importados/»).
 - **v0.62.0 — Histórico do Santander em PDF e extrato original de cada movimento.** Novo importador do «Extrato
   Consolidado» mensal do Santander (`EXTCON….pdf`): lê a tabela da conta à ordem do texto do PDF (sem OCR; poupanças,
   depósitos e empréstimo ficam de fora), confere saldo inicial + movimentos = saldo final e reconhece pelo valor e saldo

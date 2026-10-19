@@ -78,9 +78,21 @@ def _candidatas(db: Session, extrato: Extrato, pasta: str) -> list[Conta]:
         tipo = lambda c: c.tipo == "EMPRESTIMO"
     elif extrato.refeicao:
         tipo = lambda c: c.tipo == "CARTAO_REFEICAO"
+    elif extrato.parser == "santander_pdf":       # o extrato consolidado lê só a conta à ordem
+        tipo = lambda c: c.tipo == "ORDEM"
     else:
         tipo = lambda c: c.tipo not in ("CARTAO_CREDITO", "EMPRESTIMO", "CARTAO_REFEICAO")
     return [c for c in por_banco if tipo(c) and c.moeda == extrato.moeda]
+
+
+def sugerir_conta(db: Session, p: ImportacaoPendente, data_dir: Path) -> Conta | None:
+    """Sem conta detetada: a 1.ª conta possível do banco do extrato (para a pré-visualização não abrir noutro banco)."""
+    try:
+        extrato = ler_extrato(p.ficheiro, servicos.ler_upload(data_dir, p.sha256))
+    except Exception:
+        return None
+    cands = _candidatas(db, extrato, p.pasta)
+    return sorted(cands, key=lambda c: (c.tipo != "ORDEM", c.entidade_id, c.nome))[0] if cands else None
 
 
 def detetar_conta(db: Session, extrato: Extrato, pasta: str) -> tuple[Conta | None, str]:

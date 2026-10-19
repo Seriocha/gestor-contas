@@ -183,6 +183,11 @@ def confirmar(db: Session, conta: Conta, extrato: Extrato, nome: str, sha: str,
         from . import cartoes
         cartoes.ligar(db, conta.id)      # compras de cartões de débito já lidas que esperavam este extrato
 
+    # a conta ainda sem IBAN aprende-o do extrato: os próximos extratos (pasta, Paperless) já a encontram sozinhos
+    ref = re.sub(r"\s", "", extrato.conta_ref or "").upper()
+    if not conta.iban and re.fullmatch(r"[A-Z]{2}\d{2}[A-Z0-9]{11,30}", ref):
+        conta.iban = ref
+
     msg = None
     primeiro = linhas[0] if linhas else None
     if (not tinha_movimentos and conta.saldo_inicial == 0 and conta.data_saldo_inicial is None

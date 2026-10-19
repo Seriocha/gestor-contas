@@ -236,6 +236,8 @@ def test_extratos_vindos_do_paperless(admin, app, pasta, api):
     with app.state.SessionLocal() as db:
         p = db.scalar(select(ImportacaoPendente).where(ImportacaoPendente.paperless_id == 21))
         assert (p.pasta, p.conta_id, p.estado) == ("Paperless", 1, "pendente")
+    v = admin.get(f"/admin/pasta/{p.id}").text
+    assert "Extrato do Paperless" in v and "ficam ligados ao documento no Paperless" in v and "importados/" not in v
     r = admin.post("/admin/pasta/validar-todos", data={"csrf": _csrf(admin.get("/importar/validar"))}).text
     assert "1 extrato validado: 3 movimentos novos." in r
     with app.state.SessionLocal() as db:
@@ -260,3 +262,26 @@ def test_ligar_importacoes_antigas_ao_paperless(admin, app, pasta, api, monkeypa
     assert "0 de 1 importações já estão ligadas" in t.text
     r = admin.post("/admin/paperless/ligar", data={"csrf": _csrf(t)}).text
     assert "1 importação ligada ao documento do Paperless." in r
+
+
+def test_conta_sem_iban_e_outras_contas_do_banco(app, pasta):
+    """Conta à ordem sem IBAN, ao lado de uma poupança do Santander e de uma conta noutro banco: o PDF vai para a
+    conta à ordem, que aprende o IBAN ao validar."""
+    c = TestClient(app)
+    _post(c, "/setup", nome="Admin", login="admin", password=PW, password2=PW)
+    _post(c, "/contas/nova?entidade=1", nome="ActivoBank", tipo="ORDEM", moeda="EUR", instituicao_id="2")
+    _post(c, "/contas/nova?entidade=1", nome="Santander ordem", tipo="ORDEM", moeda="EUR", instituicao_id="1")
+    _post(c, "/contas/nova?entidade=1", nome="Santander poupança", tipo="POUPANCA", moeda="EUR", instituicao_id="1")
+    (pasta / "Santander" / "EXTCON202609.pdf").write_bytes(pdf(SET))
+    c.post("/admin/pasta/ler", data={"csrf": _csrf(c.get("/importar/validar"))})
+    with app.state.SessionLocal() as db:
+        p = db.scalar(select(ImportacaoPendente))
+        assert p.conta_id == 2 and "única conta" in p.deteccao
+    t = c.get(f"/admin/pasta/{p.id}")
+    assert '<option value="2" selected>' in t.text
+    sha = re.search(r'name="sha" value="([0-9a-f]+)"', t.text).group(1)
+    c.post("/importar/confirmar", data={"csrf": _csrf(t), "conta_id": "2", "sha": sha, "nome": "EXTCON202609.pdf",
+                                        "pendente": str(p.id)})
+    with app.state.SessionLocal() as db:
+        from app.models import Conta
+        assert db.get(Conta, 2).iban == re.sub(r"\s", "", IBAN)

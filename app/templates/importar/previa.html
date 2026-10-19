@@ -4,7 +4,9 @@
 <h1>Pré-visualização <span class="nota">· {{ conta.nome }} ({{ conta.entidade.nome }})</span></h1>
 {% if pendente %}
 <section class="cartao">
-  <p class="sem-margem">📂 Extrato da pasta partilhada: <strong>{{ pendente.caminho }}</strong>
+  {% set do_paperless = pendente.caminho.startswith('paperless:') %}
+  <p class="sem-margem">{% if do_paperless %}📎 Extrato do Paperless: <strong>{{ pendente.ficheiro }}</strong> <span class="nota">(documento {{ pendente.paperless_id }})</span>
+    {%- else %}📂 Extrato da pasta partilhada: <strong>{{ pendente.caminho }}</strong>{% endif %}
     <span class="nota">· encontrado em {{ pendente.detetado_em.strftime('%d/%m/%Y %H:%M') }}{{ ' · conta detetada por ' ~ pendente.deteccao if pendente.deteccao }}</span></p>
   <form method="get" action="/admin/pasta/{{ pendente.id }}" class="formulario separado" style="max-width: none">
     <div class="linha">
@@ -15,7 +17,8 @@
       <noscript><button>Mudar</button></noscript>
     </div>
   </form>
-  <p class="nota sem-margem">Ao validar, os movimentos novos são importados e o ficheiro passa para <code>{{ pendente.pasta }}/importados/</code>.</p>
+  <p class="nota sem-margem">{% if do_paperless %}Ao validar, os movimentos novos são importados e ficam ligados ao documento no Paperless.
+    {%- else %}Ao validar, os movimentos novos são importados e o ficheiro passa para <code>{{ pendente.pasta }}/importados/</code>.{% endif %}</p>
 </section>
 {% endif %}
 {% for e in erros %}<div class="aviso aviso-erro">{{ e }}</div>{% endfor %}
