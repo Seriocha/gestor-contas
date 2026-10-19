@@ -925,3 +925,15 @@ body.a-personalizar .grupo-cabecalho { flex-wrap: wrap; }
 .mi-curso, .tabela-meses td.mi-curso a { background: transparent; outline: 1px dashed var(--linha); outline-offset: -1px; color: var(--suave); }
 .tabela-meses td.mi-c a:hover { filter: brightness(.92); outline: 2px solid currentColor; outline-offset: -2px; }
 .etiqueta.mi-ok, .etiqueta.mi-falta { border: 0; }
+
+/* Relatórios › Vários anos: escolha dos anos e comparação ano a ano */
+.filtros .anos-escolha { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: .35rem; flex: 1 1 100%; min-width: 0; }
+.filtros .anos-escolha[hidden] { display: none; }
+.anos-escolha legend { font-size: .8rem; font-weight: 600; color: var(--suave); padding: 0; margin-bottom: .25rem; }
+.filtros label.chip-ano { flex: 0 0 auto; flex-direction: row; align-items: center; gap: .3rem; padding: .3rem .65rem;
+  border: 1px solid var(--linha); border-radius: 999px; color: var(--texto); cursor: pointer; font-variant-numeric: tabular-nums; }
+.filtros label.chip-ano:has(input:checked) { background: var(--destaque); border-color: var(--destaque); color: var(--destaque-texto); }
+.tabela-anos th[scope=row] { font-weight: 600; white-space: nowrap; }
+.tabela-anos td.num { white-space: nowrap; }
+.tabela-anos .delta { font-size: .75rem; }
+.tabela-anos tr.separador-anos th { padding-top: 1.1rem; font-size: .8rem; color: var(--suave); text-transform: uppercase; letter-spacing: .05em; }

@@ -4,7 +4,7 @@ import io
 import re
 from datetime import date
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import RedirectResponse, StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -14,7 +14,7 @@ from .. import previsoes, servicos
 from ..deps import (IntOpcional, auditar, entidade_escolhida, exigir_papel, flash, get_db, render,
                     utilizador_atual)
 from ..formatos import parse_data
-from ..models import PAPEIS, Conta, Etiqueta, Movimento, Utilizador
+from ..models import PAPEIS, Categoria, Conta, Movimento, Utilizador
 from ..seguranca import ler_form
 
 router = APIRouter(prefix="/relatorios")
@@ -46,8 +46,31 @@ def _meses_disponiveis(db: Session, entidade_id: int, ref: date) -> list[tuple[s
     return out
 
 
-def _contexto(request: Request, db: Session, u: Utilizador, entidade, periodo, de, ate, conta, etiqueta,
-              previstas: str = "0", mes: str = ""):
+def _anos_disponiveis(db: Session, entidade_id: int, ref: date) -> list[int]:
+    """Do ano de referência para trás até ao do 1.º movimento (ou do início da análise)."""
+    primeiro = db.scalar(select(func.min(Movimento.data_mov)).join(Conta).where(Conta.entidade_id == entidade_id)) or ref
+    primeiro = max(primeiro, rel.inicio_analise(db, entidade_id) or primeiro)
+    return list(range(ref.year, primeiro.year - 1, -1))
+
+
+def _categorias(db: Session) -> list[tuple[Categoria, int]]:
+    """(categoria, nível) por natureza e nome, as subcategorias logo a seguir à de cima."""
+    todas = db.scalars(select(Categoria).order_by(Categoria.natureza, Categoria.ordem, Categoria.nome)).all()
+    filhas = {}
+    for c in todas:
+        filhas.setdefault(c.pai_id, []).append(c)
+    out = []
+
+    def descer(pai_id, nivel):
+        for c in filhas.get(pai_id, []):
+            out.append((c, nivel))
+            descer(c.id, nivel + 1)
+    descer(None, 0)
+    return out
+
+
+def _contexto(request: Request, db: Session, u: Utilizador, entidade, periodo, de, ate, conta, categoria,
+              previstas: str = "0", mes: str = "", anos: list[str] | None = None):
     visiveis, ent, papel = entidade_escolhida(request, db, u, entidade)
     if not ent:
         return None
@@ -58,30 +81,48 @@ def _contexto(request: Request, db: Session, u: Utilizador, entidade, periodo, d
     ref_dados = data_referencia(db, ent.id)
     periodo = periodo if periodo in rel.PRESETS else "mes"
     ref = (_mes_escolhido(mes, ref_dados) if periodo == "mes" else None) or ref_dados
-    p = rel.periodo(periodo, ref, d_de, d_ate)
+    anos_disp = _anos_disponiveis(db, ent.id, ref_dados)
+    anos_esc = sorted({int(a) for a in (anos or []) if str(a).isdigit() and int(a) in anos_disp})
+    if periodo == "anos":
+        anos_esc = anos_esc or sorted(anos_disp[:3])          # por omissão: os 3 anos mais recentes
+        p = rel.periodo_anos(anos_esc, ref_dados)
+    else:
+        p = rel.periodo(periodo, ref, d_de, d_ate)
+    varios = isinstance(p, rel.PeriodoAnos)
     ant = p.anterior
     contas = rel.contas_da_entidade(db, ent.id)
     conta_ids = [conta] if conta and conta in {c.id for c in contas} else None
-    movs = rel.movimentos_reportaveis(db, ent.id, p.ini, p.fim, conta_ids, etiqueta or None)
-    movs_ant = rel.movimentos_reportaveis(db, ent.id, ant.ini, ant.fim, conta_ids, etiqueta or None)
+    cat = db.get(Categoria, categoria) if categoria else None
+    cat_ids = rel.ids_categoria(db, cat.id) if cat else None
+    movs = rel.movimentos_reportaveis(db, ent.id, p.ini, p.fim, conta_ids, cat_ids)
+    if varios:
+        movs = [m for m in movs if p.inclui(m.data_mov)]
+    movs_ant = [] if varios else rel.movimentos_reportaveis(db, ent.id, ant.ini, ant.fim, conta_ids, cat_ids)
     r, r_ant = rel.resumir(movs), rel.resumir(movs_ant)
     # Receitas previstas (ordenados, cartões refeição) ainda por receber no mês de referência.
-    pendentes = [] if etiqueta else previsoes.pendentes(db, ent.id, p.ini, p.fim, ref_dados, conta_ids)
+    pendentes = [] if cat else previsoes.pendentes(db, ent.id, p.ini, p.fim, ref_dados, conta_ids)
     r_real = r
     if previstas == "1":
         r = previsoes.somar(r, pendentes)
-    # Tendências: sempre 12 meses até ao fim do período, para haver contexto.
     corte = rel.inicio_analise(db, ent.id)
-    ini_janela = rel.somar_meses(p.fim.replace(day=1), -11)
-    if corte and corte.replace(day=1) > ini_janela:   # as tendências começam no início da análise
-        ini_janela = min(corte.replace(day=1), p.fim.replace(day=1))
-    janela = rel.Periodo("ano", ini_janela, p.fim, "12 meses")
-    movs_janela = rel.movimentos_reportaveis(db, ent.id, janela.ini, janela.fim, conta_ids, etiqueta or None)
+    if varios:
+        # Vários anos: as tendências mostram os meses dos anos escolhidos
+        janela, movs_janela, janela_rotulo = p, movs, f"meses de {p.rotulo}"
+    else:
+        # Tendências: sempre 12 meses até ao fim do período, para haver contexto.
+        ini_janela = rel.somar_meses(p.fim.replace(day=1), -11)
+        if corte and corte.replace(day=1) > ini_janela:   # as tendências começam no início da análise
+            ini_janela = min(corte.replace(day=1), p.fim.replace(day=1))
+        janela = rel.Periodo("ano", ini_janela, p.fim, "12 meses")
+        movs_janela = rel.movimentos_reportaveis(db, ent.id, janela.ini, janela.fim, conta_ids, cat_ids)
+        janela_rotulo = "últimos 12 meses"
     return {
         "visiveis": visiveis, "entidade": ent, "p": p, "ant": ant, "presets": rel.PRESETS, "contas": contas,
-        "etiquetas": db.scalars(select(Etiqueta).order_by(Etiqueta.nome)).all(),
+        "categorias": _categorias(db), "categoria": cat, "varios": varios, "anos_disp": anos_disp,
+        "comparacao": rel.comparacao_anos(movs, p.anos) if varios else None, "janela_rotulo": janela_rotulo,
         "meses": _meses_disponiveis(db, ent.id, ref_dados),
-        "f": {"periodo": p.chave, "mes": f"{ref:%Y-%m}", "de": de, "ate": ate, "conta": conta or "", "etiqueta": etiqueta or ""},
+        "f": {"periodo": p.chave, "mes": f"{ref:%Y-%m}", "de": de, "ate": ate, "conta": conta or "",
+              "categoria": cat.id if cat else "", "anos": list(p.anos) if varios else anos_esc},
         "corte": corte, "r": r, "r_ant": r_ant, "r_real": r_real, "pendentes": pendentes, "previstas": previstas,
         "total_previsto": sum(e.valor for e in pendentes), "janela": janela, "movs_janela": movs_janela,
         "despesas": rel.linhas_ordenadas(r.por_categoria["DESPESA"], r_ant.por_categoria["DESPESA"]),
@@ -91,18 +132,19 @@ def _contexto(request: Request, db: Session, u: Utilizador, entidade, periodo, d
 
 @router.get("")
 def relatorios(request: Request, entidade: IntOpcional = None, periodo: str = "mes", de: str = "", ate: str = "",
-               conta: IntOpcional = None, etiqueta: IntOpcional = None, previstas: str = "", mes: str = "",
-               u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
+               conta: IntOpcional = None, categoria: IntOpcional = None, previstas: str = "", mes: str = "",
+               anos: list[str] = Query(default=[]), u: Utilizador = Depends(utilizador_atual),
+               db: Session = Depends(get_db)):
     # a escolha «somar as previstas / só o real» é a mesma do painel
     previstas = previstas if previstas in ("1", "0") else request.session.get("painel_previstas", "1")
     request.session["painel_previstas"] = previstas
-    ctx = _contexto(request, db, u, entidade, periodo, de, ate, conta, etiqueta, previstas, mes)
+    ctx = _contexto(request, db, u, entidade, periodo, de, ate, conta, categoria, previstas, mes, anos)
     if not ctx:
         return render(request, "relatorios.html", entidade=None, visiveis=[])
     ent, p, ant, janela = ctx["entidade"], ctx["p"], ctx["ant"], ctx["janela"]
     mensal = rel.serie_mensal(ctx["movs_janela"], janela)
     estat = rel.estatisticas_categorias(ctx["movs_janela"], janela)
-    datas = [rel.fim_do_mes(m) for m in janela.meses()]
+    datas = [rel.fim_do_mes(m) for m in janela.meses()] or [p.fim]
     datas[-1] = min(datas[-1], p.fim)
     pat = rel.patrimonio(db, ent.id, datas)
     pat_ant = rel.patrimonio(db, ent.id, [ant.fim])["serie"][0]
@@ -119,10 +161,11 @@ def relatorios(request: Request, entidade: IntOpcional = None, periodo: str = "m
 
 @router.get("/csv")
 def exportar_csv(request: Request, entidade: IntOpcional = None, periodo: str = "mes", de: str = "", ate: str = "",
-                 conta: IntOpcional = None, etiqueta: IntOpcional = None, mes: str = "",
-                 u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
-    """Categorias nas linhas, meses nas colunas (12 meses até ao fim do período)."""
-    ctx = _contexto(request, db, u, entidade, periodo, de, ate, conta, etiqueta, mes=mes)
+                 conta: IntOpcional = None, categoria: IntOpcional = None, mes: str = "",
+                 anos: list[str] = Query(default=[]), u: Utilizador = Depends(utilizador_atual),
+                 db: Session = Depends(get_db)):
+    """Categorias nas linhas, meses nas colunas (12 meses até ao fim do período, ou os meses dos anos escolhidos)."""
+    ctx = _contexto(request, db, u, entidade, periodo, de, ate, conta, categoria, mes=mes, anos=anos)
     buf = io.StringIO()
     w = csv.writer(buf, delimiter=";")
     if ctx:

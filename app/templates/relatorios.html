@@ -30,6 +30,10 @@
       {% for k, rotulo in meses %}<option value="{{ k }}" {% if f.mes == k %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}
     </select>
   </label>
+  <fieldset class="so-anos anos-escolha">
+    <legend>Anos</legend>
+    {% for a in anos_disp %}<label class="chip-ano"><input type="checkbox" name="anos" value="{{ a }}" {% if a in f.anos %}checked{% endif %}> {{ a }}</label>{% endfor %}
+  </fieldset>
   <label class="so-personalizado">De <input type="date" name="de" value="{{ f.de or p.ini }}"></label>
   <label class="so-personalizado">Até <input type="date" name="ate" value="{{ f.ate or p.fim }}"></label>
   <label>Conta
@@ -38,14 +42,21 @@
       {% for c in contas %}<option value="{{ c.id }}" {% if f.conta == c.id %}selected{% endif %}>{{ c.nome }}</option>{% endfor %}
     </select>
   </label>
-  <label>Etiqueta
-    <select name="etiqueta">
+  <label>Categoria
+    <select name="categoria">
       <option value="">Todas</option>
-      {% for e in etiquetas %}<option value="{{ e.id }}" {% if f.etiqueta == e.id %}selected{% endif %}>{{ e.nome }}</option>{% endfor %}
+      {% set nat = namespace(atual='') %}
+      {% for c, nivel in categorias %}
+      {% if c.natureza != nat.atual %}{% if nat.atual %}</optgroup>{% endif %}<optgroup label="{{ 'Despesas' if c.natureza == 'DESPESA' else 'Receitas' }}">{% set nat.atual = c.natureza %}{% endif %}
+      <option value="{{ c.id }}" {% if f.categoria == c.id %}selected{% endif %}>{{ ('&nbsp;&nbsp;&nbsp;' * nivel) | safe }}{{ c.nome }}</option>
+      {% endfor %}
+      {% if nat.atual %}</optgroup>{% endif %}
     </select>
   </label>
   <button>Atualizar</button>
-  <span class="nota">{{ p.rotulo }} · comparado com {{ ant.ini | data }} a {{ ant.fim | data }}</span>
+  <span class="nota">{% if varios %}{{ p.rotulo }} · {{ p.anos | length }} ano{{ 's' if p.anos | length != 1 }}
+    {%- else %}{{ p.rotulo }} · comparado com {{ ant.ini | data }} a {{ ant.fim | data }}{% endif %}
+    {%- if categoria %} · só {{ categoria.nome_completo }}{% endif %}</span>
 </form>
 {% if corte %}
 <p class="nota nota-corte">Movimentos anteriores a {{ corte | data }} ignorados (início da análise) ·
@@ -68,12 +79,46 @@
   <div class="cartao kpi"><span class="nota">Poupança</span><strong class="{{ 'neg' if r.poupanca < 0 else '' }}">{{ r.poupanca | eur }}</strong>{{ delta(r.poupanca, r_ant.poupanca) }}</div>
   <div class="cartao kpi"><span class="nota">Taxa de poupança</span>
     <strong>{{ '—' if r.taxa_poupanca is none else ('%.1f' % r.taxa_poupanca).replace('.', ',') ~ '%' }}</strong>
-    <span class="nota">antes: {{ '—' if r_ant.taxa_poupanca is none else ('%.1f' % r_ant.taxa_poupanca).replace('.', ',') ~ '%' }}</span></div>
+    {% if not varios %}<span class="nota">antes: {{ '—' if r_ant.taxa_poupanca is none else ('%.1f' % r_ant.taxa_poupanca).replace('.', ',') ~ '%' }}</span>{% endif %}</div>
   <div class="cartao kpi"><span class="nota">Património líquido</span><strong>{{ pat.serie[-1].liquido | eur }}</strong>{{ delta(pat.serie[-1].liquido, pat_ant.liquido) }}</div>
 </section>
 
+{% if comparacao %}
+{% set cmp = comparacao %}
+<section class="cartao" id="comparacao-anos">
+  <h2>Comparação por ano <span class="nota">· {{ p.rotulo }}{{ ' · só ' ~ categoria.nome_completo if categoria }}</span></h2>
+  <div class="rolar">
+  <table class="tabela compacta tabela-anos">
+    <thead><tr><th></th>{% for a in cmp.anos %}<th class="num">{{ a }}</th>{% endfor %}{% if cmp.anos | length > 1 %}<th class="num">Média/ano</th>{% endif %}</tr></thead>
+    <tbody>
+      {% for chave, rotulo, inverter in [('receitas', 'Receitas', false), ('despesas', 'Despesas', true), ('poupanca', 'Poupança', false)] %}
+      <tr class="grupo"><th scope="row">{{ rotulo }}</th>
+        {% for a in cmp.anos %}{% set v = cmp.por_ano[a][chave] %}{% set antes = cmp.por_ano[cmp.anos[loop.index0 - 1]][chave] if not loop.first else 0 %}
+        <td class="num {{ 'neg' if v < 0 }}">{{ v | eur }}{% if not loop.first and cmp.anos[loop.index0] == cmp.anos[loop.index0 - 1] + 1 %}<br>{{ delta(v, antes, inverter) }}{% endif %}</td>{% endfor %}
+        {% if cmp.anos | length > 1 %}<td class="num {{ 'neg' if cmp.media[chave] < 0 }}">{{ cmp.media[chave] | eur }}</td>{% endif %}</tr>
+      {% endfor %}
+      <tr><th scope="row">Taxa de poupança</th>
+        {% for a in cmp.anos %}{% set t = cmp.por_ano[a].taxa_poupanca %}<td class="num">{{ '—' if t is none else ('%.1f' % t).replace('.', ',') ~ '%' }}</td>{% endfor %}
+        {% if cmp.anos | length > 1 %}<td></td>{% endif %}</tr>
+      {% for natureza, titulo in [('DESPESA', 'Despesas por categoria'), ('RECEITA', 'Receitas por categoria')] %}
+      {% if cmp.categorias[natureza] %}
+      <tr class="separador-anos"><th colspan="{{ cmp.anos | length + 2 }}">{{ titulo }}</th></tr>
+      {% for l in cmp.categorias[natureza] %}
+      <tr><th scope="row" class="recuo"><span class="pastilha" style="background: {{ l.cor }}"></span>{{ l.nome }}</th>
+        {% for a in cmp.anos %}<td class="num">{% if l.valores[a] %}<a href="/movimentos?entidade={{ entidade.id }}&{{ 'categoria=' ~ l.categoria_id if l.categoria_id else 'tipo=sem' }}&de={{ a }}-01-01&ate={{ a }}-12-31&anteriores=1">{{ l.valores[a] | eur }}</a>{% else %}<span class="nota">—</span>{% endif %}</td>{% endfor %}
+        {% if cmp.anos | length > 1 %}<td class="num">{{ l.media | eur }}</td>{% endif %}</tr>
+      {% endfor %}
+      {% endif %}
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="nota sem-margem">Por baixo de cada valor, a variação face ao ano anterior (quando os dois anos estão escolhidos).</p>
+</section>
+{% endif %}
+
 <section class="cartao">
-  <h2>Receitas e despesas <span class="nota">· últimos 12 meses até {{ p.fim | data }}</span></h2>
+  <h2>Receitas e despesas <span class="nota">· {{ janela_rotulo }}{{ ' até ' ~ (p.fim | data) if not varios }}</span></h2>
   <div class="grafico grafico-medio"><canvas data-grafico="tendencia" aria-label="Receitas, despesas e saldo por mês" role="img"></canvas></div>
   <details>
     <summary>Ver tabela</summary>
@@ -92,7 +137,7 @@
   {% if not linhas %}<p class="vazio">Sem {{ titulo | lower }} neste período.</p>{% else %}
   <div class="rolar">
   <table class="tabela compacta">
-    <thead><tr><th>Categoria</th><th class="num">Valor</th><th class="num">%</th><th class="num">Mov.</th><th class="num">vs. anterior</th></tr></thead>
+    <thead><tr><th>Categoria</th><th class="num">Valor</th><th class="num">%</th><th class="num">Mov.</th>{% if not varios %}<th class="num">vs. anterior</th>{% endif %}</tr></thead>
     <tbody>
     {% for l in linhas %}
       {% if l.prevista %}
@@ -100,7 +145,7 @@
         <td><span class="pastilha" style="background: {{ l.cor }}"></span>{{ l.nome }} <span class="nota">· dia {{ l.prevista.day }}</span></td>
         <td class="num">{{ l.total | eur }}</td>
         <td class="num">{{ ('%.1f' % (l.total / total * 100)).replace('.', ',') if total else '—' }}</td>
-        <td class="num">—</td><td></td>
+        <td class="num">—</td>{% if not varios %}<td></td>{% endif %}
       </tr>
       {% else %}
       <tr class="grupo">
@@ -112,20 +157,20 @@
         <td class="num">{{ l.total | eur }}</td>
         <td class="num">{{ ('%.1f' % (l.total / total * 100)).replace('.', ',') if total else '—' }}</td>
         <td class="num">{{ l.n }}</td>
-        <td class="num">{{ delta(l.total, l.anterior, titulo == 'Despesas') }}</td>
+        {% if not varios %}<td class="num">{{ delta(l.total, l.anterior, titulo == 'Despesas') }}</td>{% endif %}
       </tr>
       {% for s in l.filhas %}
       <tr class="sub" hidden>
         <td class="recuo"><a href="/movimentos?entidade={{ entidade.id }}&categoria={{ s.categoria_id }}&de={{ p.ini }}&ate={{ p.fim }}">{{ s.nome }}</a></td>
         <td class="num">{{ s.total | eur }}</td>
         <td class="num">{{ ('%.1f' % (s.total / total * 100)).replace('.', ',') if total else '—' }}</td>
-        <td class="num">{{ s.n }}</td><td></td>
+        <td class="num">{{ s.n }}</td>{% if not varios %}<td></td>{% endif %}
       </tr>
       {% endfor %}
       {% endif %}
     {% endfor %}
     </tbody>
-    <tfoot><tr class="total"><td>Total</td><td class="num">{{ total | eur }}</td><td class="num">100</td><td></td><td class="num">{{ delta(total, total_ant, titulo == 'Despesas') }}</td></tr></tfoot>
+    <tfoot><tr class="total"><td>Total</td><td class="num">{{ total | eur }}</td><td class="num">100</td><td></td>{% if not varios %}<td class="num">{{ delta(total, total_ant, titulo == 'Despesas') }}</td>{% endif %}</tr></tfoot>
   </table>
   </div>
   {% endif %}
@@ -141,7 +186,7 @@
 {% endif %}
 
 <section class="cartao">
-  <h2>Tendência por categoria de despesa <span class="nota">· últimos 12 meses</span></h2>
+  <h2>Tendência por categoria de despesa <span class="nota">· {{ janela_rotulo }}</span></h2>
   {% if not estat %}<p class="vazio">Sem despesas.</p>{% else %}
   <div class="rolar">
   <table class="tabela compacta">
@@ -161,7 +206,7 @@
 </section>
 
 <section class="cartao">
-  <h2>Património líquido <span class="nota">· últimos 12 meses</span></h2>
+  <h2>Património líquido <span class="nota">· {{ janela_rotulo }}</span></h2>
   <div class="grafico grafico-medio"><canvas data-grafico="patrimonio" aria-label="Evolução do património líquido" role="img"></canvas></div>
   <p class="nota dica-grafico">Clica (ou toca) num ponto para ver o que mudou desde o ponto anterior.</p>
   <div class="kpi-linha">
@@ -186,6 +231,7 @@
   const mostrar = () => {
     document.querySelectorAll('.so-personalizado').forEach(l => l.hidden = sel.value !== 'personalizado');
     document.querySelectorAll('.so-mes').forEach(l => { l.hidden = sel.value !== 'mes'; l.querySelector('select').disabled = l.hidden; });
+    document.querySelectorAll('.so-anos').forEach(l => { l.hidden = sel.value !== 'anos'; l.querySelectorAll('input').forEach(i => i.disabled = l.hidden); });
   };
   sel.addEventListener('change', mostrar); mostrar();
   document.querySelectorAll('.expandir').forEach(b => b.addEventListener('click', () => {

@@ -37,6 +37,11 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.64.0 — Relatórios: vários anos e filtro por categoria.** Novo período «Vários anos»: escolhem-se os anos
+  (seguidos ou não, ex.: 2017–2019 e 2021; por omissão os 3 mais recentes) e os totais, as categorias e as tendências
+  contam só esses anos. A secção «Comparação por ano» põe os anos lado a lado — receitas, despesas, poupança, taxa de
+  poupança e cada categoria, com a média por ano e a variação face ao ano anterior (quando os dois estão escolhidos).
+  O filtro de etiqueta deu lugar ao de categoria (a categoria de cima inclui as subcategorias); o CSV segue os filtros.
 - **v0.63.0 — Contas › Meses importados.** Para cada conta, uma grelha com os anos em linhas e os meses em colunas:
   verde = mês com extrato (n.º de movimentos; um extrato sem movimentos também cobre o mês), vermelho = em falta,
   tracejado = mês atual ainda sem extrato; do 1.º mês com dados até hoje. Resumo por conta (meses importados, em falta e

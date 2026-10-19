@@ -68,7 +68,38 @@ class Periodo:
 
 MESES_PT = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"]
 PRESETS = {"mes": "Mês", "trimestre": "Trimestre", "6meses": "Últimos 6 meses", "ytd": "Ano até hoje",
-           "ano": "Últimos 12 meses", "personalizado": "Personalizado"}
+           "ano": "Últimos 12 meses", "anos": "Vários anos", "personalizado": "Personalizado"}
+
+
+@dataclass
+class PeriodoAnos(Periodo):
+    """Vários anos escolhidos (seguidos ou não): de 1 de janeiro do 1.º ao fim do último; os meses e os movimentos
+    dos anos que não foram escolhidos ficam de fora."""
+    anos: tuple = ()
+
+    @property
+    def anterior(self) -> "Periodo":
+        # sem período de comparação (a comparação é entre os anos escolhidos); o fim serve ao património de partida
+        return Periodo("anos", self.ini, self.ini - timedelta(days=1), "antes do 1.º ano")
+
+    def meses(self) -> list[date]:
+        return [m for m in super().meses() if m.year in self.anos]
+
+    def inclui(self, d: date) -> bool:
+        return d.year in self.anos
+
+
+def periodo_anos(anos: list[int], ref: date) -> PeriodoAnos:
+    anos = tuple(sorted(set(anos)))
+    grupos = []                                  # anos seguidos juntos: 2017, 2018, 2019, 2021 → «2017–2019, 2021»
+    for a in anos:
+        if grupos and grupos[-1][-1] == a - 1:
+            grupos[-1].append(a)
+        else:
+            grupos.append([a])
+    rotulo = ", ".join(f"{g[0]}–{g[-1]}" if len(g) > 2 else ", ".join(map(str, g)) for g in grupos)
+    fim = date(anos[-1], 12, 31)
+    return PeriodoAnos("anos", date(anos[0], 1, 1), min(fim, ref) if anos[-1] == ref.year else fim, rotulo, anos)
 
 
 def rotulo_mes(d: date) -> str:
@@ -108,8 +139,17 @@ def inicio_analise(db: Session, entidade_id: int) -> date | None:
     return db.scalar(select(Entidade.data_inicio).where(Entidade.id == entidade_id))
 
 
+def ids_categoria(db: Session, categoria_id: int) -> list[int]:
+    """A categoria e as suas subcategorias (escolher «Casa» inclui «Casa › Luz», …)."""
+    ids, nivel = [categoria_id], [categoria_id]
+    while nivel:
+        nivel = list(db.scalars(select(Categoria.id).where(Categoria.pai_id.in_(nivel))))
+        ids += nivel
+    return ids
+
+
 def movimentos_reportaveis(db: Session, entidade_id: int, ini: date, fim: date,
-                           conta_ids: list[int] | None = None, etiqueta_id: int | None = None) -> list[Movimento]:
+                           conta_ids: list[int] | None = None, categoria_ids: list[int] | None = None) -> list[Movimento]:
     corte = inicio_analise(db, entidade_id)
     if corte and ini < corte:
         ini = corte
@@ -119,8 +159,8 @@ def movimentos_reportaveis(db: Session, entidade_id: int, ini: date, fim: date,
          .options(selectinload(Movimento.categoria).selectinload(Categoria.pai)))
     if conta_ids:
         q = q.where(Movimento.conta_id.in_(conta_ids))
-    if etiqueta_id:
-        q = q.where(Movimento.etiquetas.any(id=etiqueta_id))
+    if categoria_ids:
+        q = q.where(Movimento.categoria_id.in_(categoria_ids))
     return db.scalars(q).all()
 
 
@@ -241,6 +281,28 @@ def estatisticas_categorias(movs: list[Movimento], p: Periodo, natureza: str = "
                     "media": round(sum(serie) / len(serie)), "mediana": round(statistics.median(serie)),
                     "minimo": min(serie), "maximo": max(serie)})
     return sorted(out, key=lambda x: -x["total"])
+
+
+def comparacao_anos(movs: list[Movimento], anos: tuple) -> dict:
+    """Vários anos lado a lado: totais por ano e, por natureza, cada categoria de topo ano a ano (com a média)."""
+    por_ano = {a: resumir([m for m in movs if m.data_mov.year == a]) for a in anos}
+    categorias = {}
+    for natureza in ("DESPESA", "RECEITA"):
+        linhas = {}
+        for a, r in por_ano.items():
+            for chave, l in r.por_categoria[natureza].items():
+                x = linhas.setdefault(chave, {"nome": l.nome, "cor": l.cor, "categoria_id": l.categoria_id,
+                                              "valores": {b: 0 for b in anos}})
+                x["valores"][a] = l.total
+        for x in linhas.values():
+            x["total"] = sum(x["valores"].values())
+            x["media"] = round(x["total"] / len(anos))
+        categorias[natureza] = sorted(linhas.values(), key=lambda x: -x["total"])
+    n = len(anos)
+    return {"anos": anos, "por_ano": por_ano, "categorias": categorias,
+            "media": {"receitas": round(sum(r.receitas for r in por_ano.values()) / n),
+                      "despesas": round(sum(r.despesas for r in por_ano.values()) / n),
+                      "poupanca": round(sum(r.poupanca for r in por_ano.values()) / n)}}
 
 
 # ---------------------------------------------------------------- saldos e património
