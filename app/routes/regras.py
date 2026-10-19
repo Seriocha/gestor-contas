@@ -228,6 +228,50 @@ def _valores(r: Regra) -> dict:
             "prioridade": r.prioridade}
 
 
+@router.get("/analise")
+def analise(request: Request, u: Utilizador = Depends(exigir_editor), db: Session = Depends(get_db)):
+    """Otimizar regras: redundantes, sem uso e agregáveis, pela simulação sobre os movimentos."""
+    from .. import analise_regras
+    from ..qualificacao import regras_ativas
+    regras = regras_ativas(db)
+    movs = (select(Movimento).join(Conta).where(Conta.entidade_id.in_(_entidades_editaveis(db, u)))
+            .options(selectinload(Movimento.conta)))
+    return render(request, "regras/analise.html", a=analise_regras.analisar(regras, db.scalars(movs).all()),
+                  modos=MODOS_REGRA, sentidos=SENTIDOS)
+
+
+@router.post("/analise/agregar")
+async def analise_agregar(request: Request, u: Utilizador = Depends(exigir_editor), db: Session = Depends(get_db)):
+    from .. import analise_regras
+    form = await ler_form(request)
+    regras = [r for r in (db.get(Regra, int(x)) for x in form.getlist("ids") if str(x).isdigit()) if r]
+    if len(regras) < 2 or len({(analise_regras.condicoes(r), analise_regras.acoes(r)) for r in regras}) != 1 \
+            or any(r.modo == "regex" for r in regras):
+        flash(request, "Estas regras não se podem agregar (condições ou ações diferentes).", "erro")
+        return RedirectResponse("/regras/analise", status_code=303)
+    if len(analise_regras.agregar_padrao(regras)) > 200:
+        flash(request, "O padrão agregado ficaria demasiado longo (máx. 200 caracteres).", "erro")
+        return RedirectResponse("/regras/analise", status_code=303)
+    fica = analise_regras.agregar(db, regras)
+    auditar(db, u, "regras_agregadas", f"{len(regras)} → {fica.id}: {fica.padrao}")
+    db.commit()
+    flash(request, f"{len(regras)} regras agregadas numa: «{fica.padrao}».")
+    return RedirectResponse("/regras/analise", status_code=303)
+
+
+@router.post("/analise/apagar")
+async def analise_apagar(request: Request, u: Utilizador = Depends(exigir_editor), db: Session = Depends(get_db)):
+    form = await ler_form(request)
+    regras = [r for r in (db.get(Regra, int(x)) for x in form.getlist("ids") if str(x).isdigit()) if r]
+    for r in regras:
+        auditar(db, u, "regra_apagada", f"{r.id}: {r.padrao} (otimizar regras)")
+        db.delete(r)
+    db.commit()
+    flash(request, f"{len(regras)} regra{'s' if len(regras) != 1 else ''} apagada{'s' if len(regras) != 1 else ''}. "
+                   "Os movimentos já qualificados mantêm a categoria." if regras else "Nenhuma regra marcada.")
+    return RedirectResponse("/regras/analise", status_code=303)
+
+
 @router.get("/nova")
 def nova_form(request: Request, mov: IntOpcional = None, u: Utilizador = Depends(exigir_editor),
               db: Session = Depends(get_db)):

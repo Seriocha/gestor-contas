@@ -4,7 +4,7 @@ Gestor financeiro doméstico, multiutilizador e self-hosted, para a NAS QNAP. Es
 importa movimentos de bancos portugueses e gere contas à ordem, cartões, investimentos e
 Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIGN.md).
 
-## Estado: v0.58.1
+## Estado: v0.59.0
 
 - Login com várias pessoas: passwords em argon2, bloqueio ao fim de 5 tentativas falhadas,
   proteção CSRF e invalidação das sessões quando a password muda.
@@ -37,6 +37,12 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.59.0 — Otimizar regras.** Em Categorias e regras › «Otimizar regras» (ou «🔍 Otimizar regras» na lista), as regras
+  ativas são simuladas sobre os movimentos (por prioridade, a 1.ª que corresponde ganha) e aparecem: **agregáveis**
+  (mesmas condições e mesmo resultado, padrões diferentes → «Agregar em 1 regra» com «A|B|C», só proposto quando a
+  simulação mostra que nenhum movimento muda), **redundantes** (duplicadas e regras que nunca ganham porque outra anterior
+  apanha sempre os mesmos movimentos — marcadas para apagar quando fazem o mesmo, assinaladas como conflito quando fazem
+  outra coisa) e **sem uso** (não correspondem a nenhum movimento). Nada muda sem confirmar.
 - **v0.58.1 — Detalhe do movimento: anterior / seguinte.** Setas ← e → (e as teclas ← →) passam ao movimento anterior
   ou seguinte da lista de onde se veio, com os mesmos filtros (texto, datas, valores, tipo, categoria, etiqueta, bem,
   cartão, conta) e a mesma ordenação; mostra «N de total».

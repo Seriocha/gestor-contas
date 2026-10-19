@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block titulo %}Otimizar regras{% endblock %}
+{% macro regra_txt(r) -%}
+<a href="/regras/{{ r.id }}"><code>{{ r.padrao }}</code></a>
+<span class="nota">· prior. {{ r.prioridade }}{{ ' · ' ~ modos[r.modo] | lower if r.modo != 'contem' }}{{ ' · ' ~ sentidos[r.sentido] | lower if r.sentido }}{{ ' · ' ~ r.conta.nome if r.conta }}</span>
+{%- endmacro %}
+{% macro acao_txt(r) -%}
+{% if r.categoria %}<span class="pastilha" style="background: {{ r.categoria.cor_efetiva }}"></span>{{ r.categoria.nome_completo }}{% endif %}
+{% if r.etiqueta %}<span class="etiqueta etiqueta-cor">#{{ r.etiqueta.nome }}</span>{% endif %}
+{% if r.bem %}<span class="etiqueta etiqueta-bem">→ {{ r.bem.nome }}</span>{% endif %}
+{% if r.marcar_transferencia %}<span class="etiqueta">transferência</span>{% endif %}
+{% if r.excluir %}<span class="etiqueta">excluir</span>{% endif %}
+{%- endmacro %}
+{% block conteudo %}
+<h1>Categorias e regras</h1>
+<nav class="separadores">
+  <a href="/categorias">Categorias e etiquetas</a>
+  <a href="/regras">Regras automáticas</a>
+  <a href="/regras/por-classificar">Por classificar</a>
+  <a href="/regras/analise" class="ativo">Otimizar regras</a>
+</nav>
+
+<section class="cartao">
+  <p class="sem-margem">Simulação das <strong>{{ a.n_regras }}</strong> regras ativas sobre <strong>{{ a.n_movimentos }}</strong> movimentos
+    (pela prioridade; a 1.ª que corresponde ganha).
+    {% if a.n_sugestoes %}<strong>{{ a.n_sugestoes }}</strong> sugest{{ 'ões' if a.n_sugestoes != 1 else 'ão' }}.{% else %}Nada a otimizar. ✓{% endif %}</p>
+  <p class="nota sem-margem">Nada muda sem confirmares. Apagar ou agregar regras não altera a categoria dos movimentos já qualificados.</p>
+</section>
+
+{% if a.agregaveis %}
+<section class="cartao" id="agregaveis">
+  <h2>Agregáveis <span class="nota">· mesmas condições e mesmo resultado, padrões diferentes</span></h2>
+  {% for g in a.agregaveis %}
+  <div class="cartao-interno grupo-regras">
+    <div class="grupo-regras-cab">
+      <span>{{ acao_txt(g.regras[0]) }}</span>
+      <span class="nota">{{ g.regras | length }} regras · {{ g.n }} movimento{{ 's' if g.n != 1 }}</span>
+    </div>
+    <ul class="lista-regras">{% for r in g.regras %}<li>{{ regra_txt(r) }} <span class="nota">· ganha em {{ a.ganhos.get(r.id, 0) }}</span></li>{% endfor %}</ul>
+    <p class="sem-margem">→ uma só regra: <code>{{ g.padrao }}</code></p>
+    {% if g.seguro %}
+    <form method="post" action="/regras/analise/agregar" class="acoes-form">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
+      {% for r in g.regras %}<input type="hidden" name="ids" value="{{ r.id }}">{% endfor %}
+      <button class="primario pequeno">Agregar em 1 regra</button>
+      <span class="etiqueta etiqueta-ok">sem mudanças nos movimentos</span>
+    </form>
+    {% else %}
+    <p class="nota neg sem-margem">Agregar mudaria o resultado em {{ g.mudariam }} movimento{{ 's' if g.mudariam != 1 }} (há regras com outra
+      ação entre estas, por prioridade). Ajusta as prioridades primeiro.</p>
+    {% endif %}
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+
+{% set apagaveis = a.duplicadas | map(attribute=0) | list + (a.sombreadas | selectattr('redundante') | map(attribute='regra') | list) %}
+{% if a.duplicadas or a.sombreadas %}
+<section class="cartao" id="redundantes">
+  <h2>Redundantes <span class="nota">· nunca ganham: outra regra anterior apanha sempre os mesmos movimentos</span></h2>
+  <form method="post" action="/regras/analise/apagar">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <div class="rolar"><table class="tabela compacta">
+      <thead><tr><th></th><th>Regra</th><th>Faz</th><th>Tapada por</th><th></th></tr></thead>
+      {% for r, igual in a.duplicadas %}
+      <tr><td><input type="checkbox" name="ids" value="{{ r.id }}" checked aria-label="Apagar"></td>
+        <td>{{ regra_txt(r) }}</td><td>{{ acao_txt(r) }}</td>
+        <td>{{ regra_txt(igual) }}</td>
+        <td><span class="etiqueta">duplicada</span>{% if (r.categoria_id, r.etiqueta_id, r.bem_id) != (igual.categoria_id, igual.etiqueta_id, igual.bem_id) %} <span class="etiqueta etiqueta-erro">ação diferente</span>{% endif %}</td></tr>
+      {% endfor %}
+      {% for s in a.sombreadas %}
+      <tr><td><input type="checkbox" name="ids" value="{{ s.regra.id }}" {% if s.redundante %}checked{% endif %} aria-label="Apagar"></td>
+        <td>{{ regra_txt(s.regra) }} <span class="nota">· corresponde a {{ s.n }}</span></td><td>{{ acao_txt(s.regra) }}</td>
+        <td>{% for p in s.por %}{{ regra_txt(p) }}{% if not loop.last %}<br>{% endif %}{% endfor %}</td>
+        <td>{% if s.redundante %}<span class="etiqueta etiqueta-ok">faz o mesmo</span>{% else %}<span class="etiqueta etiqueta-erro">conflito: tapada por outra ação</span>{% endif %}</td></tr>
+      {% endfor %}
+    </table></div>
+    <p class="nota">As marcadas podem apagar-se sem mudar nada. Nas que estão em conflito, a regra tapada nunca chega a ser usada:
+      apaga-a, ou sobe-lhe a prioridade (Editar) se era essa a intenção.</p>
+    <div class="acoes-form"><button class="perigo" onclick="return confirm('Apagar as regras marcadas?')">Apagar as marcadas</button></div>
+  </form>
+</section>
+{% endif %}
+
+{% if a.sem_uso %}
+<section class="cartao" id="sem-uso">
+  <h2>Sem uso <span class="nota">· não correspondem a nenhum movimento</span></h2>
+  <form method="post" action="/regras/analise/apagar">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <ul class="lista-regras">{% for r in a.sem_uso %}<li><label class="opcao"><input type="checkbox" name="ids" value="{{ r.id }}"> {{ regra_txt(r) }} → {{ acao_txt(r) }}</label></li>{% endfor %}</ul>
+    <p class="nota">Podem servir para movimentos futuros (ex.: regras do catálogo). Apaga só as que já não fazem sentido.</p>
+    <div class="acoes-form"><button class="perigo" onclick="return confirm('Apagar as regras marcadas?')">Apagar as marcadas</button></div>
+  </form>
+</section>
+{% endif %}
+{% endblock %}
