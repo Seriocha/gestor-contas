@@ -37,6 +37,14 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.65.0 — Viagens › Detetar viagens.** A app lê os gastos por ordem cronológica e propõe períodos em que a família
+  esteve fora de casa: compras presenciais no estrangeiro ou noutra moeda, câmbios, seguro de viagem diário, códigos
+  postais fora das zonas habituais (calculadas pelo histórico), hotéis/transportes e comerciantes pouco habituais —
+  as compras online, débitos fixos e levantamentos em euros não contam. Cada período mostra a confiança, moedas, zonas,
+  comerciantes, os movimentos e porquê, e as reservas pagas antes da partida. «+ Criar viagem» abre o formulário já
+  preenchido; «Não é viagem» descarta-o (tabela viagem_descartada, migração 0035); os já registados ficam escondidos.
+  Opcional, com a Claude API: «Analisar com IA» diz se é viagem, o destino, o país e um nome — só recebe as descrições
+  dos comerciantes por dia relativo (sem valores, datas ou contas); a resposta fica em cache.
 - **v0.64.0 — Relatórios: vários anos e filtro por categoria.** Novo período «Vários anos»: escolhem-se os anos
   (seguidos ou não, ex.: 2017–2019 e 2021; por omissão os 3 mais recentes) e os totais, as categorias e as tendências
   contam só esses anos. A secção «Comparação por ano» põe os anos lado a lado — receitas, despesas, poupança, taxa de

@@ -96,12 +96,89 @@ def _ler(form) -> tuple[dict, list[str], dict]:
 
 
 @router.get("/nova")
-def nova(request: Request, entidade: int, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
+def nova(request: Request, entidade: int, nome: str = "", destino: str = "", pais: str = "", data_ini: str = "",
+         data_fim: str = "", motivo: str = "", u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
+    """Formulário de viagem nova; os campos podem vir preenchidos (de um período detetado em Detetar viagens)."""
     exigir_papel(db, u, entidade, "editar")
     _, ent, _ = entidade_escolhida(request, db, u, entidade)
     modelo = vg.modelo_omissao(db)
     db.commit()
-    return _form(request, db, ent, {"pessoas": "2", "motivo": "lazer", "modelo_id": str(modelo.id)})
+    return _form(request, db, ent, {"pessoas": "2", "motivo": motivo if motivo in MOTIVOS_VIAGEM else "lazer",
+                                    "modelo_id": str(modelo.id), "nome": nome[:100], "destino": destino[:120],
+                                    "pais": pais[:80], "data_ini": data_ini[:10], "data_fim": data_fim[:10]})
+
+
+# ------------------------------------------------------------------ detetar períodos de viagem
+def _periodo(db: Session, entidade_id: int, chave: str):
+    from .. import viagens_detecao as vd
+    p = next((x for x in vd.detetar(db, entidade_id) if x.chave == chave), None)
+    if not p:
+        raise HTTPException(status_code=404, detail="Período não encontrado (os movimentos mudaram?).")
+    return p
+
+
+@router.get("/detetar")
+def detetar(request: Request, entidade: IntOpcional = None, todos: int = 0, u: Utilizador = Depends(utilizador_atual),
+            db: Session = Depends(get_db)):
+    """Períodos de viagem detetados pela análise cronológica dos gastos (e, opcionalmente, revistos pela IA)."""
+    from .. import ia
+    from .. import viagens_detecao as vd
+    visiveis, ent, papel = entidade_escolhida(request, db, u, entidade)
+    if not ent:
+        return render(request, "viagens/detetar.html", entidade=None, visiveis=visiveis)
+    periodos = vd.detetar(db, ent.id)
+    registados = sum(1 for p in periodos if p.viagem)
+    if not todos:
+        periodos = [p for p in periodos if not p.viagem]
+    return render(request, "viagens/detetar.html", visiveis=visiveis, entidade=ent, periodos=periodos,
+                  registados=registados, todos=todos, ia_ok=ia.disponivel(),
+                  pode_editar=PAPEIS[papel] >= PAPEIS["editar"])
+
+
+@router.post("/detetar/ia")
+async def detetar_ia(request: Request, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
+    """Pede à IA a análise de um período (ou de todos os que ainda não têm, até 12 de cada vez)."""
+    from .. import ia
+    from .. import viagens_detecao as vd
+    form = await ler_form(request)
+    ent_id = int(form["entidade"]) if str(form.get("entidade", "")).isdigit() else 0
+    exigir_papel(db, u, ent_id, "editar")
+    chave = str(form.get("chave", ""))
+    alvo = [_periodo(db, ent_id, chave)] if chave else [p for p in vd.detetar(db, ent_id) if not p.ia and not p.viagem][:12]
+    feitos, erro = 0, None
+    for p in alvo:
+        try:
+            vd.analisar_com_ia(db, p)
+            feitos += 1
+        except ia.ErroIA as e:
+            erro = str(e)
+            break
+    db.commit()
+    if feitos:
+        auditar(db, u, "viagens_detetar_ia", f"{feitos} período(s)")
+        db.commit()
+        flash(request, f"IA: {feitos} período{'s' if feitos != 1 else ''} analisado{'s' if feitos != 1 else ''}.")
+    if erro:
+        flash(request, f"A análise pela IA falhou: {erro}", "erro")
+    if not alvo:
+        flash(request, "Todos os períodos já foram analisados pela IA.")
+    destino = f"/viagens/detetar?entidade={ent_id}" + (f"#p-{chave}" if chave else "")
+    return RedirectResponse(destino, status_code=303)
+
+
+@router.post("/detetar/descartar")
+async def detetar_descartar(request: Request, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
+    """«Não é viagem»: o período não volta a ser proposto."""
+    from ..models import ViagemDescartada
+    form = await ler_form(request)
+    ent_id = int(form["entidade"]) if str(form.get("entidade", "")).isdigit() else 0
+    exigir_papel(db, u, ent_id, "editar")
+    p = _periodo(db, ent_id, str(form.get("chave", "")))
+    db.add(ViagemDescartada(entidade_id=ent_id, data_ini=p.ini, data_fim=p.fim))
+    auditar(db, u, "viagem_descartada", f"{p.ini:%d/%m/%Y} a {p.fim:%d/%m/%Y}")
+    db.commit()
+    flash(request, f"Período de {p.ini:%d/%m/%Y} a {p.fim:%d/%m/%Y} descartado: não volta a ser proposto.")
+    return RedirectResponse(f"/viagens/detetar?entidade={ent_id}", status_code=303)
 
 
 @router.post("/nova")

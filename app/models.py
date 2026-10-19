@@ -599,6 +599,17 @@ class ViagemRejeitado(Base):
     movimento_id: Mapped[int] = mapped_column(ForeignKey("movimento.id", ondelete="CASCADE"))
 
 
+class ViagemDescartada(Base):
+    """Período detetado (Viagens › Detetar) que o utilizador disse não ser uma viagem: não volta a ser proposto."""
+    __tablename__ = "viagem_descartada"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entidade_id: Mapped[int] = mapped_column(ForeignKey("entidade.id", ondelete="CASCADE"), index=True)
+    data_ini: Mapped[date] = mapped_column(Date)
+    data_fim: Mapped[date] = mapped_column(Date)
+    criado_em: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, server_default=func.now())
+
+
 class ViagemConfirmado(Base):
     """Movimento de uma viagem que já foi ensinado (como confirmado) a um modelo — para não contar duas vezes."""
     __tablename__ = "viagem_confirmado"

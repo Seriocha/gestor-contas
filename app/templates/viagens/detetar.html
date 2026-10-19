@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block titulo %}Detetar viagens{% endblock %}
+{% block conteudo %}
+<div class="titulo-acoes">
+  <h1>Detetar viagens</h1>
+  <a href="/viagens{{ '?entidade=' ~ entidade.id if entidade }}">‹ Viagens</a>
+</div>
+{% set destino = '/viagens/detetar' %}{% include "_entidades.html" %}
+{% if entidade %}
+<section class="cartao">
+  <p class="sem-margem">A app lê os gastos por ordem cronológica e procura dias seguidos <strong>fora de casa</strong>: compras no
+    estrangeiro ou noutra moeda, câmbios, seguro de viagem, códigos postais fora das zonas habituais, hotéis e transportes, e
+    comerciantes pouco habituais (em vez do supermercado do costume). As compras online e os débitos fixos não contam.</p>
+  <div class="linha separado" style="gap: .6rem; align-items: center; flex-wrap: wrap">
+    <span class="nota">{{ periodos | length }} período{{ 's' if periodos | length != 1 }}{{ ' por registar' if not todos }}
+      {%- if registados %} · {{ registados }} já registado{{ 's' if registados != 1 }} como viagem
+        · <a href="?entidade={{ entidade.id }}{{ '' if todos else '&todos=1' }}">{{ 'esconder' if todos else 'mostrar' }}</a>{% endif %}</span>
+    {% if pode_editar and ia_ok and periodos %}
+    <form method="post" action="/viagens/detetar/ia" style="margin-left: auto">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="entidade" value="{{ entidade.id }}">
+      <button class="pequeno" title="Até 12 períodos de cada vez; só vão as descrições dos comerciantes por dia (sem valores nem datas)">🤖 Analisar com IA os que faltam</button>
+    </form>
+    {% endif %}
+  </div>
+</section>
+
+{% for p in periodos %}
+<section class="cartao periodo-viagem conf-{{ 'media' if p.confianca == 'média' else p.confianca }}" id="p-{{ p.chave }}">
+  <div class="cartao-cabecalho">
+    <h2>{{ p.ini | data }} – {{ p.fim | data }} <span class="nota">· {{ p.dias }} dia{{ 's' if p.dias != 1 }}</span></h2>
+    <span class="etiquetas-periodo">
+      <span class="etiqueta conf">confiança {{ p.confianca }}</span>
+      {% if p.estrangeiro %}<span class="etiqueta">🌍 estrangeiro</span>{% endif %}
+      {% for m in p.moedas %}<span class="etiqueta">{{ m }}</span>{% endfor %}
+      {% if p.zonas %}<span class="etiqueta" title="Zonas postais (2 primeiros dígitos) fora de casa">📍 {{ p.zonas | join(', ') }}</span>{% endif %}
+    </span>
+  </div>
+
+  {% if p.ia %}
+  <div class="ia-periodo {{ 'nao' if not p.ia.viagem }}">
+    🤖 {% if p.ia.viagem %}<strong>{{ p.ia.nome or 'Viagem' }}</strong>{% if p.ia.destino or p.ia.pais %} · {{ p.ia.destino or '' }}{{ ', ' if p.ia.destino and p.ia.pais }}{{ p.ia.pais or '' }}{% endif %}
+    {% else %}<strong>Provavelmente não é uma viagem.</strong>{% endif %}
+    {% if p.ia.confianca is not none %}<span class="nota">({{ (p.ia.confianca * 100) | round | int }}%)</span>{% endif %}
+    {% if p.ia.explicacao %}<br><span class="nota">{{ p.ia.explicacao }}</span>{% endif %}
+  </div>
+  {% endif %}
+
+  <p class="comerciantes-periodo">{% for c in p.comerciantes[:14] %}<span>{{ c }}</span>{% endfor %}
+    {% if p.comerciantes | length > 14 %}<span class="nota">+{{ p.comerciantes | length - 14 }}</span>{% endif %}</p>
+  <p class="nota sem-margem">Gastos com sinal de viagem: <strong>{{ p.gasto | eur }}</strong> · {{ p.evidencias | length }} movimento{{ 's' if p.evidencias | length != 1 }}
+    {%- if p.reservas %} · {{ p.reservas | length }} reserva{{ 's' if p.reservas | length != 1 }} antes da partida{% endif %}</p>
+
+  <details class="separado">
+    <summary>Ver os movimentos e porquê</summary>
+    <div class="rolar"><table class="tabela compacta">
+      <thead><tr><th>Data</th><th>Descrição</th><th class="num">Valor</th><th>Sinais</th></tr></thead>
+      {% for e in p.reservas %}<tr class="nota"><td class="sem-quebra">{{ e.mov.data_mov | data }}</td><td><a href="/movimentos/{{ e.mov.id }}/detalhe">{{ e.mov.descricao_original }}</a></td>
+        <td class="num">{{ e.mov.montante | eur(e.mov.moeda) }}</td><td>reserva antes da partida</td></tr>{% endfor %}
+      {% for e in p.evidencias %}<tr><td class="sem-quebra">{{ e.mov.data_mov | data }}</td><td><a href="/movimentos/{{ e.mov.id }}/detalhe">{{ e.mov.descricao_original }}</a></td>
+        <td class="num">{{ e.mov.montante | eur(e.mov.moeda) }}</td><td class="nota">{{ e.razoes | join(', ') }}</td></tr>{% endfor %}
+    </table></div>
+  </details>
+
+  <div class="acoes-periodo">
+    {% if p.viagem %}
+    <span>✓ Já registada: <a href="/viagens/{{ p.viagem.id }}">{{ p.viagem.nome }}</a></span>
+    {% elif pode_editar %}
+    {% set q = {'entidade': entidade.id, 'nome': p.nome_sugerido, 'data_ini': p.ini.isoformat(), 'data_fim': p.fim.isoformat(),
+                'destino': (p.ia.destino if p.ia else '') or '', 'pais': (p.ia.pais if p.ia else '') or '',
+                'motivo': (p.ia.motivo if p.ia else 'lazer') or 'lazer'} %}
+    <a class="botao primario pequeno" href="/viagens/nova?{{ q | urlencode }}">+ Criar viagem</a>
+    {% if ia_ok %}
+    <form method="post" action="/viagens/detetar/ia">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="entidade" value="{{ entidade.id }}">
+      <input type="hidden" name="chave" value="{{ p.chave }}">
+      <button class="pequeno">🤖 {{ 'Voltar a analisar' if p.ia else 'Analisar com IA' }}</button>
+    </form>
+    {% endif %}
+    <form method="post" action="/viagens/detetar/descartar" onsubmit="return confirm('Este período não é uma viagem? Não volta a ser proposto.')">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="entidade" value="{{ entidade.id }}">
+      <input type="hidden" name="chave" value="{{ p.chave }}">
+      <button class="ligacao">Não é viagem</button>
+    </form>
+    {% endif %}
+  </div>
+</section>
+{% else %}
+<section class="cartao"><p class="vazio sem-margem">Não foram encontrados períodos de viagem{{ ' por registar' if registados }}.</p></section>
+{% endfor %}
+{% if not ia_ok %}<p class="nota">A análise pela IA precisa da chave da Claude API (<code>ANTHROPIC_API_KEY</code>) no NAS.</p>{% endif %}
+{% endif %}
+{% endblock %}

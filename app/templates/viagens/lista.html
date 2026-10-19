@@ -3,7 +3,10 @@
 {% block conteudo %}
 <div class="titulo-acoes">
   <h1>Viagens</h1>
-  {% if entidade and pode_editar %}<a class="botao primario" href="/viagens/nova?entidade={{ entidade.id }}">+ Nova viagem</a>{% endif %}
+  {% if entidade %}<span class="acoes-titulo">
+    <a class="botao" href="/viagens/detetar?entidade={{ entidade.id }}" title="Encontrar períodos de viagem pelos gastos">🔎 Detetar viagens</a>
+    {% if pode_editar %}<a class="botao primario" href="/viagens/nova?entidade={{ entidade.id }}">+ Nova viagem</a>{% endif %}
+  </span>{% endif %}
 </div>
 {% set destino = '/viagens' %}{% include "_entidades.html" %}
 {% if entidade %}
