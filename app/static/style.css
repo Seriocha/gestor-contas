@@ -904,3 +904,4 @@ body.a-personalizar .grupo-cabecalho { flex-wrap: wrap; }
 .doc-texto { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .doc-texto strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .docs-procura { margin-top: 1rem; display: grid; gap: .6rem; }
+.doc-sem-acesso { width: 48px; height: 66px; display: grid; place-items: center; border-radius: 4px; background: var(--superficie-2); flex: none; }

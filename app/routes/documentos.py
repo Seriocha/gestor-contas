@@ -31,6 +31,17 @@ def _alvo(db: Session, u: Utilizador, alvo: str, alvo_id: int, minimo: str = "ed
     raise HTTPException(status_code=404, detail="Não encontrado.")
 
 
+def token(request: Request, u: Utilizador) -> str | None:
+    return paperless.token_de(u, request.app.state.defs.secret_key)
+
+
+def contexto(request: Request, u: Utilizador, db: Session, alvo: str, alvo_id: int) -> dict:
+    """Variáveis da secção «Documentos» (documentos/_seccao.html)."""
+    return {"docs": ligados(db, alvo, alvo_id), "paperless_cfg": paperless.configurado(),
+            "paperless_ok": bool(token(request, u)), "doc_alvo": alvo, "doc_alvo_id": alvo_id,
+            "paperless_link": paperless.url_browser() if paperless.configurado() else ""}
+
+
 def ligados(db: Session, alvo: str, alvo_id: int) -> list[DocumentoLigado]:
     col = DocumentoLigado.movimento_id if alvo == "movimento" else DocumentoLigado.item_recheio_id
     return db.scalars(select(DocumentoLigado).where(col == alvo_id).order_by(DocumentoLigado.data, DocumentoLigado.id)).all()
@@ -42,17 +53,17 @@ def procurar(request: Request, alvo: str, alvo_id: int, q: str = "", u: Utilizad
     """Resultados (fragmento HTML): sem texto, as sugestões pelo valor/comerciante e data; com texto, a pesquisa."""
     obj, _ = _alvo(db, u, alvo, alvo_id)
     ja = {d.paperless_id for d in ligados(db, alvo, alvo_id)}
-    erro, resultados = None, []
+    erro, resultados, t = None, [], token(request, u)
     try:
         if q.strip():
-            resultados = [(d, "") for d in paperless.procurar(q)]
+            resultados = [(d, "") for d in paperless.procurar(q, token=t)]
         elif alvo == "movimento":
-            resultados = paperless.sugestoes(obj)
+            resultados = paperless.sugestoes(obj, token=t)
         else:
             de = obj.data_compra - timedelta(days=30) if obj.data_compra else None
             ate = obj.data_compra + timedelta(days=30) if obj.data_compra else None
             termo = " ".join(x for x in (obj.loja, obj.marca, obj.modelo) if x) or obj.nome
-            resultados = [(d, "loja/marca e data da compra") for d in paperless.procurar(termo, de, ate)]
+            resultados = [(d, "loja/marca e data da compra") for d in paperless.procurar(termo, de, ate, token=t)]
     except paperless.ErroPaperless as e:
         erro = str(e)
     return render(request, "documentos/_resultados.html", alvo=alvo, alvo_id=alvo_id, resultados=resultados,
@@ -69,7 +80,7 @@ async def ligar(request: Request, u: Utilizador = Depends(utilizador_atual), db:
     if int(pid) in {d.paperless_id for d in ligados(db, alvo, obj.id)}:
         return RedirectResponse(voltar, status_code=303)
     try:
-        d = paperless.documento(int(pid))
+        d = paperless.documento(int(pid), token=token(request, u))
     except paperless.ErroPaperless as e:
         flash(request, f"Não foi possível ligar o documento: {e}", "erro")
         return RedirectResponse(voltar, status_code=303)
@@ -99,10 +110,10 @@ async def desligar(request: Request, did: int, u: Utilizador = Depends(utilizado
 
 
 @router.get("/paperless/{pid}/miniatura")
-def miniatura(pid: int, u: Utilizador = Depends(utilizador_atual)):
-    """Miniatura pedida ao Paperless pelo Gestor (o browser não tem o token)."""
+def miniatura(request: Request, pid: int, u: Utilizador = Depends(utilizador_atual)):
+    """Miniatura pedida ao Paperless pelo Gestor com o token de quem vê (o Paperless decide se pode)."""
     try:
-        dados = paperless.miniatura(pid)
+        dados = paperless.miniatura(pid, token=token(request, u))
     except paperless.ErroPaperless:
         raise HTTPException(status_code=404, detail="Miniatura indisponível.")
     tipo = "image/webp" if dados[8:12] == b"WEBP" else "image/png" if dados[:4] == b"\x89PNG" else "image/jpeg"

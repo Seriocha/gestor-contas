@@ -136,7 +136,7 @@ def do_movimento(db: Session, m: Movimento, ve_entidade) -> Mapa:
     for doc in db.scalars(select(DocumentoLigado).where(DocumentoLigado.movimento_id == m.id)):
         nos.append(No("documento", "Documento", doc.titulo,
                       " · ".join(x for x in ((f"{doc.data:%d/%m/%Y}" if doc.data else ""), doc.correspondente or "") if x),
-                      f"{paperless.url_browser()}/documents/{doc.paperless_id}/details" if paperless.disponivel() else "#documentos"))
+                      f"{paperless.url_browser()}/documents/{doc.paperless_id}/details" if paperless.configurado() else "#documentos"))
 
     h = m.hash_dedup or ""
     if h.startswith("manual:"):

@@ -748,13 +748,10 @@ def ficha_item(request: Request, iid: int, u: Utilizador = Depends(utilizador_at
     it, papel = _item(db, u, iid)
     visiveis, ent, _ = entidade_escolhida(request, db, u, it.entidade_id)
     casas = db.scalars(select(Bem).where(Bem.entidade_id == it.entidade_id, Bem.tipo == "casa").order_by(Bem.nome)).all()
-    from .. import paperless
-    from .documentos import ligados
+    from .documentos import contexto
     return render(request, "patrimonio/item_recheio.html", visiveis=visiveis, entidade=ent, it=it, casas=casas,
                   tipos=TIPOS_RECHEIO, estados=ESTADOS_RECHEIO, estados_pedido=ESTADOS_PEDIDO, hoje=date.today(),
-                  pode_editar=PAPEIS[papel] >= PAPEIS["editar"], docs=ligados(db, "recheio", it.id),
-                  paperless_ok=paperless.disponivel(), paperless_link=paperless.url_browser() if paperless.disponivel() else "",
-                  doc_alvo="recheio", doc_alvo_id=it.id)
+                  pode_editar=PAPEIS[papel] >= PAPEIS["editar"], **contexto(request, u, db, "recheio", it.id))
 
 
 def _ler_item(form, db: Session, entidade_id: int, erros: list) -> dict:

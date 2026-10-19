@@ -82,16 +82,22 @@ liga-os aos movimentos e aos itens do recheio. Os scripts estão em `qnap/paperl
    DOCS_DIR=/share/Documentos sh /share/Container/paperless/copiar_documentos.sh
    ```
    (trocar `/share/Documentos` pela tua pasta; caminho sem espaços). PDF e imagens; Word/Excel precisam do Tika.
-3. **Ligar o Gestor** — no Paperless: o teu nome (canto superior direito) › O meu perfil › Token da API › gerar.
-   Na NAS, criar `/share/Container/gestor-contas/paperless.env` (só legível pelo admin) com:
+3. **Ligar o Gestor** — na NAS, criar `/share/Container/gestor-contas/paperless.env` (só legível pelo admin) com:
    ```
    GESTOR_PAPERLESS_URL=http://paperless:8000
-   GESTOR_PAPERLESS_TOKEN=<o token>
    GESTOR_PAPERLESS_LINK=http://192.168.1.232:8300
    ```
-   `chmod 600 /share/Container/gestor-contas/paperless.env` e correr outra vez o `update.sh` do Gestor (copiar a versão
-   nova). Os dois containers ficam na rede Docker `nas-apps` — nesta NAS um container não alcança outro pelo IP da
-   NAS, por isso o Gestor usa `http://paperless:8000`. O token nunca vai para o repositório nem para o chat.
+   `chmod 600 …/paperless.env` e correr outra vez o `update.sh` do Gestor. Os dois containers ficam na rede Docker
+   `nas-apps` — nesta NAS um container não alcança outro pelo IP da NAS, por isso o Gestor usa `http://paperless:8000`.
+4. **Um token por pessoa** — cada utilizador do Gestor tem conta no Paperless e guarda o SEU token em
+   **Gestor › Perfil › Paperless** (no Paperless: o teu nome › O meu perfil › Token da API › gerar). O token é testado
+   antes de ser guardado e fica cifrado. O Gestor pesquisa e mostra miniaturas com o token de quem está a usar: cada
+   um só vê os documentos a que tem acesso no Paperless.
+   - No Paperless: criar um utilizador por pessoa e um **grupo por entidade** (ex.: «Família», «Mãe»); nos documentos
+     (ou em lote: selecionar › Permissões) dar «ver» ao grupo da entidade.
+   - Opcional: `GESTOR_PAPERLESS_TOKEN=…` no `paperless.env` — token partilhado, usado **só por administradores** que
+     ainda não guardaram o seu.
+   O token nunca vai para o repositório nem para o chat.
 
 Atualizar o Paperless: correr outra vez `instalar_paperless.sh` (os dados ficam em `/share/Container/paperless/`).
 

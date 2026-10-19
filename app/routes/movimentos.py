@@ -574,11 +574,9 @@ def detalhe(request: Request, mov_id: int, voltar: str = "", u: Utilizador = Dep
     mapa = ligacoes.do_movimento(db, m, lambda ent_id: papel_em(db, u, ent_id) is not None)
     from .. import ia
     voltar = _voltar_seguro(voltar)
-    from .. import paperless
-    from .documentos import ligados
+    from .documentos import contexto
     return render(request, "movimentos/detalhe.html", m=m, mapa=mapa, voltar=voltar, nav=_vizinhos(db, u, m, voltar),
-                  docs=ligados(db, "movimento", m.id), paperless_ok=paperless.disponivel(),
-                  paperless_link=paperless.url_browser() if paperless.disponivel() else "", doc_alvo="movimento", doc_alvo_id=m.id,
+                  **contexto(request, u, db, "movimento", m.id),
                   pode_editar=PAPEIS[papel] >= PAPEIS["editar"], analise=ia.analise_de(db, m),
                   ia_disponivel=ia.disponivel())
 

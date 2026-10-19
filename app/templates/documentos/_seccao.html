@@ -1,5 +1,6 @@
 {# Documentos do Paperless ligados a um movimento ou item do recheio. Contexto: doc_alvo ('movimento'|'recheio'),
-   doc_alvo_id, docs (DocumentoLigado), paperless_ok, paperless_link (url do browser), pode_editar, csrf_token. #}
+   doc_alvo_id, docs (DocumentoLigado), paperless_cfg (Paperless configurado), paperless_ok (este utilizador tem
+   token), paperless_link (url do browser), pode_editar, csrf_token. #}
 <section class="cartao" id="documentos">
   <div class="cartao-cabecalho">
     <h2>📎 Documentos {% if docs %}<span class="nota">· {{ docs | length }}</span>{% endif %}</h2>
@@ -9,7 +10,8 @@
   <ul class="docs-lista">
     {% for d in docs %}
     <li class="doc-cartao">
-      {% if paperless_ok %}<img src="/paperless/{{ d.paperless_id }}/miniatura" alt="" loading="lazy" width="64" height="88">{% endif %}
+      {% if paperless_ok %}<img src="/paperless/{{ d.paperless_id }}/miniatura" alt="" loading="lazy" width="64" height="88"
+        onerror="this.replaceWith(Object.assign(document.createElement('span'), {className: 'doc-sem-acesso', title: 'Sem acesso a este documento no Paperless', textContent: '🔒'}))">{% endif %}
       <span class="doc-texto">
         {% if paperless_link %}<a href="{{ paperless_link }}/documents/{{ d.paperless_id }}/details" target="_blank" rel="noopener"><strong>{{ d.titulo }}</strong></a>
         {% else %}<strong>{{ d.titulo }}</strong>{% endif %}
@@ -22,8 +24,10 @@
     </li>
     {% endfor %}
   </ul>
-  {% elif not paperless_ok %}
+  {% elif not paperless_cfg %}
   <p class="nota sem-margem">Liga o Gestor ao Paperless-ngx da NAS para juntar faturas, recibos e garantias (qnap/README.md › Paperless-ngx).</p>
+  {% elif not paperless_ok %}
+  <p class="nota sem-margem">Para procurar e ver documentos, guarda o teu token do Paperless em <a href="/perfil#paperless">Perfil</a>.</p>
   {% else %}
   <p class="nota sem-margem">Sem documentos. «Procurar no Paperless» sugere os que têm o valor ou o comerciante perto desta data.</p>
   {% endif %}

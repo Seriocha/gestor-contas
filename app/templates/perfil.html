@@ -12,4 +12,24 @@
   <label>Repetir nova password <input name="password2" type="password" autocomplete="new-password" minlength="10" required></label>
   <button class="primario">Alterar password</button>
 </form>
+
+{% if paperless_cfg %}
+<h2 id="paperless">Paperless (documentos)</h2>
+<p class="nota">Cada pessoa liga-se ao Paperless com o seu token: o Gestor procura e mostra só os documentos que tu podes ver
+  no Paperless. No Paperless: o teu nome (canto superior direito) › O meu perfil › Token da API › gerar › copiar.
+  O token fica cifrado na base de dados.</p>
+<p>{% if paperless_pessoal %}<span class="etiqueta etiqueta-ok">token pessoal guardado</span>
+  {% elif paperless_partilhado %}<span class="etiqueta etiqueta-cor">a usar o token partilhado (administrador)</span> — guarda o teu para cada um ver só o seu.
+  {% else %}<span class="etiqueta etiqueta-erro">sem token</span> — os documentos do Paperless não aparecem para ti.{% endif %}</p>
+<form method="post" action="/perfil/paperless" class="formulario estreito">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  <label>Token da API do Paperless <input name="token" type="password" autocomplete="off" placeholder="{{ '•••••• (guardado)' if paperless_pessoal else 'colar aqui' }}"></label>
+  <div class="acoes-form">
+    <button class="primario" name="acao" value="guardar">Guardar token</button>
+    <button name="acao" value="testar" formnovalidate>Testar ligação</button>
+    {% if paperless_pessoal %}<button class="perigo" name="acao" value="remover" formnovalidate onclick="return confirm('Remover o teu token do Paperless?')">Remover</button>{% endif %}
+  </div>
+</form>
+{% if paperless_link %}<p class="nota"><a href="{{ paperless_link }}" target="_blank" rel="noopener">Abrir o Paperless</a></p>{% endif %}
+{% endif %}
 {% endblock %}

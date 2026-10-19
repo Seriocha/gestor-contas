@@ -45,6 +45,8 @@ class Utilizador(Base):
     versao_sessao: Mapped[int] = mapped_column(Integer, default=1)
     criado_em: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, server_default=func.now())
     ultimo_login: Mapped[datetime | None] = mapped_column(DateTime)
+    # Token pessoal da API do Paperless-ngx, cifrado com a chave secreta da app (ver paperless.py).
+    paperless_token: Mapped[str | None] = mapped_column(Text)
 
     permissoes: Mapped[list["Permissao"]] = relationship(
         back_populates="utilizador", cascade="all, delete-orphan"

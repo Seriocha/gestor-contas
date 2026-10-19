@@ -111,19 +111,64 @@ async def setup(request: Request, db: Session = Depends(get_db)):
     return RedirectResponse("/contas", status_code=303)
 
 
+def _paperless_ctx(request: Request, u: Utilizador) -> dict:
+    from .. import paperless
+    segredo = request.app.state.defs.secret_key
+    pessoal = bool(paperless.decifrar(u.paperless_token, segredo))
+    return {"paperless_cfg": paperless.configurado(), "paperless_pessoal": pessoal,
+            "paperless_partilhado": not pessoal and bool(paperless.token_de(u, segredo)),
+            "paperless_link": paperless.url_browser()}
+
+
 @router.get("/perfil")
 def perfil_form(request: Request, u: Utilizador = Depends(utilizador_atual)):
-    return render(request, "perfil.html")
+    return render(request, "perfil.html", **_paperless_ctx(request, u))
+
+
+@router.post("/perfil/paperless")
+async def perfil_paperless(request: Request, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
+    """Token pessoal do Paperless: guardar (depois de o testar), testar ou remover."""
+    from .. import paperless
+    form = await ler_form(request)
+    acao, segredo = str(form.get("acao", "")), request.app.state.defs.secret_key
+    if acao == "remover":
+        u.paperless_token = None
+        auditar(db, u, "paperless_token_removido")
+        db.commit()
+        flash(request, "Token do Paperless removido.")
+    elif acao == "testar":
+        t = paperless.token_de(u, segredo)
+        try:
+            flash(request, paperless.testar(t) if t else "Ainda não guardaste o teu token.", "ok" if t else "erro")
+        except paperless.ErroPaperless as e:
+            flash(request, f"Não foi possível: {e}", "erro")
+    else:
+        token = str(form.get("token", "")).strip()
+        if not token:
+            flash(request, "Cola o token da API do Paperless.", "erro")
+            return RedirectResponse("/perfil#paperless", status_code=303)
+        try:
+            msg = paperless.testar(token)
+        except paperless.ErroPaperless as e:
+            if "401" in str(e) or "403" in str(e):
+                flash(request, f"Token recusado pelo Paperless ({e}). Não foi guardado.", "erro")
+                return RedirectResponse("/perfil#paperless", status_code=303)
+            msg = f"Guardado, mas não foi possível confirmar agora: {e}"
+        u.paperless_token = paperless.cifrar(token, segredo)
+        auditar(db, u, "paperless_token_guardado")
+        db.commit()
+        flash(request, "Token do Paperless guardado. " + msg)
+    return RedirectResponse("/perfil#paperless", status_code=303)
 
 
 @router.post("/perfil")
 async def perfil(request: Request, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
     form = await ler_form(request)
     if not verificar_password(u.password_hash, str(form.get("atual", ""))):
-        return render(request, "perfil.html", status_code=400, erro="A password atual está errada.")
+        return render(request, "perfil.html", status_code=400, erro="A password atual está errada.", **_paperless_ctx(request, u))
     erro = validar_password_nova(str(form.get("password", "")), str(form.get("password2", "")))
     if erro:
-        return render(request, "perfil.html", status_code=400, erro=erro)
+        return render(request, "perfil.html", status_code=400, erro=erro, **_paperless_ctx(request, u))
     u.password_hash = hash_password(str(form["password"]))
     u.versao_sessao += 1  # termina as sessões noutros dispositivos
     auditar(db, u, "password_alterada")
