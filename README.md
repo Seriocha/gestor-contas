@@ -37,6 +37,11 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.63.0 — Contas › Meses importados.** Para cada conta, uma grelha com os anos em linhas e os meses em colunas:
+  verde = mês com extrato (n.º de movimentos; um extrato sem movimentos também cobre o mês), vermelho = em falta,
+  tracejado = mês atual ainda sem extrato; do 1.º mês com dados até hoje. Resumo por conta (meses importados, em falta e
+  quais — «jan–dez 2020»). Filtro por tipo de conta (contas à ordem primeiro, por omissão) e por conta; cada mês abre
+  os movimentos desse mês. Coluna do ano fixa ao deslizar no telemóvel.
 - **v0.62.1 — Conta certa para os extratos em PDF do Santander.** O extrato consolidado só é proposto para contas à
   ordem; sem conta detetada, a pré-visualização abre numa conta do mesmo banco (não na 1.ª da lista); a conta sem IBAN
   aprende-o do extrato ao validar, e os extratos seguintes já a encontram sozinhos. Extratos vindos do Paperless dizem

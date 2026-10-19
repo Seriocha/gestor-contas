@@ -253,6 +253,28 @@ def cartoes_todos(request: Request, entidade: IntOpcional = None, u: Utilizador 
                   contas_ordem=contas_ordem)
 
 
+@router.get("/meses")
+def meses_importados(request: Request, entidade: IntOpcional = None, tipo: str = "", conta: IntOpcional = None,
+                     u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
+    """Separador Meses importados: por conta, anos × meses com os extratos que existem (verde) e os que faltam
+    (vermelho). Filtro por tipo de conta (por omissão as contas à ordem) e por conta."""
+    from .. import meses_importados as mi
+    visiveis, ent, _ = entidade_escolhida(request, db, u, entidade)
+    if not ent:
+        return render(request, "contas/meses.html", entidade=None, visiveis=visiveis)
+    todas = db.scalars(select(Conta).where(Conta.entidade_id == ent.id, Conta.ativa)
+                       .options(selectinload(Conta.instituicao)).order_by(Conta.nome)).all()
+    tipos = mi.tipos_presentes(todas)
+    if tipo not in tipos and tipo != "todas":
+        tipo = tipos[0] if tipos else "todas"
+    do_tipo = [c for c in todas if tipo == "todas" or c.tipo == tipo]
+    do_tipo.sort(key=lambda c: (mi.ORDEM_TIPOS.index(c.tipo) if c.tipo in mi.ORDEM_TIPOS else 99, c.nome.lower()))
+    escolhidas = [c for c in do_tipo if c.id == conta] or do_tipo
+    return render(request, "contas/meses.html", visiveis=visiveis, entidade=ent, tipos=tipos, tipo=tipo,
+                  tipos_nomes=TIPOS_CONTA, contas=do_tipo, conta_id=conta if any(c.id == conta for c in do_tipo) else None,
+                  grelhas=mi.calcular(db, escolhidas, date.today()), meses=mi.MESES_PT, hoje=date.today())
+
+
 @router.get("/emprestimos")
 def emprestimos_todos(request: Request, entidade: IntOpcional = None, u: Utilizador = Depends(utilizador_atual),
                       db: Session = Depends(get_db)):

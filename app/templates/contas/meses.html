@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% from "_abas.html" import abas_contas with context %}
+{% block titulo %}Meses importados{% endblock %}
+{% block conteudo %}
+<div class="titulo-acoes"><h1>Contas</h1></div>
+{{ abas_contas(entidade) }}
+{% set destino = '/contas/meses' %}{% include "_entidades.html" %}
+{% if entidade %}
+<section class="cartao">
+  <form method="get" action="/contas/meses" class="linha filtros-meses">
+    <input type="hidden" name="entidade" value="{{ entidade.id }}">
+    <label>Tipo de conta
+      <select name="tipo" onchange="this.form.conta.value=''; this.form.submit()">
+        {% for t in tipos %}<option value="{{ t }}" {% if t == tipo %}selected{% endif %}>{{ tipos_nomes.get(t, t) }}</option>{% endfor %}
+        <option value="todas" {% if tipo == 'todas' %}selected{% endif %}>Todas as contas</option>
+      </select></label>
+    <label>Conta
+      <select name="conta" onchange="this.form.submit()">
+        <option value="">Todas ({{ contas | length }})</option>
+        {% for c in contas %}<option value="{{ c.id }}" {% if c.id == conta_id %}selected{% endif %}>{{ c.nome }} · {{ c.instituicao.nome }}</option>{% endfor %}
+      </select></label>
+    <noscript><button class="pequeno">Filtrar</button></noscript>
+  </form>
+  <p class="nota legenda-meses sem-margem">
+    <span><i class="mi-amostra mi-ok"></i> importado (n.º de movimentos)</span>
+    <span><i class="mi-amostra mi-falta"></i> em falta</span>
+    <span><i class="mi-amostra mi-curso"></i> mês atual, ainda sem extrato</span>
+    · do primeiro mês com dados de cada conta até hoje; carrega num mês para ver os movimentos.
+  </p>
+</section>
+
+{% for g in grelhas %}
+<section class="cartao" id="conta-{{ g.conta.id }}">
+  <div class="cartao-cabecalho">
+    <h2>{{ g.conta.nome }} <span class="nota">· {{ g.conta.instituicao.nome }} · {{ tipos_nomes.get(g.conta.tipo, g.conta.tipo) }}</span></h2>
+    {% if g.primeiro %}
+    <span class="mi-resumo">
+      <span class="etiqueta mi-ok">{{ g.n_ok }} mes{{ 'es' if g.n_ok != 1 }} importado{{ 's' if g.n_ok != 1 }}</span>
+      {% if g.n_falta %}<span class="etiqueta mi-falta">{{ g.n_falta }} em falta</span>{% else %}<span class="etiqueta mi-ok">✓ completo</span>{% endif %}
+    </span>
+    {% endif %}
+  </div>
+  {% if not g.primeiro %}
+  <p class="vazio sem-margem">Ainda não há movimentos nesta conta.</p>
+  {% else %}
+  {% if g.faltas %}<p class="nota">Em falta: <strong class="neg">{{ g.faltas | join(', ') }}</strong></p>{% endif %}
+  <div class="rolar">
+  <table class="tabela compacta tabela-meses">
+    <thead><tr><th>Ano</th>{% for m in meses %}<th class="mi-col">{{ m }}</th>{% endfor %}<th class="num">Meses</th></tr></thead>
+    <tbody>
+    {% for ano, celulas, ok, falta in g.anos %}
+    <tr>
+      <th scope="row">{{ ano }}</th>
+      {% for c in celulas %}
+      {% if c.estado == 'fora' %}<td class="mi-c mi-fora"></td>
+      {% else %}
+      <td class="mi-c mi-{{ c.estado }}">
+        <a href="/contas/{{ g.conta.id }}/movimentos?mes={{ c.chave }}&anteriores=1"
+           title="{{ meses[c.mes - 1] }} {{ c.ano }}: {{ {'ok': 'importado', 'falta': 'em falta', 'curso': 'mês atual'}[c.estado] }}{{ ' · %d movimento%s' % (c.n, '' if c.n == 1 else 's') if c.n }}">{{ c.n if c.n else ('—' if c.estado == 'ok' else '✕' if c.estado == 'falta' else '…') }}</a>
+      </td>
+      {% endif %}
+      {% endfor %}
+      <td class="num nota">{{ ok }}{% if falta %} <span class="neg">−{{ falta }}</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+</section>
+{% else %}
+<section class="cartao"><p class="vazio sem-margem">Não há contas deste tipo.</p></section>
+{% endfor %}
+{% endif %}
+{% endblock %}

@@ -905,3 +905,23 @@ body.a-personalizar .grupo-cabecalho { flex-wrap: wrap; }
 .doc-texto strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .docs-procura { margin-top: 1rem; display: grid; gap: .6rem; }
 .doc-sem-acesso { width: 48px; height: 66px; display: grid; place-items: center; border-radius: 4px; background: var(--superficie-2); flex: none; }
+
+/* Contas › Meses importados: grelha anos × meses (verde importado, vermelho em falta) */
+.filtros-meses { display: flex; gap: .8rem; align-items: end; flex-wrap: wrap; }
+.filtros-meses label { flex: 0 1 18rem; min-width: 12rem; }
+.legenda-meses { display: flex; flex-wrap: wrap; gap: .4rem 1rem; align-items: center; margin-top: .8rem; }
+.legenda-meses span { display: inline-flex; align-items: center; gap: .35rem; }
+.mi-amostra { display: inline-block; width: .9rem; height: .9rem; border-radius: 4px; }
+.mi-resumo { display: inline-flex; gap: .4rem; flex-wrap: wrap; }
+.tabela-meses { min-width: 640px; table-layout: fixed; }
+.tabela-meses th:first-child { width: 4.2rem; position: sticky; left: 0; z-index: 1; background: var(--superficie); }
+.tabela-meses th.num, .tabela-meses td.num { width: 4.4rem; }
+.tabela-meses .mi-col { text-align: center; padding-left: 0; padding-right: 0; }
+.tabela-meses td.mi-c { padding: 3px; text-align: center; }
+.tabela-meses td.mi-c a { display: block; padding: .45rem 0; border-radius: 7px; font-size: .82rem; font-weight: 600;
+  font-variant-numeric: tabular-nums; text-decoration: none; color: inherit; }
+.mi-ok, .tabela-meses td.mi-ok a { background: color-mix(in srgb, var(--pos) 18%, transparent); color: var(--pos); }
+.mi-falta, .tabela-meses td.mi-falta a { background: color-mix(in srgb, var(--neg) 18%, transparent); color: var(--neg); }
+.mi-curso, .tabela-meses td.mi-curso a { background: transparent; outline: 1px dashed var(--linha); outline-offset: -1px; color: var(--suave); }
+.tabela-meses td.mi-c a:hover { filter: brightness(.92); outline: 2px solid currentColor; outline-offset: -2px; }
+.etiqueta.mi-ok, .etiqueta.mi-falta { border: 0; }

@@ -26,7 +26,8 @@
 {% set c = request.url.path %}
 {{ _abas([('/contas' ~ _q(entidade), 'Saldos', c == '/contas', 0),
           ('/contas/cartoes' ~ _q(entidade), 'Cartões de débito', c == '/contas/cartoes', 0),
-          ('/contas/emprestimos' ~ _q(entidade), 'Empréstimos', c == '/contas/emprestimos', 0)]) }}
+          ('/contas/emprestimos' ~ _q(entidade), 'Empréstimos', c == '/contas/emprestimos', 0),
+          ('/contas/meses' ~ _q(entidade), 'Meses importados', c == '/contas/meses', 0)]) }}
 {%- endmacro %}
 
 {% macro abas_patrimonio(entidade=none) -%}
