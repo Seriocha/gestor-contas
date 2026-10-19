@@ -1,0 +1,54 @@
+{# Documentos do Paperless ligados a um movimento ou item do recheio. Contexto: doc_alvo ('movimento'|'recheio'),
+   doc_alvo_id, docs (DocumentoLigado), paperless_ok, paperless_link (url do browser), pode_editar, csrf_token. #}
+<section class="cartao" id="documentos">
+  <div class="cartao-cabecalho">
+    <h2>📎 Documentos {% if docs %}<span class="nota">· {{ docs | length }}</span>{% endif %}</h2>
+    {% if paperless_ok and pode_editar %}<button type="button" class="pequeno" data-docs-abrir>Procurar no Paperless</button>{% endif %}
+  </div>
+  {% if docs %}
+  <ul class="docs-lista">
+    {% for d in docs %}
+    <li class="doc-cartao">
+      {% if paperless_ok %}<img src="/paperless/{{ d.paperless_id }}/miniatura" alt="" loading="lazy" width="64" height="88">{% endif %}
+      <span class="doc-texto">
+        {% if paperless_link %}<a href="{{ paperless_link }}/documents/{{ d.paperless_id }}/details" target="_blank" rel="noopener"><strong>{{ d.titulo }}</strong></a>
+        {% else %}<strong>{{ d.titulo }}</strong>{% endif %}
+        <span class="nota">{{ d.data | data if d.data }}{{ ' · ' ~ d.correspondente if d.correspondente }}</span></span>
+      {% if pode_editar %}
+      <form method="post" action="/documentos/{{ d.id }}/desligar" onsubmit="return confirm('Desligar este documento? Continua no Paperless.')">
+        <input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="ligacao">Desligar</button>
+      </form>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% elif not paperless_ok %}
+  <p class="nota sem-margem">Liga o Gestor ao Paperless-ngx da NAS para juntar faturas, recibos e garantias (qnap/README.md › Paperless-ngx).</p>
+  {% else %}
+  <p class="nota sem-margem">Sem documentos. «Procurar no Paperless» sugere os que têm o valor ou o comerciante perto desta data.</p>
+  {% endif %}
+  {% if paperless_ok and pode_editar %}
+  <div class="docs-procura" hidden data-url="/documentos/procurar?alvo={{ doc_alvo }}&alvo_id={{ doc_alvo_id }}">
+    <form class="linha docs-form" role="search">
+      <label>Procurar texto no Paperless <input type="search" name="q" placeholder="ex.: Worten, fatura, 84,91"></label>
+      <button class="pequeno alinhar-fundo">Procurar</button>
+    </form>
+    <div class="docs-saida" aria-live="polite"></div>
+  </div>
+  <script>
+  (() => {
+    const sec = document.currentScript.closest('#documentos');
+    const caixa = sec.querySelector('.docs-procura'), saida = sec.querySelector('.docs-saida');
+    const carregar = async q => {
+      saida.innerHTML = '<p class="nota">A procurar…</p>';
+      try {
+        const r = await fetch(caixa.dataset.url + (q ? '&q=' + encodeURIComponent(q) : ''));
+        saida.innerHTML = await r.text();
+      } catch (e) { saida.innerHTML = '<p class="aviso aviso-erro">Sem ligação.</p>'; }
+    };
+    sec.querySelector('[data-docs-abrir]').addEventListener('click', () => { caixa.hidden = false; carregar(''); });
+    sec.querySelector('.docs-form').addEventListener('submit', e => { e.preventDefault(); carregar(e.target.q.value.trim()); });
+  })();
+  </script>
+  {% endif %}
+</section>

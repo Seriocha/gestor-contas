@@ -3,7 +3,7 @@
 {% set cores = {'conta': '#2a78d6', 'entidade': '#4a3aa7', 'regra': '#7d8590', 'par': '#eb6834', 'casa': '#1baf7a',
                 'carro': '#1baf7a', 'rustico': '#008300', 'subscricao': '#e87ba4', 'etiqueta': '#eda100', 'viagem': '#008300',
                 'viaverde': '#2a78d6', 'abastecimento': '#e34948', 'manutencao': '#eda100', 'recheio': '#1baf7a',
-                'origem': '#7d8590'} %}
+                'origem': '#7d8590', 'documento': '#4a3aa7'} %}
 {% macro no(n, lado) -%}
 <{{ 'a' if n.href else 'div' }} class="mapa-no" {% if n.href %}href="{{ n.href }}"{% endif %} data-lado="{{ lado }}"
    style="--cor-no: {{ n.cor or cores.get(n.grupo, '#7d8590') }}">
@@ -54,6 +54,7 @@
 </section>
 
 {% include "movimentos/_analise.html" %}
+{% include "documentos/_seccao.html" %}
 
 {% if mapa.via_verde %}
 <section class="cartao" id="via-verde">

@@ -61,6 +61,40 @@ Nada é importado sozinho: cada ficheiro novo fica **por validar** em Importar �
 pré-visualização habitual (com a conta, que se pode mudar). Validado, é importado e o ficheiro passa para
 `<banco>/importados/AAAA-MM-DD_<ficheiro>`. Rejeitado, fica na pasta e não volta a ser proposto.
 
+## Paperless-ngx (documentos: faturas, recibos, garantias)
+
+O Paperless-ngx corre ao lado do Gestor (porta **8300**), com OCR em português; o Gestor procura lá os documentos e
+liga-os aos movimentos e aos itens do recheio. Os scripts estão em `qnap/paperless/`.
+
+1. **Instalar** — copiar `qnap/paperless/*.sh` para `/share/Container/paperless/` e, por SSH, como `admin`:
+   ```bash
+   sh /share/Container/paperless/instalar_paperless.sh
+   ```
+   O 1.º arranque demora uns minutos (instala o OCR em português). Depois, criar o teu utilizador (a password é
+   pedida no terminal, não fica em ficheiro nenhum):
+   ```bash
+   docker exec -it paperless python3 manage.py createsuperuser
+   ```
+   Abrir `http://192.168.1.232:8300` e entrar.
+2. **Trazer os documentos que já tens** — o script **copia** (os originais não são mexidos; o Paperless apaga as
+   cópias da sua pasta de entrada depois de as importar). As subpastas passam a etiquetas:
+   ```bash
+   DOCS_DIR=/share/Documentos sh /share/Container/paperless/copiar_documentos.sh
+   ```
+   (trocar `/share/Documentos` pela tua pasta; caminho sem espaços). PDF e imagens; Word/Excel precisam do Tika.
+3. **Ligar o Gestor** — no Paperless: o teu nome (canto superior direito) › O meu perfil › Token da API › gerar.
+   Na NAS, criar `/share/Container/gestor-contas/paperless.env` (só legível pelo admin) com:
+   ```
+   GESTOR_PAPERLESS_URL=http://paperless:8000
+   GESTOR_PAPERLESS_TOKEN=<o token>
+   GESTOR_PAPERLESS_LINK=http://192.168.1.232:8300
+   ```
+   `chmod 600 /share/Container/gestor-contas/paperless.env` e correr outra vez o `update.sh` do Gestor (copiar a versão
+   nova). Os dois containers ficam na rede Docker `nas-apps` — nesta NAS um container não alcança outro pelo IP da
+   NAS, por isso o Gestor usa `http://paperless:8000`. O token nunca vai para o repositório nem para o chat.
+
+Atualizar o Paperless: correr outra vez `instalar_paperless.sh` (os dados ficam em `/share/Container/paperless/`).
+
 ## Segurança
 
 - **Não abrir a porta 8200 no router.** Acesso de fora só por VPN (QVPN/Tailscale).

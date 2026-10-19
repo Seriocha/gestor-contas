@@ -1,0 +1,25 @@
+{# Resultados da procura no Paperless (fragmento carregado pela secção «Documentos»). #}
+<div class="docs-resultados">
+  {% if erro %}<p class="aviso aviso-erro sem-margem">{{ erro }}</p>
+  {% elif not resultados %}<p class="nota sem-margem">{{ 'Nada encontrado para «' ~ q ~ '».' if q else 'Nenhum documento com o valor ou o comerciante perto desta data. Procura por texto.' }}</p>
+  {% else %}
+  <ul class="docs-lista">
+    {% for d, porque in resultados %}
+    <li class="doc-cartao">
+      <img src="/paperless/{{ d.id }}/miniatura" alt="" loading="lazy" width="64" height="88">
+      <span class="doc-texto"><a href="{{ d.link }}" target="_blank" rel="noopener"><strong>{{ d.titulo }}</strong></a>
+        <span class="nota">{{ d.data | data if d.data }}{{ ' · ' ~ d.correspondente if d.correspondente }}{{ ' · ' ~ d.tipo if d.tipo }}{{ ' · encontrado pelo ' ~ porque if porque }}</span></span>
+      {% if d.id in ja %}<span class="etiqueta etiqueta-ok">ligado</span>
+      {% else %}
+      <form method="post" action="/documentos/ligar">
+        <input type="hidden" name="csrf" value="{{ csrf_token }}">
+        <input type="hidden" name="alvo" value="{{ alvo }}"><input type="hidden" name="alvo_id" value="{{ alvo_id }}">
+        <input type="hidden" name="paperless_id" value="{{ d.id }}">
+        <button class="pequeno primario">Ligar</button>
+      </form>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</div>

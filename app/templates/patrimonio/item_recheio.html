@@ -62,6 +62,8 @@
   </form>
 </section>
 
+{% include "documentos/_seccao.html" %}
+
 <section class="cartao" id="pedidos">
   <h2>Pedidos de garantia</h2>
   {% if g == 'expirada' %}<div class="aviso">A garantia terminou em {{ it.fim_garantia | data }}.</div>{% endif %}

@@ -4,7 +4,7 @@ Gestor financeiro doméstico, multiutilizador e self-hosted, para a NAS QNAP. Es
 importa movimentos de bancos portugueses e gere contas à ordem, cartões, investimentos e
 Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIGN.md).
 
-## Estado: v0.59.0
+## Estado: v0.60.0
 
 - Login com várias pessoas: passwords em argon2, bloqueio ao fim de 5 tentativas falhadas,
   proteção CSRF e invalidação das sessões quando a password muda.
@@ -37,6 +37,13 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.60.0 — Documentos do Paperless-ngx.** Instalação do Paperless-ngx na NAS ao lado do Gestor (`qnap/paperless/`:
+  porta 8300, OCR em português, Redis + SQLite, rede Docker `nas-apps`) e cópia dos documentos que já existem numa pasta
+  partilhada (as subpastas viram etiquetas; os originais ficam intactos). Com `paperless.env` (URL e token da API), o
+  detalhe do movimento e a ficha de cada item do recheio ganham «📎 Documentos»: «Procurar no Paperless» sugere os
+  documentos com o valor do movimento ou o comerciante, de 30 dias antes a 10 depois (ou pela loja/marca e data da
+  compra, no recheio), e pesquisa por texto; «Ligar» guarda a ligação (com miniatura e ligação para abrir no Paperless).
+  O documento aparece também no mapa de ligações do movimento.
 - **v0.59.0 — Otimizar regras.** Em Categorias e regras › «Otimizar regras» (ou «🔍 Otimizar regras» na lista), as regras
   ativas são simuladas sobre os movimentos (por prioridade, a 1.ª que corresponde ganha) e aparecem: **agregáveis**
   (mesmas condições e mesmo resultado, padrões diferentes → «Agregar em 1 regra» com «A|B|C», só proposto quando a

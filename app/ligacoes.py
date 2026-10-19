@@ -13,7 +13,7 @@ from .models import (TIPOS_BEM, TIPOS_CONTA, Abastecimento, Bem, Importacao, Ite
 
 ICONES = {"conta": "🏦", "entidade": "👥", "categoria": "🏷️", "regra": "⚙️", "par": "↔️", "casa": "🏠", "carro": "🚗",
           "rustico": "🌳", "subscricao": "🔁", "etiqueta": "#", "viagem": "✈️", "viaverde": "🛣️", "abastecimento": "⛽",
-          "manutencao": "🔧", "recheio": "📦", "origem": "📄"}
+          "manutencao": "🔧", "recheio": "📦", "origem": "📄", "documento": "📎"}
 
 
 @dataclass
@@ -130,6 +130,13 @@ def do_movimento(db: Session, m: Movimento, ve_entidade) -> Mapa:
     for i in db.scalars(select(ItemRecheio).where(ItemRecheio.movimento_id == m.id)):
         nos.append(No("recheio", "Recheio", i.nome, " ".join(x for x in (i.marca, i.modelo) if x),
                       f"/patrimonio/recheio/{i.id}"))
+
+    from .models import DocumentoLigado
+    from . import paperless
+    for doc in db.scalars(select(DocumentoLigado).where(DocumentoLigado.movimento_id == m.id)):
+        nos.append(No("documento", "Documento", doc.titulo,
+                      " · ".join(x for x in ((f"{doc.data:%d/%m/%Y}" if doc.data else ""), doc.correspondente or "") if x),
+                      f"{paperless.url_browser()}/documents/{doc.paperless_id}/details" if paperless.disponivel() else "#documentos"))
 
     h = m.hash_dedup or ""
     if h.startswith("manual:"):

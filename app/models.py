@@ -301,6 +301,22 @@ class MovimentoCartao(Base):
     cartao: Mapped[CartaoDebito] = relationship()
 
 
+class DocumentoLigado(Base):
+    """Documento do Paperless-ngx (fatura, recibo, garantia…) ligado a um movimento ou a um item do recheio.
+    Guarda-se o id no Paperless e uma cópia do título/correspondente/data para mostrar sem perguntar ao Paperless."""
+    __tablename__ = "documento_ligado"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    paperless_id: Mapped[int] = mapped_column(Integer, index=True)
+    titulo: Mapped[str] = mapped_column(String(200))
+    correspondente: Mapped[str | None] = mapped_column(String(120))
+    data: Mapped[date | None] = mapped_column(Date)
+    movimento_id: Mapped[int | None] = mapped_column(ForeignKey("movimento.id", ondelete="CASCADE"), index=True)
+    item_recheio_id: Mapped[int | None] = mapped_column(ForeignKey("item_recheio.id", ondelete="CASCADE"), index=True)
+    utilizador_id: Mapped[int | None] = mapped_column(ForeignKey("utilizador.id", ondelete="SET NULL"))
+    criado_em: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, server_default=func.now())
+
+
 class ImportacaoPendente(Base):
     """Extrato encontrado na pasta partilhada da NAS (lida periodicamente): fica à espera de validação pelo
     administrador (Importar › Por validar). Validado, é importado como os outros e o ficheiro passa para importados/."""

@@ -34,6 +34,16 @@ else
   echo "Extratos: $EXTRATOS_DIR não existe — leitura automática desligada"
 fi
 
+# Paperless-ngx (opcional): ligação ao Paperless da NAS (qnap/paperless/). O token da API fica num ficheiro só
+# legível pelo admin (ver qnap/README.md › Paperless-ngx). Os dois containers ficam na rede «nas-apps»
+# (nesta NAS os containers não se alcançam pelo IP da própria NAS).
+PAPERLESS_OPTS=""
+if [ -f "$BASE/paperless.env" ]; then
+  PAPERLESS_OPTS="--env-file $BASE/paperless.env"
+  echo "Paperless: ligação lida de $BASE/paperless.env"
+fi
+docker network inspect nas-apps >/dev/null 2>&1 || docker network create nas-apps
+
 echo "A obter a imagem mais recente ($IMAGE)..."
 docker pull "$IMAGE"
 
@@ -51,6 +61,8 @@ docker run -d \
   -v "$BASE/backup:/backup:rw" \
   $IA_OPTS \
   $EXTRATOS_OPTS \
+  $PAPERLESS_OPTS \
+  --network nas-apps \
   "$IMAGE"
 
 echo "A limpar imagens antigas..."
