@@ -173,3 +173,44 @@ def sugestoes(m, limite: int = 8, *, token: str | None) -> list[tuple[Documento,
                 vistos.add(d.id)
                 out.append((d, porque))
     return out[:limite]
+
+
+# ------------------------------------------------------------------ extratos bancários guardados no Paperless
+def _id_por_nome(caminho: str, nome: str, token: str) -> int | None:
+    r = _pedido(caminho, {"name__iexact": nome.strip(), "page_size": 5}, token=token)
+    return next((x["id"] for x in r.get("results", [])), None)
+
+
+def extratos(nome: str, *, token: str | None, limite: int = 2000) -> list[Documento]:
+    """Documentos com a etiqueta OU o tipo de documento «nome» (ex.: «Extrato bancário»), mais antigos primeiro."""
+    filtros = []
+    if (t := _id_por_nome("/api/tags/", nome, token)) is not None:
+        filtros.append({"tags__id__all": t})
+    if (d := _id_por_nome("/api/document_types/", nome, token)) is not None:
+        filtros.append({"document_type__id": d})
+    out, vistos = [], set()
+    for f in filtros:
+        pagina = 1
+        while len(out) < limite:
+            r = _pedido("/api/documents/", {**f, "page": pagina, "page_size": 100, "ordering": "created",
+                                             "truncate_content": "true"}, token=token)
+            for x in r.get("results", []):
+                if x["id"] not in vistos:
+                    vistos.add(x["id"])
+                    out.append(Documento(x["id"], x.get("title") or f"Documento {x['id']}", _data(x.get("created")),
+                                         None, None, x.get("original_file_name")))
+            if not r.get("next"):
+                break
+            pagina += 1
+    return sorted(out, key=lambda d: (d.data or date.min, d.id))
+
+
+def descarregar(pid: int, *, token: str | None) -> bytes:
+    """O ficheiro original (não a versão arquivada/OCR que o Paperless gera)."""
+    return _pedido(f"/api/documents/{int(pid)}/download/", {"original": "true"}, binario=True, token=token)
+
+
+def por_checksum(md5: str, *, token: str | None) -> int | None:
+    """O documento cujo original tem este MD5 (o Paperless guarda o MD5 de cada original)."""
+    r = _pedido("/api/documents/", {"checksum__iexact": md5, "page_size": 1}, token=token)
+    return next((x["id"] for x in r.get("results", [])), None)

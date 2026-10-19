@@ -130,6 +130,26 @@ def resumo_para(db: Session, p: ImportacaoPendente, extrato: Extrato) -> None:
         p.n_novos = sum(1 for l in servicos.preparar(db, conta, extrato) if not l.duplicado)
 
 
+def analisar(db: Session, p: ImportacaoPendente, conteudo: bytes, data_dir: Path) -> None:
+    """Lê o extrato de um pendente (da pasta ou do Paperless): formato, conta detetada, período e movimentos novos."""
+    try:
+        extrato = ler_extrato(p.ficheiro, conteudo)
+    except FormatoDesconhecido as e:
+        p.estado, p.erro = "erro", str(e)[:500]
+    except Exception as e:  # ficheiro corrompido / colunas inesperadas
+        p.estado, p.erro = "erro", f"Não foi possível ler o ficheiro: {e}"[:500]
+    else:
+        servicos.guardar_upload(data_dir, p.ficheiro, conteudo)
+        p.parser, p.banco = extrato.parser, extrato.banco
+        conta, como = detetar_conta(db, extrato, p.pasta)
+        p.conta_id, p.deteccao = (conta.id if conta else None), como[:200]
+        resumo_para(db, p, extrato)
+        if extrato.periodo:             # extrato mensal: o período é o do extrato, mesmo com poucos movimentos
+            p.data_ini, p.data_fim = extrato.periodo
+        if not extrato.movimentos:
+            p.estado, p.erro = "erro", "O ficheiro não tem movimentos."
+
+
 def ler(db: Session, raiz: Path | None, data_dir: Path) -> Leitura:
     """Uma passagem pela pasta: regista os ficheiros novos (pelo conteúdo) como pendentes de validação."""
     r = Leitura()
@@ -157,20 +177,7 @@ def ler(db: Session, raiz: Path | None, data_dir: Path) -> Leitura:
         if conteudo is None:
             p.estado, p.erro = "erro", "Ficheiro demasiado grande (máx. 10 MB)."
         else:
-            try:
-                extrato = ler_extrato(f.name, conteudo)
-            except FormatoDesconhecido as e:
-                p.estado, p.erro = "erro", str(e)[:500]
-            except Exception as e:  # ficheiro corrompido / colunas inesperadas
-                p.estado, p.erro = "erro", f"Não foi possível ler o ficheiro: {e}"[:500]
-            else:
-                servicos.guardar_upload(data_dir, f.name, conteudo)
-                p.parser, p.banco = extrato.parser, extrato.banco
-                conta, como = detetar_conta(db, extrato, pasta)
-                p.conta_id, p.deteccao = (conta.id if conta else None), como[:200]
-                resumo_para(db, p, extrato)
-                if not extrato.movimentos:
-                    p.estado, p.erro = "erro", "O ficheiro não tem movimentos."
+            analisar(db, p, conteudo, data_dir)
         db.add(p)
         (r.erros if p.estado == "erro" else r.novos).append(p)
     db.flush()
@@ -183,6 +190,8 @@ def extrato_de(p: ImportacaoPendente, data_dir: Path) -> tuple[str, bytes]:
 
 def mover_para_importados(raiz: Path | None, p: ImportacaoPendente, hoje: date) -> str | None:
     """Move o ficheiro para <banco>/importados/AAAA-MM-DD_<ficheiro>. Devolve um aviso se não foi possível."""
+    if p.paperless_id is not None and p.caminho.startswith("paperless:"):
+        return None                 # veio do Paperless: não há ficheiro na pasta partilhada
     if raiz is None:
         return "pasta partilhada não configurada: o ficheiro não foi movido."
     origem = raiz / p.caminho

@@ -47,6 +47,10 @@ class Extrato:
     # Deduplicação contra importações noutro formato (Revolut PDF vs CSV): mesmo valor e mesmo saldo
     # até N dias de diferença contam como o mesmo movimento. 0 = desligado.
     dedup_dias: int = 0
+    # Extratos mensais (PDF consolidado do Santander): período e saldos do próprio extrato
+    periodo: tuple | None = None
+    saldo_inicial: int | None = None
+    saldo_final: int | None = None
 
 
 # ---------------------------------------------------------------- utilitários
@@ -164,18 +168,23 @@ def ler_linhas(nome: str, conteudo: bytes) -> list[list]:
 def todos() -> list:
     """Todos os parsers, pela ordem de deteção (o 1.º que reconhecer o ficheiro ganha)."""
     from . import activobank, big, creditoagricola, revolut, santander, santander_cartao, santander_emprestimo
-    from . import revolut_pdf, santander_debito, santander_refeicao
+    from . import revolut_pdf, santander_debito, santander_pdf, santander_refeicao
     return [santander.Parser, santander_cartao.Parser, santander_emprestimo.Parser,
-            santander_refeicao.Parser, santander_debito.Parser, revolut_pdf.Parser, activobank.Parser,
+            santander_refeicao.Parser, santander_debito.Parser, santander_pdf.Parser, revolut_pdf.Parser, activobank.Parser,
             creditoagricola.Parser, big.Parser, revolut.Parser]
 
 
 def ler_extrato(nome: str, conteudo: bytes) -> Extrato:
     if conteudo[:5] == b"%PDF-":
-        from .revolut_pdf import ler_pdf
-        extrato = ler_pdf(conteudo)
+        from . import revolut_pdf, santander_pdf
+        extrato = santander_pdf.ler_pdf(conteudo)
+        if extrato is not None:
+            extrato.avisos += verificar_saldos(extrato.movimentos)
+            return extrato
+        extrato = revolut_pdf.ler_pdf(conteudo)
         if extrato is None:
-            raise FormatoDesconhecido("PDF não reconhecido: só se importa o «Extrato personalizado» consolidado da Revolut.")
+            raise FormatoDesconhecido("PDF não reconhecido: importam-se o «Extrato Consolidado» mensal do Santander "
+                                      "e o «Extrato personalizado» consolidado da Revolut.")
         for chave, movs in (extrato.subcontas or {}).items():
             extrato.avisos += [f"{chave[0]} {chave[1]}: {a}" for a in verificar_saldos(movs)]
         return extrato
@@ -192,4 +201,4 @@ def ler_extrato(nome: str, conteudo: bytes) -> Extrato:
                 extrato.movimentos = para_cronologico(extrato.movimentos)
                 extrato.avisos += verificar_saldos(extrato.movimentos)
             return extrato
-    raise FormatoDesconhecido("Formato de extrato não reconhecido. Bancos suportados: Santander (conta, cartão de crédito, cartão refeição e empréstimo), ActivoBank, Crédito Agrícola, Banco BiG, Revolut (CSV ou PDF consolidado). Vê os formatos em Administração › Importadores.")
+    raise FormatoDesconhecido("Formato de extrato não reconhecido. Bancos suportados: Santander (conta, cartão de crédito, cartão refeição e empréstimo), ActivoBank, Crédito Agrícola, Banco BiG, Santander (extrato consolidado em PDF), Revolut (CSV ou PDF consolidado). Vê os formatos em Administração › Importadores.")

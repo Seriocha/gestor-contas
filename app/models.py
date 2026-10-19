@@ -267,6 +267,10 @@ class Importacao(Base):
     n_novos: Mapped[int] = mapped_column(Integer, default=0)
     n_duplicados: Mapped[int] = mapped_column(Integer, default=0)
     estado: Mapped[str] = mapped_column(String(12), default="confirmada")  # confirmada | anulada
+    # Onde está o extrato original, além da cópia em data/uploads/<sha256>: o documento no Paperless e/ou o
+    # ficheiro na pasta partilhada da NAS (relativo a ela, depois de passar para importados/).
+    paperless_id: Mapped[int | None] = mapped_column(Integer, index=True)
+    origem: Mapped[str | None] = mapped_column(String(500))
 
     conta: Mapped[Conta] = relationship()
     utilizador: Mapped[Utilizador | None] = relationship()
@@ -344,6 +348,8 @@ class ImportacaoPendente(Base):
     tratado_em: Mapped[datetime | None] = mapped_column(DateTime)
     tratado_por: Mapped[int | None] = mapped_column(ForeignKey("utilizador.id", ondelete="SET NULL"))
     importacao_id: Mapped[int | None] = mapped_column(ForeignKey("importacao.id", ondelete="SET NULL"))
+    # Extrato vindo do Paperless (pasta = «Paperless», sem ficheiro na pasta partilhada)
+    paperless_id: Mapped[int | None] = mapped_column(Integer, index=True)
 
     conta: Mapped["Conta | None"] = relationship()
 

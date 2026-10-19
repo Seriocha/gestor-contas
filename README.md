@@ -37,6 +37,17 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.62.0 — Histórico do Santander em PDF e extrato original de cada movimento.** Novo importador do «Extrato
+  Consolidado» mensal do Santander (`EXTCON….pdf`): lê a tabela da conta à ordem do texto do PDF (sem OCR; poupanças,
+  depósitos e empréstimo ficam de fora), confere saldo inicial + movimentos = saldo final e reconhece pelo valor e saldo
+  o que já entrou pelo .xls (descrições diferentes). Entra pela pasta partilhada (`Santander/`) ou pelo Paperless:
+  Importar › Por validar › «Ler do Paperless» lê os documentos com a etiqueta ou o tipo «Extrato bancário» (com
+  `PAPERLESS_CONSUMER_SUBDIRS_AS_TAGS`, basta pô-los em `consume/Extrato bancário/`); com `GESTOR_PAPERLESS_TOKEN`, é
+  lido sozinho com o intervalo da pasta. «Validar todos com conta» valida de uma vez, do mais antigo para o mais
+  recente, os que não têm avisos. Cada importação guarda onde está o original (`importacao.paperless_id` / `origem`,
+  migração 0034; o Paperless é encontrado também pelo MD5 do ficheiro, e «Procurar as outras no Paperless» liga as
+  importações antigas): no detalhe do movimento, «Importado de» e «Também no extrato» abrem o documento no Paperless
+  ou a cópia guardada (`/importar/{id}/original`).
 - **v0.61.0 — Paperless multiutilizador: um token por pessoa.** Cada utilizador guarda o seu token da API do Paperless
   em Perfil › Paperless (testado antes de guardar, cifrado na base de dados com a chave secreta da app; «Testar
   ligação» e «Remover»). Procurar, ligar e as miniaturas usam o token de quem está a usar — o Paperless (dono, grupos,

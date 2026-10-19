@@ -36,7 +36,17 @@
   {% set por_validar = pendentes | selectattr('estado', 'equalto', 'pendente') | list %}
   {% set com_erro = pendentes | selectattr('estado', 'equalto', 'erro') | list %}
   {% if por_validar %}
-  <h3>Por validar ({{ por_validar | length }})</h3>
+  {% set com_conta = por_validar | selectattr('conta_id') | list %}
+  <div class="cartao-cabecalho">
+    <h3>Por validar ({{ por_validar | length }})</h3>
+    {% if com_conta | length > 1 %}
+    <form method="post" action="/admin/pasta/validar-todos"
+          onsubmit="return confirm('Validar os {{ com_conta | length }} extratos com conta detetada? Os que tiverem avisos (ex.: saldos que não batem certo) ficam para validar um a um.')">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
+      <button class="pequeno primario" title="Do mais antigo para o mais recente; só os que não têm avisos">✓ Validar todos com conta ({{ com_conta | length }})</button>
+    </form>
+    {% endif %}
+  </div>
   <div class="rolar"><table class="tabela compacta">
     <thead><tr><th>Ficheiro</th><th>Banco</th><th>Período</th><th>Conta</th><th class="num">Linhas</th><th class="num">Novos</th><th></th></tr></thead>
     {% for p in por_validar %}
@@ -62,6 +72,31 @@
     <ul class="nota">{% for p in historico %}<li>{{ p.tratado_em.strftime('%d/%m/%Y %H:%M') }} · {{ p.pasta }}/{{ p.ficheiro }} ·
       {{ 'validado' if p.estado == 'validada' else 'rejeitado' }}{{ ' → ' ~ p.conta.nome if p.conta and p.estado == 'validada' }}{{ ' · ' ~ p.nota if p.nota }}</li>{% endfor %}</ul>
   </details>
+  {% endif %}
+</section>
+
+<section class="cartao" id="paperless">
+  <h2>Extratos no Paperless</h2>
+  {% if not paperless_cfg %}
+  <p class="vazio sem-margem">O Paperless não está configurado (<code>paperless.env</code> na NAS).</p>
+  {% elif not paperless_ok %}
+  <div class="aviso">Guarda o teu token do Paperless em <a href="/perfil#paperless">Perfil</a> para ler os extratos que lá estão.</div>
+  {% else %}
+  <p class="nota">Os documentos com a etiqueta (ou o tipo de documento) abaixo são lidos como os da pasta partilhada: ficam aqui à
+    espera de validação e nada entra nos movimentos sem validares. Cada movimento importado fica ligado ao documento — no detalhe
+    do movimento, «Extrato» abre-o no Paperless. Os extratos que já tinham entrado pela pasta ou à mão são reconhecidos pelo
+    conteúdo e ficam só ligados ao documento.</p>
+  <form method="post" action="/admin/paperless/ler" class="linha" style="align-items: end; gap: .6rem">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <label>Etiqueta ou tipo de documento
+      <input name="nome" value="{{ paperless_nome }}" maxlength="80" required></label>
+    <button class="pequeno">📥 Ler do Paperless</button>
+  </form>
+  <form method="post" action="/admin/paperless/ligar" class="separado">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <span class="nota">{{ n_ligadas }} de {{ n_importacoes }} importações já estão ligadas a um documento do Paperless.</span>
+    {% if n_ligadas < n_importacoes %}<button class="ligacao" title="Procura no Paperless o mesmo ficheiro (pelo MD5) de cada importação antiga">Procurar as outras no Paperless</button>{% endif %}
+  </form>
   {% endif %}
 </section>
 {% endif %}

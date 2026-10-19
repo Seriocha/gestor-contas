@@ -24,6 +24,8 @@ OMISSAO = {
     "abastecer_token": "",
     # Pasta partilhada da NAS com extratos: de quantos em quantos minutos é lida.
     "pasta_intervalo_minutos": "60",
+    # Paperless: etiqueta ou tipo de documento dos extratos bancários a importar.
+    "paperless_extratos": "Extrato bancário",
 }
 
 

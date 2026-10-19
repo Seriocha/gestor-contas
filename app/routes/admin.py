@@ -399,6 +399,82 @@ async def pasta_ler(request: Request, admin: Utilizador = Depends(exigir_admin),
     return RedirectResponse("/importar/validar", status_code=303)
 
 
+@router.post("/paperless/ler")
+async def paperless_ler(request: Request, admin: Utilizador = Depends(exigir_admin), db: Session = Depends(get_db)):
+    """Extratos no Paperless (com a etiqueta ou o tipo escolhido) → por validar, como os da pasta partilhada."""
+    from .. import extratos, paperless
+    from .documentos import token as token_paperless
+    form = await ler_form(request)
+    nome = str(form.get("nome", "")).strip()[:80] or request.app.state.prefs.get("paperless_extratos", "")
+    if nome != request.app.state.prefs.get("paperless_extratos"):
+        preferencias.gravar(db, "paperless_extratos", nome)
+        request.app.state.prefs = preferencias.carregar(db)
+    t = token_paperless(request, admin)
+    if not t:
+        flash(request, "Guarda o teu token do Paperless em Perfil.", "erro")
+        return RedirectResponse("/importar/validar#paperless", status_code=303)
+    try:
+        r = extratos.ler_paperless(db, request.app.state.defs.data_dir, t, nome)
+    except paperless.ErroPaperless as e:
+        db.rollback()
+        flash(request, str(e), "erro")
+        return RedirectResponse("/importar/validar#paperless", status_code=303)
+    db.commit()
+    if r.mensagem:
+        flash(request, r.mensagem, "erro")
+    else:
+        n = len(r.novos)
+        msg = f"Paperless lido: {n} extrato{'s' if n != 1 else ''} novo{'s' if n != 1 else ''} por validar"
+        if r.erros:
+            msg += f", {len(r.erros)} com erro"
+        if r.ligados:
+            msg += f", {r.ligados} já importado{'s' if r.ligados != 1 else ''} por outra via (ligado{'s' if r.ligados != 1 else ''} ao documento)"
+        if r.ignorados:
+            msg += f", {r.ignorados} já conhecido{'s' if r.ignorados != 1 else ''}"
+        flash(request, msg + ".")
+    return RedirectResponse("/importar/validar#paperless", status_code=303)
+
+
+@router.post("/paperless/ligar")
+async def paperless_ligar(request: Request, admin: Utilizador = Depends(exigir_admin), db: Session = Depends(get_db)):
+    """Importações já feitas: procura o mesmo ficheiro no Paperless (MD5) para ligar os movimentos ao documento."""
+    from .. import extratos, paperless
+    from .documentos import token as token_paperless
+    await ler_form(request)
+    t = token_paperless(request, admin)
+    if not t:
+        flash(request, "Guarda o teu token do Paperless em Perfil.", "erro")
+        return RedirectResponse("/importar/validar#paperless", status_code=303)
+    try:
+        n = extratos.ligar_existentes(db, request.app.state.defs.data_dir, t)
+    except paperless.ErroPaperless as e:
+        db.rollback()
+        flash(request, str(e), "erro")
+        return RedirectResponse("/importar/validar#paperless", status_code=303)
+    db.commit()
+    flash(request, f"{n} importaç{'ão ligada' if n == 1 else 'ões ligadas'} ao documento do Paperless.")
+    return RedirectResponse("/importar/validar#paperless", status_code=303)
+
+
+@router.post("/pasta/validar-todos")
+async def pasta_validar_todos(request: Request, admin: Utilizador = Depends(exigir_admin), db: Session = Depends(get_db)):
+    """Valida de uma vez os extratos com conta detetada e sem avisos (ex.: o histórico mensal em PDF)."""
+    from .. import extratos
+    from .documentos import token as token_paperless
+    form = await ler_form(request)
+    ids = [int(x) for x in form.getlist("ids") if str(x).isdigit()] if hasattr(form, "getlist") else []
+    r = extratos.validar_todos(db, admin, request.app.state.defs, token_paperless(request, admin), ids or None)
+    auditar(db, admin, "pasta_validar_todos", f"{len(r.validados)} validados, {r.movimentos} movimentos novos, "
+                                              f"{len(r.saltados)} por validar à mão")
+    db.commit()
+    msg = (f"{len(r.validados)} extrato{'s' if len(r.validados) != 1 else ''} validado{'s' if len(r.validados) != 1 else ''}: "
+           f"{r.movimentos} movimentos novos.")
+    if r.saltados:
+        msg += (f" {len(r.saltados)} ficaram por validar à mão — ex.: «{r.saltados[0][0].ficheiro}»: {r.saltados[0][1]}.")
+    flash(request, msg, "erro" if r.saltados and not r.validados else "ok")
+    return RedirectResponse("/importar/validar#pasta", status_code=303)
+
+
 @router.post("/pasta/intervalo")
 async def pasta_intervalo(request: Request, admin: Utilizador = Depends(exigir_admin), db: Session = Depends(get_db)):
     from .. import pasta_importacao as pi

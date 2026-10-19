@@ -64,6 +64,13 @@ def por_validar(request: Request, u: Utilizador = Depends(utilizador_atual), db:
         ctx["historico"] = db.scalars(select(ImportacaoPendente).where(ImportacaoPendente.estado.in_(("validada", "rejeitada")))
                                       .order_by(ImportacaoPendente.tratado_em.desc()).limit(10)).all()
         ctx["intervalos"], ctx["intervalo"] = pi.INTERVALOS, pi.intervalo_minutos(request.app.state.prefs)
+        from .. import paperless
+        from .documentos import token as token_paperless
+        ctx["paperless_cfg"], ctx["paperless_ok"] = paperless.configurado(), bool(token_paperless(request, u))
+        ctx["paperless_nome"] = request.app.state.prefs.get("paperless_extratos", "")
+        confirmadas = select(func.count()).select_from(Importacao).where(Importacao.estado == "confirmada")
+        ctx["n_importacoes"] = db.scalar(confirmadas) or 0
+        ctx["n_ligadas"] = db.scalar(confirmadas.where(Importacao.paperless_id.is_not(None))) or 0
     return render(request, "importar/validar.html", **ctx)
 
 
@@ -277,15 +284,13 @@ async def confirmar(request: Request, u: Utilizador = Depends(utilizador_atual),
         pagamentos += f" {emp['estimadas']} prestação(ões) estimada(s) até chegar o extrato do empréstimo."
     if emp["substituidas"]:
         pagamentos += f" {emp['substituidas']} estimativa(s) substituída(s) pelos valores reais."
-    if pend:
-        # extrato da pasta partilhada: validado → fica registado e o ficheiro passa para importados/
-        from datetime import datetime
-        from .. import pasta_importacao
-        pend.estado, pend.conta_id, pend.importacao_id = "validada", conta.id, imp.id
-        pend.tratado_em, pend.tratado_por = datetime.now(), u.id
-        aviso = pasta_importacao.mover_para_importados(request.app.state.defs.import_dir, pend, date.today())
-        pend.nota = aviso
-        db.commit()
+    # extrato da pasta partilhada / do Paperless: validado → fica registado e o ficheiro da pasta passa para
+    # importados/; em qualquer caso, guarda-se onde está o original (documento no Paperless, pelo MD5)
+    from .. import extratos
+    from ..routes.documentos import token as token_paperless
+    aviso = extratos.finalizar(db, pend, imp, request.app.state.defs, u, token_paperless(request, u))
+    db.commit()
+    if pend and not pend.caminho.startswith("paperless:"):
         pagamentos += f" Ficheiro {'movido para importados/' if not aviso else 'NÃO movido: ' + aviso}"
     flash(request, f"Importados {imp.n_novos} movimentos novos ({imp.n_duplicados} já existiam); "
                    f"{imp.n_qualificados} categorizados pelas regras." + pagamentos + (f" {msg}" if msg else ""))
@@ -325,3 +330,27 @@ def previa_cartao_conta(request: Request, sha: str, nome: str, conta: int, u: Ut
         flash(request, "O ficheiro já não está disponível. Volta a carregá-lo.", "erro")
         return RedirectResponse("/importar", status_code=303)
     return mostrar_previa(request, db, u, c, nome, conteudo)
+
+
+@router.get("/{imp_id}/original")
+def original(request: Request, imp_id: int, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
+    """O ficheiro original de uma importação (a cópia guardada pelo Gestor; PDF abre no browser)."""
+    from fastapi.responses import Response
+    from urllib.parse import quote
+    imp = db.get(Importacao, imp_id)
+    if not imp:
+        raise HTTPException(status_code=404, detail="Não encontrado.")
+    exigir_papel(db, u, imp.conta.entidade_id, "ver")
+    try:
+        conteudo = servicos.ler_upload(request.app.state.defs.data_dir, imp.sha256)
+    except FileNotFoundError:
+        if imp.paperless_id:
+            from .. import extratos
+            return RedirectResponse(extratos.href(imp), status_code=303)
+        raise HTTPException(status_code=404, detail="O ficheiro original já não está guardado.")
+    tipos = {b"%PDF-": "application/pdf"}
+    tipo = next((t for k, t in tipos.items() if conteudo.startswith(k)), "application/octet-stream")
+    modo = "inline" if tipo == "application/pdf" else "attachment"
+    return Response(conteudo, media_type=tipo,
+                    headers={"Content-Disposition": f"{modo}; filename*=UTF-8''{quote(imp.ficheiro_nome)}",
+                             "X-Content-Type-Options": "nosniff"})

@@ -13,7 +13,7 @@ from .models import (TIPOS_BEM, TIPOS_CONTA, Abastecimento, Bem, Importacao, Ite
 
 ICONES = {"conta": "🏦", "entidade": "👥", "categoria": "🏷️", "regra": "⚙️", "par": "↔️", "casa": "🏠", "carro": "🚗",
           "rustico": "🌳", "subscricao": "🔁", "etiqueta": "#", "viagem": "✈️", "viaverde": "🛣️", "abastecimento": "⛽",
-          "manutencao": "🔧", "recheio": "📦", "origem": "📄", "documento": "📎"}
+          "manutencao": "🔧", "recheio": "📦", "origem": "📄", "extrato": "🧾", "documento": "📎"}
 
 
 @dataclass
@@ -143,8 +143,18 @@ def do_movimento(db: Session, m: Movimento, ve_entidade) -> Mapa:
         nos.append(No("origem", "Origem", "Inserido à mão"))
     elif h.startswith("retif:"):
         nos.append(No("origem", "Origem", "Retificação de saldo"))
-    elif m.importacao_id and (imp := db.get(Importacao, m.importacao_id)):
-        nos.append(No("origem", "Importado de", imp.ficheiro_nome, f"{imp.criado_em:%d/%m/%Y %H:%M} · {imp.n_lidos} movimentos lidos"))
+    else:
+        # o extrato de onde veio e os outros extratos da conta que o incluem (ex.: entrou pelo .xls e também está
+        # no extrato mensal em PDF), cada um com o original — no Paperless ou a cópia guardada pelo Gestor
+        from . import extratos
+        for imp in extratos.do_movimento(db, m):
+            proprio = imp.id == m.importacao_id
+            onde = "no Paperless" if imp.paperless_id and paperless.configurado() else "abrir o original"
+            nos.append(No("origem" if proprio else "extrato", "Importado de" if proprio else "Também no extrato",
+                          imp.ficheiro_nome,
+                          (f"{imp.criado_em:%d/%m/%Y %H:%M} · {imp.n_lidos} movimentos lidos · " if proprio else
+                           f"{imp.data_ini:%d/%m/%Y} a {imp.data_fim:%d/%m/%Y} · ") + onde,
+                          extratos.href(imp)))
 
     if m.transferencia:
         mapa.estado.append("transferência entre contas próprias — não conta como receita nem despesa")
