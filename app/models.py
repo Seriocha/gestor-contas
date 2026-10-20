@@ -602,6 +602,24 @@ class ViagemRejeitado(Base):
     movimento_id: Mapped[int] = mapped_column(ForeignKey("movimento.id", ondelete="CASCADE"))
 
 
+class ContratoServico(Base):
+    """Um contrato de um serviço da casa (luz, gás, água…) e a casa a que pertence, para a comparação de fornecedores:
+    os débitos com o texto (ex.: «EDP»), a referência (o n.º no fim da descrição) e, quando o mesmo fornecedor cobra
+    duas casas com a mesma referência, o intervalo de dias do mês em que cada uma é cobrada."""
+    __tablename__ = "contrato_servico"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entidade_id: Mapped[int] = mapped_column(ForeignKey("entidade.id", ondelete="CASCADE"), index=True)
+    bem_id: Mapped[int] = mapped_column(ForeignKey("bem.id", ondelete="CASCADE"), index=True)
+    texto: Mapped[str] = mapped_column(String(60))
+    referencia: Mapped[str | None] = mapped_column(String(30))
+    dia_de: Mapped[int | None] = mapped_column(Integer)
+    dia_ate: Mapped[int | None] = mapped_column(Integer)
+    criado_em: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, server_default=func.now())
+
+    bem: Mapped["Bem"] = relationship()
+
+
 class ViagemDescartada(Base):
     """Período detetado (Viagens › Detetar) que o utilizador disse não ser uma viagem: não volta a ser proposto."""
     __tablename__ = "viagem_descartada"

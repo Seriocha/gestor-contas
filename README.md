@@ -37,6 +37,13 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.70.0 — Comparar fornecedores por casa.** Contratos por casa (tabela contrato_servico, migração 0038): fornecedor,
+  referência (o n.º no fim do débito direto) e, quando o mesmo fornecedor cobra as duas casas com a mesma referência (a G9),
+  o intervalo de dias do mês. A página propõe os contratos a partir dos débitos (por fornecedor e referência; com 2 débitos
+  por mês, divididos pelo dia — o débito grande costuma ser a casa onde se vive) e basta escolher a casa de cada um. Depois,
+  cada casa tem a sua análise (mudança de fornecedor com os 12 meses antes/depois, tabela por ano, grelha mês a mês) e os
+  gráficos mostram as casas lado a lado: por ano, uma pilha por casa e fornecedor; por mês, uma linha por casa (meses sem
+  extratos em branco).
 - **v0.69.0 — Relatórios › Comparar fornecedores.** Um serviço da casa (por omissão a Eletricidade; qualquer categoria
   de despesa) ano a ano e por fornecedor (EDP, G9, Galp, Endesa, … reconhecidos na descrição): total, n.º de débitos,
   média por mês com dados, variação face ao ano anterior e gráfico empilhado. Deteta as mudanças de fornecedor (ex.:

@@ -133,6 +133,33 @@
       });
     },
 
+    fornecedores_casas(canvas) {
+      // Comparar fornecedores: total por ano, uma pilha por casa, cada pilha pelos fornecedores.
+      const d = dados.fornecedores_casas;
+      new Chart(canvas, {
+        type: 'bar',
+        data: { labels: d.rotulos, datasets: d.series.map((s, i) => ({ label: s.nome, data: s.valores, stack: s.pilha,
+          backgroundColor: s.cor,
+          borderColor: COR.superficie, borderWidth: 1, borderRadius: 3, maxBarThickness: 22 })) },
+        options: { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+          plugins: { legend: { position: 'top', align: 'end', labels: { boxWidth: 10, boxHeight: 10 } } },
+          scales: { x: { ...eixos.x, stacked: true }, y: { ...eixos.y, stacked: true } } },
+      });
+    },
+
+    fornecedores_mensal(canvas) {
+      // Comparar fornecedores: o que se pagou em cada mês, uma linha por casa.
+      const d = dados.fornecedores_mensal;
+      new Chart(canvas, {
+        type: 'line',
+        data: { labels: d.rotulos, datasets: d.series.map(s => ({ label: s.nome, data: s.valores, borderColor: s.cor,
+          backgroundColor: s.cor, borderWidth: 2, tension: 0.2, pointRadius: 0, pointHoverRadius: 4, spanGaps: false })) },
+        options: { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+          plugins: { legend: { position: 'top', align: 'end', labels: { boxWidth: 10, boxHeight: 10 } } },
+          scales: { x: { ...eixos.x, ticks: { ...(eixos.x.ticks || {}), maxTicksLimit: 12 } }, y: eixos.y } },
+      });
+    },
+
     inicio_evolucao(canvas) {
       // Ativos e passivos (barras) e património líquido (linha) nos últimos 12 meses.
       const d = dados.inicio_evolucao;

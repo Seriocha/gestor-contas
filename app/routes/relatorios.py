@@ -210,19 +210,83 @@ def comparar_fornecedores(request: Request, entidade: IntOpcional = None, catego
             nome = next((n for n, rx in fo.CONHECIDOS if re.search(rx, (m.descricao_original or "").upper())), None)
             if nome and nome not in ja and nome.upper() not in ja and fo.mesmo_servico(nome, a.fornecedores):
                 sugeridos[nome] += 1
+    from ..models import Bem
     cores = {f: CORES[i % len(CORES)] for i, f in enumerate(a.fornecedores)}
-    graficos = {"despesas_bem": {"rotulos": [str(x.ano) for x in a.anos],
-                                 "series": [{"nome": f, "cor": cores[f],
-                                             "valores": [x.por_fornecedor.get(f, (0, 0))[1] / 100 for x in a.anos]}
-                                            for f in a.fornecedores]}} if a.anos else {}
-    grelha = {}
-    for d, v in a.mensal:
-        if v:                                    # meses sem débitos ficam vazios (e anos sem extratos não aparecem)
-            grelha.setdefault(d.year, [None] * 12)[d.month - 1] = (sum(v.values()), max(v, key=v.get))
+    blocos = a.casas or ([a.geral] if a.geral and a.geral.movimentos else [])
+    anos = sorted({x.ano for b in blocos for x in b.anos})
+    graficos = {}
+    if anos and a.casas:
+        # barras por ano: uma pilha por casa, cada pilha pelos fornecedores
+        graficos["fornecedores_casas"] = {"rotulos": [str(x) for x in anos], "series": [
+            {"nome": f"{b.nome} · {f}", "pilha": b.nome, "cor": cores[f] + ("" if i == 0 else "80"),   # 2.ª casa: tom claro
+             "valores": [(b.ano(x).por_fornecedor.get(f, (0, 0))[1] / 100 if b.ano(x) else 0) for x in anos]}
+            for i, b in enumerate(blocos) for f in b.fornecedores]}
+        meses = [d for d, _ in a.geral.mensal]
+        graficos["fornecedores_mensal"] = {"rotulos": [rel.rotulo_mes(d) for d in meses], "series": [
+            {"nome": b.nome, "cor": CORES[(i + 3) % len(CORES)],
+             # meses sem débitos (sem extratos) ficam em branco, não a zero
+             "valores": [round(sum(v.values()) / 100, 2) if (v := dict(b.mensal).get(d)) else None for d in meses]}
+            for i, b in enumerate(blocos)]}
+    elif anos:
+        graficos["despesas_bem"] = {"rotulos": [str(x) for x in anos], "series": [
+            {"nome": f, "cor": cores[f], "valores": [(blocos[0].ano(x).por_fornecedor.get(f, (0, 0))[1] / 100
+                                                      if blocos[0].ano(x) else 0) for x in anos]} for f in a.fornecedores]}
+    grelhas = []
+    for b in blocos:
+        g = {}
+        for d, v in b.mensal:
+            if v:                                # meses sem débitos ficam vazios (e anos sem extratos não aparecem)
+                g.setdefault(d.year, [None] * 12)[d.month - 1] = (sum(v.values()), max(v, key=v.get))
+        grelhas.append((b, sorted(g.items(), reverse=True)))
+    casas = db.scalars(select(Bem).where(Bem.entidade_id == ent.id, Bem.tipo == "casa").order_by(Bem.nome)).all()
     return render(request, "relatorios_fornecedores.html", visiveis=visiveis, entidade=ent, a=a, categoria_id=categoria,
                   extras=", ".join(lista_extras), categorias=_categorias(db), cores=cores, graficos=graficos,
-                  sugeridos=[(n, k) for n, k in sugeridos.most_common() if k >= 3], grelha=sorted(grelha.items(), reverse=True),
-                  meses_pt=rel.MESES_PT, pode_editar=PAPEIS[papel] >= PAPEIS["editar"])
+                  sugeridos=[(n, k) for n, k in sugeridos.most_common() if k >= 3], blocos=blocos, grelhas=grelhas,
+                  casas=casas, meses_pt=rel.MESES_PT, pode_editar=PAPEIS[papel] >= PAPEIS["editar"],
+                  voltar=request.url.path + ("?" + request.url.query if request.url.query else ""))
+
+
+@router.post("/fornecedores/contrato")
+async def contrato_casa(request: Request, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
+    """Liga um contrato (fornecedor + referência + dias do mês) a uma casa."""
+    from ..models import Bem, ContratoServico
+    form = await ler_form(request)
+    ent_id = int(form["entidade"]) if str(form.get("entidade", "")).isdigit() else 0
+    exigir_papel(db, u, ent_id, "editar")
+    voltar = str(form.get("voltar", "")) or f"/relatorios/fornecedores?entidade={ent_id}"
+    if not voltar.startswith("/relatorios/fornecedores"):
+        voltar = f"/relatorios/fornecedores?entidade={ent_id}"
+    bem = db.get(Bem, int(form["bem"])) if str(form.get("bem", "")).isdigit() else None
+    texto = str(form.get("texto", "")).strip()[:60]
+    if not bem or bem.entidade_id != ent_id or bem.tipo != "casa" or not texto:
+        flash(request, "Escolhe a casa.", "erro")
+        return RedirectResponse(voltar, status_code=303)
+    dia = lambda k: int(form[k]) if str(form.get(k, "")).isdigit() and 1 <= int(form[k]) <= 31 else None
+    ref = str(form.get("referencia", "")).strip()[:30] or None
+    c = ContratoServico(entidade_id=ent_id, bem_id=bem.id, texto=texto, referencia=ref, dia_de=dia("dia_de"), dia_ate=dia("dia_ate"))
+    db.add(c)
+    auditar(db, u, "contrato_servico", f"{texto} {ref or ''} → {bem.nome}")
+    db.commit()
+    dias = f", dias {c.dia_de}–{c.dia_ate}" if c.dia_de or c.dia_ate else ""
+    flash(request, f"{texto}{' ' + ref if ref else ''}{dias} → {bem.nome}.")
+    return RedirectResponse(voltar, status_code=303)
+
+
+@router.post("/fornecedores/contrato/{cid}/apagar")
+async def apagar_contrato_casa(request: Request, cid: int, u: Utilizador = Depends(utilizador_atual),
+                               db: Session = Depends(get_db)):
+    from ..models import ContratoServico
+    c = db.get(ContratoServico, cid)
+    if not c:
+        return RedirectResponse("/relatorios/fornecedores", status_code=303)
+    exigir_papel(db, u, c.entidade_id, "editar")
+    form = await ler_form(request)
+    voltar = str(form.get("voltar", ""))
+    db.delete(c)
+    db.commit()
+    flash(request, "Contrato apagado: os débitos dele voltam a «por atribuir».")
+    return RedirectResponse(voltar if voltar.startswith("/relatorios/fornecedores") else
+                            f"/relatorios/fornecedores?entidade={c.entidade_id}", status_code=303)
 
 
 @router.post("/fornecedores/categorizar")

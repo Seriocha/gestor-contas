@@ -84,3 +84,53 @@ def test_pagina_sugestao_e_regra(app, admin):
         assert db.scalar(select(Regra).where(Regra.padrao == "G9")).categoria_id == admin.luz
         a = fo.analisar(db, 1, admin.luz, [], HOJE)
         assert a.fornecedores == ["EDP", "G9"] and not a.sem_categoria          # agora já pela categoria
+
+
+def test_duas_casas_contratos_e_dia_do_mes(app, admin):
+    """EDP com um contrato por casa (referências diferentes); a G9 cobra as duas com a mesma referência, em dias diferentes."""
+    from app.models import Bem, ContratoServico
+    with app.state.SessionLocal() as db:
+        for m in db.scalars(select(Movimento)):
+            db.delete(m)
+        povoa, algarve = Bem(entidade_id=1, tipo="casa", nome="Póvoa", uso="principal"), Bem(entidade_id=1, tipo="casa", nome="Algarve", uso="ferias")
+        db.add_all([povoa, algarve])
+        db.flush()
+        for ano, mes in [(2024, m) for m in range(1, 13)] + [(2025, m) for m in range(1, 13)]:
+            if (ano, mes) < (2024, 12):
+                _add(db, date(ano, mes, 25), "DÉBITO DIRETO-EDP COMERCIAL-CO-60230660104", 160, admin.luz)
+                _add(db, date(ano, mes, 3), "DÉBITO DIRETO-EDP COMERCIAL-CO-60232351784", 20, admin.luz)
+            else:
+                _add(db, date(ano, mes, 17), "DÉBITO DIRETO-G9,SA-10006302807", 144, admin.luz)
+                _add(db, date(ano, mes, 25), "DÉBITO DIRETO-G9,SA-10006302807", 12, admin.luz)
+        db.commit()
+        ids = (povoa.id, algarve.id)
+        a = fo.analisar(db, 1, admin.luz, [], HOJE)
+    props = {(p.fornecedor, p.referencia, p.dia_de): (p.n, p.media) for p in a.propostas}
+    assert props == {("EDP", "60230660104", None): (11, 16000), ("EDP", "60232351784", None): (11, 2000),
+                     ("G9", "10006302807", 1): (13, 14400), ("G9", "10006302807", 18): (13, 1200)}
+    t = admin.get(f"/relatorios/fornecedores?entidade=1&categoria={admin.luz}").text
+    assert "Contratos encontrados" in t and t.count('action="/relatorios/fornecedores/contrato"') == 4
+
+    def ligar(texto, ref, de, ate, bem):
+        return admin.post("/relatorios/fornecedores/contrato", data={
+            "csrf": _csrf(admin.get("/relatorios")), "entidade": "1", "texto": texto, "referencia": ref, "dia_de": de,
+            "dia_ate": ate, "bem": str(bem), "voltar": f"/relatorios/fornecedores?entidade=1&categoria={admin.luz}"})
+    assert "EDP 60230660104 → Póvoa." in ligar("EDP", "60230660104", "", "", ids[0]).text
+    ligar("EDP", "60232351784", "", "", ids[1])
+    ligar("G9", "10006302807", "1", "17", ids[0])
+    r = ligar("G9", "10006302807", "18", "31", ids[1])
+    assert "G9 10006302807, dias 18–31 → Algarve." in r.text
+    with app.state.SessionLocal() as db:
+        assert db.scalar(select(ContratoServico).where(ContratoServico.dia_de == 18)).bem_id == ids[1]
+        a = fo.analisar(db, 1, admin.luz, [], HOJE)
+    assert [c.nome for c in a.casas] == ["Póvoa", "Algarve"] and not a.propostas
+    povoa_r, algarve_r = a.casas
+    assert (povoa_r.mudancas[0].media_antes, povoa_r.mudancas[0].media_depois) == (16000, 14400)
+    assert (algarve_r.mudancas[0].media_antes, algarve_r.mudancas[0].media_depois) == (2000, 1200)
+    t = admin.get(f"/relatorios/fornecedores?entidade=1&categoria={admin.luz}").text
+    assert 'data-grafico="fornecedores_casas"' in t and 'data-grafico="fornecedores_mensal"' in t
+    import json, re
+    dados = json.loads(re.search(r'id="dados-graficos">(.*?)</script>', t, re.S).group(1))
+    assert {s["pilha"] for s in dados["fornecedores_casas"]["series"]} == {"Póvoa", "Algarve"}
+    assert "Póvoa · EDP" in [s["nome"] for s in dados["fornecedores_casas"]["series"]]
+    assert "160,00 €/mês" in t and "12,00 €/mês" in t
