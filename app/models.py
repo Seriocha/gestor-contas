@@ -735,6 +735,10 @@ class Bem(Base):
     valor_aquisicao: Mapped[int | None] = mapped_column(BigInteger)   # cêntimos
     emprestimo_conta_id: Mapped[int | None] = mapped_column(ForeignKey("conta.id", ondelete="SET NULL"))
     data_venda: Mapped[date | None] = mapped_column(Date)
+    # Plafond de manutenção (viatura da empresa): valor a gastar em N anos a contar de uma data (cêntimos).
+    plafond_manutencao: Mapped[int | None] = mapped_column(BigInteger)
+    plafond_anos: Mapped[int | None] = mapped_column(Integer)
+    plafond_inicio: Mapped[date | None] = mapped_column(Date)
     valor_venda: Mapped[int | None] = mapped_column(BigInteger)
     # Revisão periódica do valor (meses entre avaliações; 0 = só à mão).
     revisao_meses: Mapped[int] = mapped_column(Integer, default=6, server_default="6")
@@ -776,7 +780,9 @@ class Bem(Base):
 
     @property
     def vendido(self) -> bool:
-        return self.data_venda is not None
+        """Já vendido (ou, na viatura da empresa, devolvido): só a partir da data. Uma data futura (o fim previsto
+        do contrato da viatura da empresa) não o tira de uso — continua com manutenção, km e plano."""
+        return self.data_venda is not None and self.data_venda <= date.today()
 
     @property
     def lista_ocupacao(self) -> list[str]:

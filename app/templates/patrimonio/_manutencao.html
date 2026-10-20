@@ -19,6 +19,27 @@
       {% if mr.precisa_oficina %}<span class="nota">{{ mr.atraso | length }} operaç{{ 'ões' if mr.atraso | length != 1 else 'ão' }} em atraso</span>
       {% elif mr.proxima %}<span class="nota">próxima: {{ mr.proxima.item.item }} · ≈ {{ mr.proxima.data_prevista | data }}</span>{% endif %}</div>
   </div>
+  {% if plafond %}
+  {% set proj = plafond.projecao(hoje) %}
+  <div class="plafond-manutencao">
+    <div class="plafond-topo">
+      <strong>Plafond de manutenção</strong>
+      <span class="nota">{{ plafond.valor | eur }} em {{ plafond.anos }} anos · {{ plafond.ini | data }} a {{ plafond.fim | data }}</span>
+    </div>
+    <div class="plafond-barra" role="img" aria-label="Usado {{ plafond.pct | round | int }}% do plafond; decorrido {{ (plafond.decorrido(hoje) * 100) | round | int }}% do prazo">
+      <span class="usado {{ 'neg' if plafond.resta < 0 }}" style="width: {{ [plafond.pct, 100] | min }}%"></span>
+      <span class="tempo" style="left: {{ (plafond.decorrido(hoje) * 100) | round(1) }}%" title="hoje"></span>
+    </div>
+    <div class="kpi-linha">
+      <div class="kpi"><span class="nota">Usado</span><strong>{{ plafond.usado | eur }}</strong>
+        <span class="nota">{{ plafond.pct | round | int }}% · {{ plafond.n }} ida{{ 's' if plafond.n != 1 }} à oficina</span></div>
+      <div class="kpi"><span class="nota">Resta</span><strong class="{{ 'neg' if plafond.resta < 0 else 'pos' }}">{{ plafond.resta | eur }}</strong>
+        <span class="nota">{{ (plafond.decorrido(hoje) * 100) | round | int }}% do prazo passado</span></div>
+      <div class="kpi"><span class="nota">Ao ritmo atual</span><strong class="{{ 'neg' if proj and proj > plafond.valor }}">{{ proj | eur if proj else '—' }}</strong>
+        <span class="nota">{{ 'acima do plafond' if proj and proj > plafond.valor else 'gasto previsto no fim do prazo' if proj else 'sem idas à oficina com custo' }}</span></div>
+    </div>
+  </div>
+  {% endif %}
   {% if mr.lembrar_km and not b.vendido %}<div class="aviso">Regista os quilómetros atuais — {% if u %}a última leitura é de {{ u.data | data }}{% else %}ainda não há leituras{% endif %}.
     Com leituras regulares a app estima quando chegas a cada revisão.</div>{% endif %}
 

@@ -78,6 +78,15 @@
     <label>Desde <input type="date" name="data_aquisicao" value="{{ v.data_aquisicao or '' }}" {% if not empresa %}disabled{% endif %}></label>
     <label>Até (devolvida) <input type="date" name="data_venda" value="{{ v.data_venda or '' }}" {% if not empresa %}disabled{% endif %}></label>
   </div>
+  <h2>Plafond de manutenção</h2>
+  <p class="nota">O valor que a empresa dá para a manutenção deste carro num prazo (ex.: 6 anos). As idas à oficina com custo
+    contam para o plafond; a ficha mostra o usado, o que resta e a projeção ao ritmo atual. Vazio = sem plafond.</p>
+  <div class="linha">
+    <label>Valor (€) <input name="plafond_manutencao" inputmode="decimal" value="{{ v.plafond_manutencao or '' }}" placeholder="ex.: 3 000,00" {% if not empresa %}disabled{% endif %}></label>
+    <label>Em (anos) <input type="number" name="plafond_anos" min="1" max="30" value="{{ v.plafond_anos or '6' }}" {% if not empresa %}disabled{% endif %}></label>
+    <label>A contar de <input type="date" name="plafond_inicio" value="{{ v.plafond_inicio or '' }}" {% if not empresa %}disabled{% endif %}></label>
+  </div>
+  <p class="nota sem-margem">Sem data, conta desde «Desde».</p>
   </div>
   <div class="so-proprio" {% if empresa %}hidden{% endif %}>
   <h2>Compra, dívida e venda</h2>

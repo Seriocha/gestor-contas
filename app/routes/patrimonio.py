@@ -126,7 +126,7 @@ async def atribuir(request: Request, u: Utilizador = Depends(utilizador_atual), 
 CAMPOS = ("nome", "uso", "tipologia", "area_m2", "localizacao", "ano", "estado", "extras", "marca", "modelo", "km",
           "combustivel", "data_aquisicao", "valor_aquisicao", "emprestimo_conta_id", "data_venda", "valor_venda",
           "revisao_meses", "padroes", "omissao", "notas", "matricula", "area_ha", "artigo", "acesso", "anos_tiragem",
-          "sobreiros", "producao_arrobas")
+          "sobreiros", "producao_arrobas", "plafond_manutencao", "plafond_anos", "plafond_inicio")
 
 
 def _form(request, db, ent, tipo, v, bem=None, erros=None, status_code=200):
@@ -202,6 +202,17 @@ def _ler(form, db: Session, entidade_id: int, tipo: str) -> tuple[dict, list[str
         except ValueError as e:
             dados[k] = None
             erros.append(f"{rotulo}: {e}")
+    dados["plafond_manutencao"], dados["plafond_anos"], dados["plafond_inicio"] = None, None, None
+    if tipo == "carro":
+        try:
+            dados["plafond_manutencao"] = abs(parse_montante(v["plafond_manutencao"])) or None if v["plafond_manutencao"] else None
+        except ValueError as e:
+            erros.append(f"Plafond de manutenção: {e}")
+        dados["plafond_anos"] = _inteiro(v["plafond_anos"], "Anos do plafond", erros, 1, 30) if dados["plafond_manutencao"] else None
+        try:
+            dados["plafond_inicio"] = parse_data(v["plafond_inicio"]) if v["plafond_inicio"] and dados["plafond_manutencao"] else None
+        except ValueError:
+            erros.append("Data de início do plafond inválida.")
     if dados["matricula"] and len(norm_matricula(dados["matricula"])) not in (6, 7, 8):
         erros.append("Matrícula inválida (ex.: AA-00-AA).")
     for p in (dados["padroes"] or "").splitlines():
@@ -320,6 +331,7 @@ def ficha(request: Request, bid: int, u: Utilizador = Depends(utilizador_atual),
                   graficos={"bem": pt.serie_valor(b),
                             "despesas_bem": pt.serie_despesas(c)}, pode_editar=PAPEIS[papel] >= PAPEIS["editar"],
                   mr=mt.resumo(b, hoje) if b.tipo == "carro" else None,
+                  plafond=mt.plafond(b, hoje) if b.tipo == "carro" else None,
                   falta_plano=mt.falta_para_plano(b) if b.tipo == "carro" else [],
                   descricao_carro=mt.descricao_carro(b, hoje) if b.tipo == "carro" else "",
                   via_verde=vv.do_carro(db, b, ini, hoje) if b.tipo == "carro" else [],
@@ -954,7 +966,9 @@ def editar(request: Request, bid: int, u: Utilizador = Depends(utilizador_atual)
               "valor_venda": montante_para_input(b.valor_venda) if b.valor_venda else "",
               "omissao": "1" if b.omissao else "", "padroes": b.padroes or "", "notas": b.notas or "",
               "area_ha": ("%g" % b.area_ha).replace(".", ",") if b.area_ha else "", "ocupacao": b.lista_ocupacao,
-              "agua": b.lista_agua, "tem_cortica": "1" if b.tem_cortica else ""})
+              "agua": b.lista_agua, "tem_cortica": "1" if b.tem_cortica else "",
+              "plafond_manutencao": montante_para_input(b.plafond_manutencao) if b.plafond_manutencao else "",
+              "plafond_inicio": iso(b.plafond_inicio)})
     return _form(request, db, ent, b.tipo, v, bem=b)
 
 

@@ -37,6 +37,12 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.68.0 — Viatura da empresa igual aos outros carros, com plafond de manutenção.** Um carro só conta como
+  vendido/devolvido a partir da data indicada: a viatura da empresa com a data de devolução no futuro volta a ter o
+  plano de manutenção (IA), o registo de km e as idas à oficina. Todos os carros têm os mesmos separadores
+  (Manutenção, Abastecimentos, Via Verde, Despesas e receitas). Novo plafond de manutenção (valor em N anos a contar
+  de uma data — por omissão 6 anos desde «Desde»; migração 0037): a secção Manutenção mostra o usado (idas à oficina
+  com custo), o que resta, a barra do usado face ao prazo decorrido e a projeção ao ritmo atual.
 - **v0.67.0 — As fotografias ajudam a detetar viagens.** Em Viagens › Detetar viagens, quem tem chave do Immich vê em
   cada período «📷 N fotos · Albufeira, Portugal …» (os lugares mais fotografados, carregados depois da página, 3
   períodos de cada vez) e a etiqueta «📷 confirmada pelas fotos» quando há fotos noutro país ou metade das fotos com

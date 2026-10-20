@@ -195,6 +195,48 @@ ou null, "intervalo_meses": inteiro ou null, "custo_min": inteiro ou null, "cust
 correia vs. corrente…)}."""
 
 
+@dataclass
+class Plafond:
+    valor: int                 # cêntimos
+    ini: date
+    fim: date                  # ini + anos
+    anos: int
+    usado: int                 # idas à oficina com custo dentro do período
+    n: int
+
+    @property
+    def resta(self) -> int:
+        return self.valor - self.usado
+
+    @property
+    def pct(self) -> float:
+        return self.usado / self.valor * 100 if self.valor else 0
+
+    def decorrido(self, hoje: date) -> float:
+        """Fração do prazo já passada (0–1)."""
+        total = (self.fim - self.ini).days or 1
+        return min(max((hoje - self.ini).days / total, 0), 1)
+
+    def projecao(self, hoje: date) -> int | None:
+        """Ao ritmo atual, quanto se terá gasto no fim do prazo (None no início, sem base)."""
+        f = self.decorrido(hoje)
+        return round(self.usado / f) if f >= 0.05 and self.usado else None
+
+
+def plafond(b: Bem, hoje: date) -> Plafond | None:
+    """Plafond de manutenção (ex.: viatura da empresa, X € em 6 anos): o que já se gastou nas idas à oficina."""
+    if not b.plafond_manutencao:
+        return None
+    anos = b.plafond_anos or 6
+    ini = b.plafond_inicio or b.data_aquisicao or (min((m.data for m in b.manutencoes), default=hoje))
+    try:
+        fim = ini.replace(year=ini.year + anos)
+    except ValueError:                       # 29/02
+        fim = ini.replace(year=ini.year + anos, day=28)
+    feitas = [m for m in b.manutencoes if m.custo and ini <= m.data <= fim]
+    return Plafond(b.plafond_manutencao, ini, fim, anos, sum(m.custo for m in feitas), len(feitas))
+
+
 def descricao_carro(b: Bem, hoje: date) -> str:
     linhas = ["Automóvel: " + " ".join(x for x in (b.marca, b.modelo) if x)]
     if b.ano:

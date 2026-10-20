@@ -959,3 +959,11 @@ body.a-personalizar .grupo-cabecalho { flex-wrap: wrap; }
 .grelha-fotos a:hover img { transform: scale(1.04); transition: transform .15s; }
 .foto-video { position: absolute; right: 6px; bottom: 4px; color: #fff; font-size: .8rem; text-shadow: 0 0 4px #000; }
 .lugares-fotos { display: flex; flex-wrap: wrap; gap: .35rem .8rem; margin: 0 0 .4rem; }
+
+/* Viaturas › plafond de manutenção (usado vs. prazo decorrido) */
+.plafond-manutencao { border: 1px solid var(--linha); border-radius: 14px; padding: .8rem 1rem; margin: .9rem 0; }
+.plafond-topo { display: flex; justify-content: space-between; gap: .5rem 1rem; flex-wrap: wrap; align-items: baseline; }
+.plafond-barra { position: relative; height: 10px; border-radius: 999px; background: color-mix(in srgb, var(--suave) 18%, transparent); margin: .6rem 0 .2rem; }
+.plafond-barra .usado { position: absolute; inset: 0 auto 0 0; border-radius: 999px; background: var(--pos); }
+.plafond-barra .usado.neg { background: var(--neg); }
+.plafond-barra .tempo { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--texto); border-radius: 1px; }

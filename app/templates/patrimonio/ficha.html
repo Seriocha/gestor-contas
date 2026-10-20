@@ -18,8 +18,10 @@
 {% if b.notas %}<p class="nota">{{ b.notas }}</p>{% endif %}
 
 {% if b.empresa %}
-<div class="aviso">Viatura da empresa: não conta no património (sem valor nem avaliação). Aqui fica só o combustível alocado a ela{% if b.data_aquisicao or b.data_venda %},
-  {% if b.data_aquisicao %}desde {{ b.data_aquisicao | data }}{% endif %}{% if b.data_venda %} até {{ b.data_venda | data }}{% endif %}{% endif %}.</div>
+<div class="aviso">Viatura da empresa{% if b.data_aquisicao or b.data_venda %}
+  {% if b.data_aquisicao %}desde {{ b.data_aquisicao | data }}{% endif %}{% if b.data_venda %} até {{ b.data_venda | data }}{% endif %}{% endif %}:
+  não conta no património (sem valor nem avaliação). Tem manutenção, km{{ ' e plafond' if b.plafond_manutencao }} como os outros carros;
+  das despesas do banco fica-lhe o combustível alocado.</div>
 <section class="kpi-grelha">
   <div class="cartao kpi"><span class="nota">Combustível em 12 meses</span><strong>{{ c.liquido | eur }}</strong></div>
   <div class="cartao kpi"><span class="nota">Por mês</span><strong>{{ (c.liquido / 12) | round | int | eur }}</strong></div>
@@ -119,7 +121,7 @@
   {% if mr %}<a href="#manutencao" data-tab="manutencao">Manutenção</a>{% endif %}
   <a href="#fuelio" data-tab="fuelio">Abastecimentos</a>
   {% if via_verde %}<a href="#via-verde" data-tab="via-verde">Via Verde</a>{% endif %}
-  <a href="#despesas" data-tab="despesas">{{ 'Combustível' if b.empresa else 'Despesas e receitas' }}</a>
+  <a href="#despesas" data-tab="despesas">Despesas e receitas</a>
 </nav>
 {% endif %}
 {% if mr %}{% include "patrimonio/_manutencao.html" %}{% endif %}
@@ -148,7 +150,7 @@
 {% endif %}
 
 <section class="cartao" id="despesas">
-  <h2>{{ 'Combustível' if b.empresa else 'Despesas e receitas' }} <span class="nota">· desde {{ ini | data }}</span></h2>
+  <h2>Despesas e receitas <span class="nota">· desde {{ ini | data }}</span></h2>
   {% if c.movimentos %}
   {% set n_meses = c.meses | length or 1 %}
   <div class="kpi-linha">
