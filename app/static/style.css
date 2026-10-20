@@ -975,3 +975,5 @@ body.a-personalizar .grupo-cabecalho { flex-wrap: wrap; }
 .tabela tr.detalhe-proposta td { padding-top: 0; border-bottom-width: 2px; }
 .detalhe-proposta details > summary { font-size: .85rem; color: var(--suave); cursor: pointer; }
 .lista-debitos { margin-top: .5rem; }
+
+.consumo-casa { border: 1px solid var(--linha); border-radius: 14px; padding: .8rem 1rem; margin: .4rem 0 1rem; }

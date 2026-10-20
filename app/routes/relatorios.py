@@ -239,7 +239,28 @@ def comparar_fornecedores(request: Request, entidade: IntOpcional = None, catego
                 g.setdefault(d.year, [None] * 12)[d.month - 1] = (sum(v.values()), max(v, key=v.get))
         grelhas.append((b, sorted(g.items(), reverse=True)))
     casas = db.scalars(select(Bem).where(Bem.entidade_id == ent.id, Bem.tipo == "casa").order_by(Bem.nome)).all()
-    return render(request, "relatorios_fornecedores.html", visiveis=visiveis, entidade=ent, a=a, categoria_id=categoria,
+    # consumos da E-Redes: por casa (contadores ligados a uma casa), com o que se pagou
+    from .. import eredes
+    from ..models import ContadorEnergia
+    contadores = db.scalars(select(ContadorEnergia).where(ContadorEnergia.entidade_id == ent.id)
+                            .order_by(ContadorEnergia.cpe)).all()
+    consumo = {}                                  # nome do bloco → [LinhaConsumo]
+    graficos.setdefault("consumo", {})
+    for i, b in enumerate(blocos):
+        cts = [c for c in contadores if c.bem_id and b.bem and c.bem_id == b.bem.id] if b.bem else []
+        if not cts and len(blocos) == 1 and len(contadores) == 1:
+            cts = contadores                      # uma casa só, sem contratos: o único contador é dela
+        meses = [m for c in cts for m in eredes.consumos(c)]
+        if meses:
+            linhas = eredes.correlacionar(meses, b.mensal)
+            consumo[b.nome] = linhas
+            graficos["consumo"][str(i)] = {
+                "rotulos": [rel.rotulo_mes(l.mes.mes) for l in linhas],
+                "kwh": [l.mes.kwh for l in linhas],
+                "eur": [round(l.pago_seguinte / 100, 2) if l.pago_seguinte else None for l in linhas]}
+    if not graficos["consumo"]:
+        graficos.pop("consumo")
+    return render(request, "relatorios_fornecedores.html", contadores=contadores, consumo=consumo, visiveis=visiveis, entidade=ent, a=a, categoria_id=categoria,
                   extras=", ".join(lista_extras), categorias=_categorias(db), cores=cores, graficos=graficos,
                   sugeridos=[(n, k) for n, k in sugeridos.most_common() if k >= 3], blocos=blocos, grelhas=grelhas,
                   casas=casas, meses_pt=rel.MESES_PT, pode_editar=PAPEIS[papel] >= PAPEIS["editar"],
@@ -270,6 +291,50 @@ async def contrato_casa(request: Request, u: Utilizador = Depends(utilizador_atu
     dias = f", dias {c.dia_de}–{c.dia_ate}" if c.dia_de or c.dia_ate else ""
     flash(request, f"{texto}{' ' + ref if ref else ''}{dias} → {bem.nome}.")
     return RedirectResponse(voltar, status_code=303)
+
+
+@router.post("/fornecedores/leituras")
+async def importar_leituras(request: Request, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
+    """Excel de leituras exportado do Balcão Digital da E-Redes (um por contador/CPE)."""
+    from .. import eredes
+    form = await ler_form(request)
+    ent_id = int(form["entidade"]) if str(form.get("entidade", "")).isdigit() else 0
+    exigir_papel(db, u, ent_id, "editar")
+    voltar = str(form.get("voltar", ""))
+    voltar = voltar if voltar.startswith("/relatorios/fornecedores") else f"/relatorios/fornecedores?entidade={ent_id}"
+    ficheiro = form.get("ficheiro")
+    if ficheiro is None or not getattr(ficheiro, "filename", ""):
+        flash(request, "Escolhe o ficheiro Excel da E-Redes.", "erro")
+        return RedirectResponse(voltar, status_code=303)
+    conteudo = await ficheiro.read(servicos.TAMANHO_MAX + 1)
+    try:
+        r = eredes.importar(db, ent_id, conteudo)
+    except eredes.FormatoInvalido as e:
+        flash(request, str(e), "erro")
+        return RedirectResponse(voltar, status_code=303)
+    auditar(db, u, "leituras_eredes", f"{r.contador.cpe}: {r.novas} novas, {r.atualizadas} atualizadas")
+    db.commit()
+    casa = f" · casa: {r.contador.bem.nome}" if r.contador.bem else " · escolhe a casa deste contador"
+    flash(request, f"E-Redes {r.contador.cpe}: {r.novas} leitura{'s' if r.novas != 1 else ''} nova{'s' if r.novas != 1 else ''}"
+                   f"{f', {r.atualizadas} atualizadas' if r.atualizadas else ''} ({r.de:%d/%m/%Y} a {r.ate:%d/%m/%Y}){casa}.")
+    return RedirectResponse(voltar + "#consumos", status_code=303)
+
+
+@router.post("/fornecedores/contador/{cid}")
+async def ligar_contador(request: Request, cid: int, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
+    from ..models import Bem, ContadorEnergia
+    c = db.get(ContadorEnergia, cid)
+    if not c:
+        return RedirectResponse("/relatorios/fornecedores", status_code=303)
+    exigir_papel(db, u, c.entidade_id, "editar")
+    form = await ler_form(request)
+    voltar = str(form.get("voltar", ""))
+    bem = db.get(Bem, int(form["bem"])) if str(form.get("bem", "")).isdigit() else None
+    c.bem_id = bem.id if bem and bem.entidade_id == c.entidade_id and bem.tipo == "casa" else None
+    db.commit()
+    flash(request, f"Contador {c.cpe} → {bem.nome if c.bem_id else 'sem casa'}.")
+    return RedirectResponse((voltar if voltar.startswith("/relatorios/fornecedores") else
+                             f"/relatorios/fornecedores?entidade={c.entidade_id}") + "#consumos", status_code=303)
 
 
 @router.post("/fornecedores/atribuir")

@@ -602,6 +602,37 @@ class ViagemRejeitado(Base):
     movimento_id: Mapped[int] = mapped_column(ForeignKey("movimento.id", ondelete="CASCADE"))
 
 
+class ContadorEnergia(Base):
+    """Contador de eletricidade (CPE) de uma casa, com as leituras importadas do Excel do Balcão Digital da E-Redes."""
+    __tablename__ = "contador_energia"
+    __table_args__ = (UniqueConstraint("entidade_id", "cpe"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entidade_id: Mapped[int] = mapped_column(ForeignKey("entidade.id", ondelete="CASCADE"), index=True)
+    cpe: Mapped[str] = mapped_column(String(30))
+    bem_id: Mapped[int | None] = mapped_column(ForeignKey("bem.id", ondelete="SET NULL"))
+    morada: Mapped[str | None] = mapped_column(String(200))
+    numero: Mapped[str | None] = mapped_column(String(30))             # n.º do contador
+
+    bem: Mapped["Bem | None"] = relationship()
+    leituras: Mapped[list["LeituraEnergia"]] = relationship(back_populates="contador", cascade="all, delete-orphan",
+                                                              order_by="LeituraEnergia.data")
+
+
+class LeituraEnergia(Base):
+    """Leitura acumulada do contador num dia, por período horário (JSON {«Vazio»: 9713, «Ponta»: 1222, …} em kWh)."""
+    __tablename__ = "leitura_energia"
+    __table_args__ = (UniqueConstraint("contador_id", "data"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    contador_id: Mapped[int] = mapped_column(ForeignKey("contador_energia.id", ondelete="CASCADE"), index=True)
+    data: Mapped[date] = mapped_column(Date)
+    valores: Mapped[str] = mapped_column(Text)
+    tipo: Mapped[str | None] = mapped_column(String(20))               # Real | Estimada …
+
+    contador: Mapped[ContadorEnergia] = relationship(back_populates="leituras")
+
+
 class ContratoServico(Base):
     """Um contrato de um serviço da casa (luz, gás, água…) e a casa a que pertence, para a comparação de fornecedores:
     os débitos com o texto (ex.: «EDP»), a referência (o n.º no fim da descrição) e, quando o mesmo fornecedor cobra

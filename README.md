@@ -37,6 +37,12 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.72.0 — Consumos da E-Redes e €/kWh.** A E-Redes não tem API para clientes (o Balcão Digital usa uma API
+  interna com reCAPTCHA no login): importa-se o Excel de leituras exportado no Balcão Digital (Comparar fornecedores ›
+  Consumos (E-Redes) › Importar; um por contador, reimportar atualiza). app/eredes.py lê a morada, o CPE, o n.º do
+  contador e as leituras diárias acumuladas por período (Vazio/Ponta/Cheias…), guarda-as (contador_energia,
+  leitura_energia — migração 0039) e liga o contador à casa pela morada (ou escolhe-se). Em cada casa: kWh por mês e por
+  período, o que se pagou no mês e no seguinte (a fatura chega depois) e o €/kWh efetivo, com gráfico kWh × €.
 - **v0.71.0 — Comparar fornecedores: ver e atribuir cada débito.** Cada contrato proposto tem «Ver os N débitos» (data,
   dia do mês, descrição, conta, valor) para confirmar antes de o ligar a uma casa. Qualquer débito do serviço — por
   atribuir, de uma proposta, de uma casa ou da lista de todos — pode ser escolhido e atribuído à mão a uma casa

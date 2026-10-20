@@ -153,6 +153,34 @@
   {% endif %}
 </section>
 
+<section class="cartao" id="consumos">
+  <h2>Consumos (E-Redes) <span class="nota">· kWh dos contadores, para o €/kWh</span></h2>
+  <p class="nota">No Balcão Digital da E-Redes: Consumos › escolher o local › exportar o Excel das leituras (até 24 meses).
+    Um ficheiro por contador; carregar outra vez o mesmo período só atualiza.</p>
+  {% if pode_editar %}
+  <form method="post" action="/relatorios/fornecedores/leituras" enctype="multipart/form-data" class="linha" style="gap: .6rem; align-items: end; flex-wrap: wrap">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="entidade" value="{{ entidade.id }}">
+    <input type="hidden" name="voltar" value="{{ voltar }}">
+    <label>Excel de leituras <input type="file" name="ficheiro" accept=".xlsx" required></label>
+    <button class="pequeno">Importar</button>
+  </form>
+  {% endif %}
+  {% if contadores %}
+  <div class="rolar separado"><table class="tabela compacta">
+    <thead><tr><th>Contador (CPE)</th><th>Morada</th><th>Leituras</th><th>Casa</th></tr></thead>
+    {% for c in contadores %}
+    <tr><td><strong>{{ c.cpe }}</strong>{% if c.numero %}<br><span class="nota">contador {{ c.numero }}</span>{% endif %}</td>
+      <td class="nota">{{ c.morada or '—' }}</td>
+      <td class="nota sem-quebra">{% if c.leituras %}{{ c.leituras | length }} · {{ c.leituras[0].data | data }} a {{ c.leituras[-1].data | data }}{% else %}—{% endif %}</td>
+      <td>{% if pode_editar and casas %}<form method="post" action="/relatorios/fornecedores/contador/{{ c.id }}" class="linha" style="gap: .4rem; flex-wrap: nowrap">
+        <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="voltar" value="{{ voltar }}">
+        <select name="bem" aria-label="Casa"><option value="">— sem casa —</option>{% for b in casas %}<option value="{{ b.id }}" {% if b.id == c.bem_id %}selected{% endif %}>{{ b.nome }}</option>{% endfor %}</select>
+        <button class="pequeno">Guardar</button></form>{% else %}{{ c.bem.nome if c.bem else '—' }}{% endif %}</td></tr>
+    {% endfor %}
+  </table></div>
+  {% endif %}
+</section>
+
 {% if graficos.fornecedores_casas %}
 <section class="cartao">
   <h2>Ano a ano <span class="nota">· uma barra por casa, por fornecedor</span></h2>
@@ -166,6 +194,28 @@
 <section class="cartao bloco-casa" id="casa-{{ loop.index }}">
   <h2>{{ b.nome }} <span class="nota">· {{ b.total | eur }} em {{ b.anos | length }} ano{{ 's' if b.anos | length != 1 }}{{ ' · ' ~ (a.categoria.nome_completo if a.categoria else 'textos') }}</span></h2>
   {{ mudancas(b) }}
+  {% set linhas_c = consumo.get(b.nome) %}
+  {% if linhas_c %}
+  {% set completas = linhas_c | selectattr('eur_kwh') | list %}
+  {% set kwh_t = completas | map(attribute='mes.kwh') | sum %}{% set eur_t = completas | map(attribute='pago_seguinte') | sum %}
+  <div class="consumo-casa">
+    <h3 class="sem-margem">Consumo e €/kWh <span class="nota">· E-Redes{{ ' · ' ~ ((eur_t / 100 / kwh_t) | round(3) | string).replace('.', ',') ~ ' €/kWh em média' if kwh_t }}</span></h3>
+    <div class="grafico grafico-medio"><canvas data-grafico="consumo" data-chave="{{ loop.index0 }}" aria-label="kWh por mês e o que se pagou" role="img"></canvas></div>
+    <div class="rolar"><table class="tabela compacta">
+      <thead><tr><th>Mês</th>{% for p in linhas_c[0].mes.por_periodo %}<th class="num">{{ p }}</th>{% endfor %}<th class="num">kWh</th>
+        <th class="num">Pago no mês</th><th class="num">Pago no mês seguinte</th><th class="num">€/kWh</th></tr></thead>
+      {% for l in linhas_c | reverse %}
+      <tr><th scope="row" class="sem-quebra">{{ meses_pt[l.mes.mes.month - 1] }} {{ l.mes.mes.year }}{% if not l.mes.completo %} <span class="nota">({{ l.mes.dias }} dias)</span>{% endif %}</th>
+        {% for p, v in l.mes.por_periodo.items() %}<td class="num nota">{{ v }}</td>{% endfor %}
+        <td class="num"><strong>{{ l.mes.kwh }}</strong></td>
+        <td class="num">{{ l.pago_mes | eur if l.pago_mes else '—' }}</td><td class="num">{{ l.pago_seguinte | eur if l.pago_seguinte else '—' }}</td>
+        <td class="num">{{ ('%.3f' % l.eur_kwh).replace('.', ',') if l.eur_kwh else '—' }}</td></tr>
+      {% endfor %}
+    </table></div>
+    <p class="nota sem-margem">O €/kWh usa o débito do mês seguinte (a fatura chega depois do consumo) e inclui a potência contratada,
+      taxas e IVA — é o custo efetivo, não o preço da energia. Meses incompletos ou com acertos dão valores fora do normal.</p>
+  </div>
+  {% endif %}
   {% if not graficos.fornecedores_casas and graficos.despesas_bem %}<div class="grafico grafico-medio"><canvas data-grafico="despesas_bem" aria-label="Total por ano e fornecedor" role="img"></canvas></div>{% endif %}
   {{ tabela_anos(b) }}
   <details class="separado"><summary>Os {{ b.movimentos | length }} débitos{{ ' por atribuir' if not b.bem else ' de ' ~ b.nome }}

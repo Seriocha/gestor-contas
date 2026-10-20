@@ -160,6 +160,25 @@
       });
     },
 
+    consumo(canvas) {
+      // Comparar fornecedores: kWh do mês (E-Redes) e o débito do mês seguinte, uma casa por gráfico (data-chave).
+      const d = dados.consumo[canvas.dataset.chave];
+      new Chart(canvas, {
+        data: { labels: d.rotulos, datasets: [
+          { type: 'bar', label: 'kWh', data: d.kwh, backgroundColor: COR.receitas + 'cc', borderRadius: 3, maxBarThickness: 26, yAxisID: 'y' },
+          { type: 'line', label: 'Pago (fatura do mês seguinte)', data: d.eur, borderColor: COR.despesas, backgroundColor: COR.despesas,
+            borderWidth: 2, tension: 0.2, pointRadius: 3, spanGaps: false, yAxisID: 'y2' },
+        ] },
+        options: { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+          plugins: { legend: { position: 'top', align: 'end', labels: { boxWidth: 10, boxHeight: 10 } },
+            tooltip: { callbacks: { label: ctx => ctx.dataset.yAxisID === 'y'
+              ? `kWh: ${new Intl.NumberFormat('pt-PT').format(ctx.parsed.y)}` : `${ctx.dataset.label}: ${eur.format(ctx.parsed.y)}` } } },
+          scales: { x: eixos.x,
+            y: { grid: { color: COR.linha }, border: { display: false }, ticks: { maxTicksLimit: 5, callback: v => v + ' kWh' } },
+            y2: { position: 'right', grid: { display: false }, border: { display: false }, ticks: { callback: eurCurto, maxTicksLimit: 5 } } } },
+      });
+    },
+
     inicio_evolucao(canvas) {
       // Ativos e passivos (barras) e património líquido (linha) nos últimos 12 meses.
       const d = dados.inicio_evolucao;
