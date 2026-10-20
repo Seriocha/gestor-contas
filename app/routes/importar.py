@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from datetime import date
 
-from .. import investimentos, servicos, tarefas
+from .. import investimentos, recibos_envio, servicos, tarefas
 from ..deps import (IntOpcional, auditar, entidade_escolhida, entidades_visiveis, exigir_papel, flash, get_db, papel_em,
                     render, utilizador_atual)
 from ..models import PAPEIS, Conta, Importacao, ImportacaoPendente, Utilizador
@@ -87,6 +87,56 @@ def tarefas_do_mes(request: Request, entidade: IntOpcional = None, u: Utilizador
                   pode_editar=bool(papel) and PAPEIS[papel] >= PAPEIS["editar"], ativas=ativas,
                   dia_ini=dia_ini, dia_fim=dia_fim, na_janela=tarefas.na_janela(prefs, hoje),
                   por_fazer=sum(b.por_fazer for b in bancos))
+
+
+def _recibos_ctx(request: Request, db: Session, u: Utilizador, **extra) -> dict:
+    """Quem pode enviar: o próprio (com token) e, para administradores, qualquer utilizador com token."""
+    from .. import paperless
+    segredo = request.app.state.defs.secret_key
+    if u.is_admin:
+        candidatos = db.scalars(select(Utilizador).where(Utilizador.ativo).order_by(Utilizador.nome)).all()
+    else:
+        candidatos = [u]
+    return {"paperless_cfg": paperless.configurado(), "max_ficheiros": recibos_envio.MAX_FICHEIROS,
+            "utilizadores": [(x, bool(paperless.token_de(x, segredo))) for x in candidatos], **extra}
+
+
+@router.get("/recibos")
+def recibos_form(request: Request, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
+    """Enviar recibos de vencimento (PDF com password) para o Paperless: tira a password em memória e envia."""
+    return render(request, "importar/recibos.html", **_recibos_ctx(request, db, u, resultados=None, uid=u.id))
+
+
+@router.post("/recibos")
+async def recibos_enviar(request: Request, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
+    from .. import paperless, recibos_envio as re_
+    form = await ler_form(request)
+    uid = int(form["utilizador"]) if str(form.get("utilizador", "")).isdigit() else u.id
+    if uid != u.id and not u.is_admin:
+        raise HTTPException(status_code=403, detail="Sem permissão para esta operação.")
+    dono = db.get(Utilizador, uid) or u
+    token = paperless.token_de(dono, request.app.state.defs.secret_key)
+    ficheiros = []
+    for f in form.getlist("ficheiros"):
+        if getattr(f, "filename", ""):
+            conteudo = await f.read(servicos.TAMANHO_MAX + 1)
+            if len(conteudo) <= servicos.TAMANHO_MAX:
+                ficheiros.append((f.filename, conteudo))
+    erro = None
+    if not ficheiros:
+        erro = "Escolhe os ficheiros PDF dos recibos."
+    elif not token:
+        erro = f"{dono.nome} não tem token do Paperless (Perfil, ou Administração › Utilizadores › Ligações)."
+    resultados = None
+    if not erro:
+        senhas = [str(form.get("senha", "")), str(form.get("senha2", ""))]      # nunca guardadas nem registadas
+        resultados = re_.processar(ficheiros, senhas, token, enviar=form.get("acao") != "verificar")
+        enviados = sum(1 for r in resultados if r.estado == "enviado")
+        if enviados:
+            auditar(db, u, "recibos_paperless", f"{enviados} enviado(s) com o token de {dono.login}")
+            db.commit()
+    return render(request, "importar/recibos.html", status_code=400 if erro else 200,
+                  **_recibos_ctx(request, db, u, resultados=resultados, erro=erro, uid=uid))
 
 
 @router.get("")

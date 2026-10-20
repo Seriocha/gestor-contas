@@ -109,6 +109,37 @@ def enviar(metodo: str, caminho: str, corpo: dict, *, token: str | None):
     return json.loads(dados.decode()) if dados else {}
 
 
+def enviar_documento(nome: str, conteudo: bytes, *, token: str | None, titulo: str | None = None) -> str:
+    """Carrega um ficheiro no Paperless (POST /api/documents/post_document/, multipart). Devolve o id da tarefa de
+    consumo; o documento fica com o dono = utilizador do token e passa pelos fluxos de entrada."""
+    if not configurado():
+        raise ErroPaperless("O Paperless não está configurado (paperless.env na NAS).")
+    if not token:
+        raise ErroPaperless("Falta o token do Paperless.")
+    fronteira = "----gestor" + hashlib.sha256(conteudo[:256] + nome.encode()).hexdigest()[:24]
+    partes = []
+    if titulo:
+        partes.append(f'--{fronteira}\r\nContent-Disposition: form-data; name="title"\r\n\r\n{titulo}\r\n'.encode())
+    nome_seguro = nome.replace('"', "").replace("\r", "").replace("\n", "")
+    partes.append(f'--{fronteira}\r\nContent-Disposition: form-data; name="document"; filename="{nome_seguro}"\r\n'
+                  f'Content-Type: application/pdf\r\n\r\n'.encode() + conteudo + b"\r\n")
+    corpo = b"".join(partes) + f"--{fronteira}--\r\n".encode()
+    pedido = urllib.request.Request(f"{url_api()}/api/documents/post_document/", data=corpo, method="POST", headers={
+        "Authorization": f"Token {token.strip()}", "Accept": "application/json",
+        "Content-Type": f"multipart/form-data; boundary={fronteira}"})
+    try:
+        with urllib.request.urlopen(pedido, timeout=60) as r:
+            dados = r.read().decode().strip()
+    except urllib.error.HTTPError as e:
+        raise ErroPaperless(f"O Paperless respondeu {e.code}." + (" Confirma o token." if e.code in (401, 403) else "")) from e
+    except (urllib.error.URLError, TimeoutError, OSError) as e:
+        raise ErroPaperless(f"Sem ligação ao Paperless ({e}).") from e
+    try:
+        return str(json.loads(dados))
+    except json.JSONDecodeError:
+        return dados.strip('"')
+
+
 @dataclass
 class Documento:
     id: int

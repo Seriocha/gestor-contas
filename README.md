@@ -37,6 +37,11 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.74.0 — Recibos com password para o Paperless.** Importar › Recibos (Paperless): escolhem-se vários PDFs de uma
+  vez (até 24), a password (e uma 2.ª opcional, para recibos antigos) e o dono; o Gestor tira a password em memória
+  (pypdf), confirma que o PDF tem texto e envia-o ao Paperless (POST /api/documents/post_document/) com o token do dono,
+  onde o fluxo «Entrada Vencimento» o classifica. «Só verificar» testa sem enviar. Nada fica gravado no Gestor e a
+  password não é guardada nem registada (app/recibos_envio.py; pypdf nas dependências).
 - **v0.73.0 — Circuitos do Paperless pela app.** Administração › Paperless cria no Paperless, sem duplicar, o que um
   tipo de documento precisa (em vez dos scripts PowerShell): modelos «Recibo de vencimento» (tipo, empregador, etiqueta
   Vencimento, campos Período/Bruto/Descontos/Líquido/Cartão refeição, caminho Pessoal - Vencimentos e o fluxo de entrada

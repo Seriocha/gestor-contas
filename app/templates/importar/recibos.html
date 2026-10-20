@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% from "_abas.html" import abas_importar with context %}
+{% block titulo %}Recibos para o Paperless{% endblock %}
+{% block conteudo %}
+<div class="titulo-acoes"><h1>Importar</h1></div>
+{{ abas_importar() }}
+{% if not paperless_cfg %}
+<section class="cartao"><p class="vazio sem-margem">O Paperless não está configurado (paperless.env na NAS).</p></section>
+{% else %}
+<section class="cartao">
+  <h2>Recibos de vencimento para o Paperless</h2>
+  <p class="nota">Os recibos vêm com password e assim o Paperless não lhes lê o texto. Aqui a password é tirada <strong>em
+    memória</strong> (nada fica gravado no Gestor, nem a password) e o PDF segue para o Paperless, onde o fluxo «Entrada
+    Vencimento» lhe dá o tipo, a etiqueta e o dono. Podes escolher vários ficheiros de uma vez (até {{ max_ficheiros }}).</p>
+  <form method="post" action="/importar/recibos" enctype="multipart/form-data" class="formulario" style="max-width: 40rem">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <label>Recibos (PDF) <input type="file" name="ficheiros" accept="application/pdf,.pdf" multiple required></label>
+    <div class="linha">
+      <label>Password <input type="password" name="senha" autocomplete="off"></label>
+      <label>2.ª password (opcional) <input type="password" name="senha2" autocomplete="off">
+        <span class="nota">ex.: recibos antigos com outra password</span></label>
+    </div>
+    <label>Dono no Paperless
+      <select name="utilizador">{% for x, tem in utilizadores %}<option value="{{ x.id }}" {% if x.id == uid %}selected{% endif %} {% if not tem %}disabled{% endif %}>{{ x.nome }}{{ '' if tem else ' (sem token)' }}</option>{% endfor %}</select>
+      <span class="nota">os documentos ficam com o dono do token usado — só ele os vê.</span></label>
+    <div class="acoes-form">
+      <button name="acao" value="verificar">Só verificar (não envia)</button>
+      <button class="primario" name="acao" value="enviar">Tirar a password e enviar</button>
+    </div>
+  </form>
+</section>
+
+{% if erro %}<div class="aviso aviso-erro">{{ erro }}</div>{% endif %}
+
+{% if resultados %}
+{% set enviados = resultados | selectattr('estado', 'equalto', 'enviado') | list | length %}
+<section class="cartao" id="resultados">
+  <h2>Resultado <span class="nota">· {{ resultados | length }} ficheiro{{ 's' if resultados | length != 1 }}{{ ' · ' ~ enviados ~ ' enviado' ~ ('s' if enviados != 1 else '') if enviados }}</span></h2>
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th>Ficheiro</th><th>Password</th><th class="num">Páginas</th><th>Texto</th><th>Estado</th></tr></thead>
+    {% for r in resultados %}
+    <tr><td><strong>{{ r.nome }}</strong></td>
+      <td class="nota">{{ 'tirada' if r.protegido and r.estado != 'erro' else ('—' if not r.protegido else '') }}</td>
+      <td class="num">{{ r.paginas or '' }}</td>
+      <td>{% if r.paginas %}<span class="etiqueta {{ 'etiqueta-ok' if r.com_texto else 'etiqueta-cor' }}">{{ 'sim' if r.com_texto else 'não (imagem)' }}</span>{% endif %}</td>
+      <td><span class="etiqueta {{ {'enviado': 'etiqueta-ok', 'erro': 'etiqueta-erro', 'ignorado': ''}.get(r.estado, '') }}">{{ {'enviado': 'enviado', 'erro': 'erro', 'ignorado': 'verificado (não enviado)'}.get(r.estado, r.estado) }}</span>
+        {% if r.detalhe %}<br><span class="nota">{{ r.detalhe }}</span>{% endif %}</td></tr>
+    {% endfor %}
+  </table></div>
+  {% if enviados %}<p class="nota sem-margem">O Paperless processa-os em segundo plano (Paperless › Tarefas). Um recibo que já lá
+    esteja é recusado como duplicado.</p>{% endif %}
+</section>
+{% endif %}
+{% endif %}
+{% endblock %}
