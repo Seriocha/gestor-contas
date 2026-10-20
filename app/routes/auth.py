@@ -115,9 +115,10 @@ def _paperless_ctx(request: Request, u: Utilizador) -> dict:
     from .. import paperless
     segredo = request.app.state.defs.secret_key
     pessoal = bool(paperless.decifrar(u.paperless_token, segredo))
+    from .. import chaves_api
     return {"paperless_cfg": paperless.configurado(), "paperless_pessoal": pessoal,
             "paperless_partilhado": not pessoal and bool(paperless.token_de(u, segredo)),
-            "paperless_link": paperless.url_browser()}
+            "paperless_link": paperless.url_browser(), "tokens_admin": chaves_api.pelo_admin(request.app.state.prefs)}
 
 
 def _immich_ctx(request: Request, u: Utilizador) -> dict:
@@ -136,8 +137,11 @@ def perfil_form(request: Request, u: Utilizador = Depends(utilizador_atual)):
 @router.post("/perfil/immich")
 async def perfil_immich(request: Request, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
     """Chave pessoal da API do Immich: guardar (depois de a testar), testar ou remover."""
-    from .. import immich
+    from .. import chaves_api, immich
     form = await ler_form(request)
+    if chaves_api.pelo_admin(request.app.state.prefs):
+        flash(request, "A chave do Immich é configurada pelo administrador (Administração › Utilizadores).", "erro")
+        return RedirectResponse("/perfil#immich", status_code=303)
     acao, segredo = str(form.get("acao", "")), request.app.state.defs.secret_key
     if acao == "remover":
         u.immich_token = None
@@ -172,8 +176,11 @@ async def perfil_immich(request: Request, u: Utilizador = Depends(utilizador_atu
 @router.post("/perfil/paperless")
 async def perfil_paperless(request: Request, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
     """Token pessoal do Paperless: guardar (depois de o testar), testar ou remover."""
-    from .. import paperless
+    from .. import chaves_api, paperless
     form = await ler_form(request)
+    if chaves_api.pelo_admin(request.app.state.prefs):
+        flash(request, "O token do Paperless é configurado pelo administrador (Administração › Utilizadores).", "erro")
+        return RedirectResponse("/perfil#paperless", status_code=303)
     acao, segredo = str(form.get("acao", "")), request.app.state.defs.secret_key
     if acao == "remover":
         u.paperless_token = None

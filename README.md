@@ -37,6 +37,16 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.67.0 — As fotografias ajudam a detetar viagens.** Em Viagens › Detetar viagens, quem tem chave do Immich vê em
+  cada período «📷 N fotos · Albufeira, Portugal …» (os lugares mais fotografados, carregados depois da página, 3
+  períodos de cada vez) e a etiqueta «📷 confirmada pelas fotos» quando há fotos noutro país ou metade das fotos com
+  cidade é fora de casa (cidades de casa em GESTOR_CIDADES_CASA; por omissão, Lisboa e arredores). O «+ Criar viagem»
+  leva o destino e o país do lugar mais fotografado quando a IA não os deu, e a IA recebe os lugares das fotos (só
+  «cidade, país» e quantas fotos — nunca nomes de ficheiros, datas ou coordenadas).
+  Nova preferência «As chaves da API de cada pessoa são configuradas pelo administrador» (Administração › Preferências):
+  ligada, o token do Paperless e a chave do Immich de cada utilizador configuram-se em Administração › Utilizadores ›
+  (utilizador) › Ligações (guardar depois de testar, testar, remover — app/chaves_api.py) e o Perfil só mostra o estado;
+  desligada (por omissão), cada pessoa guarda as suas no Perfil, como antes.
 - **v0.66.0 — Viagens com menu próprio e fotografias do Immich.** «Viagens» passa a ser um grupo do menu (ao nível de
   Dinheiro e Dados), com «Viagens» e «Detetar viagens». Ligação ao Immich da NAS, como a do Paperless: `immich.env`
   (GESTOR_IMMICH_URL/LINK, opcional GESTOR_IMMICH_TOKEN partilhado para administradores) e uma chave da API por pessoa

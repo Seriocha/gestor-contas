@@ -26,6 +26,9 @@ OMISSAO = {
     "pasta_intervalo_minutos": "60",
     # Paperless: etiqueta ou tipo de documento dos extratos bancários a importar.
     "paperless_extratos": "Extrato bancário",
+    # «1»: as chaves da API do Paperless e do Immich de cada pessoa são configuradas pelo administrador
+    # (Administração › Utilizadores); no Perfil só se vê o estado. «0»: cada pessoa guarda a sua no Perfil.
+    "tokens_pelo_admin": "0",
 }
 
 

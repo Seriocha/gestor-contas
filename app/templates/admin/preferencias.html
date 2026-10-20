@@ -20,6 +20,14 @@
         Mostrar a minha parte nas heranças (quota e 2.º cenário), também no Início da entidade pessoal</label>
     </fieldset>
     <fieldset>
+      <legend>Ligações (Paperless e Immich)</legend>
+      <label class="opcao"><input type="checkbox" name="tokens_pelo_admin" value="1" {% if prefs.tokens_pelo_admin == '1' %}checked{% endif %}>
+        As chaves da API de cada pessoa são configuradas pelo administrador</label>
+      <p class="nota sem-margem">Ligado: o token do Paperless e a chave do Immich de cada utilizador configuram-se em
+        <a href="/admin/utilizadores">Administração › Utilizadores</a> › (utilizador) › Ligações; no Perfil cada pessoa só vê o
+        estado. Desligado: cada pessoa guarda as suas no Perfil. As chaves já guardadas mantêm-se ao mudar.</p>
+    </fieldset>
+    <fieldset>
       <legend>Lembrete das tarefas de importação</legend>
       <label class="opcao"><input type="checkbox" name="tarefas_ativas" value="1" {% if prefs.tarefas_ativas == '1' %}checked{% endif %}>
         Lembrar as tarefas do mês (agenda do Início e aviso em Contas e fluxo)</label>

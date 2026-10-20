@@ -21,6 +21,9 @@
 <p>{% if paperless_pessoal %}<span class="etiqueta etiqueta-ok">token pessoal guardado</span>
   {% elif paperless_partilhado %}<span class="etiqueta etiqueta-cor">a usar o token partilhado (administrador)</span> — guarda o teu para cada um ver só o seu.
   {% else %}<span class="etiqueta etiqueta-erro">sem token</span> — os documentos do Paperless não aparecem para ti.{% endif %}</p>
+{% if tokens_admin %}
+<p class="nota">O token do Paperless é configurado pelo administrador (Administração › Utilizadores). Se precisares de mudar, pede-lhe.</p>
+{% else %}
 <form method="post" action="/perfil/paperless" class="formulario estreito">
   <input type="hidden" name="csrf" value="{{ csrf_token }}">
   <label>Token da API do Paperless <input name="token" type="password" autocomplete="off" placeholder="{{ '•••••• (guardado)' if paperless_pessoal else 'colar aqui' }}"></label>
@@ -30,6 +33,7 @@
     {% if paperless_pessoal %}<button class="perigo" name="acao" value="remover" formnovalidate onclick="return confirm('Remover o teu token do Paperless?')">Remover</button>{% endif %}
   </div>
 </form>
+{% endif %}
 {% if paperless_link %}<p class="nota"><a href="{{ paperless_link }}" target="_blank" rel="noopener">Abrir o Paperless</a></p>{% endif %}
 {% endif %}
 
@@ -41,6 +45,9 @@
 <p>{% if immich_pessoal %}<span class="etiqueta etiqueta-ok">chave pessoal guardada</span>
   {% elif immich_partilhado %}<span class="etiqueta etiqueta-cor">a usar a chave partilhada (administrador)</span> — guarda a tua para veres as tuas fotos.
   {% else %}<span class="etiqueta etiqueta-erro">sem chave</span> — as fotos do Immich não aparecem para ti.{% endif %}</p>
+{% if tokens_admin %}
+<p class="nota">A chave do Immich é configurada pelo administrador (Administração › Utilizadores). Se precisares de mudar, pede-lhe.</p>
+{% else %}
 <form method="post" action="/perfil/immich" class="formulario estreito">
   <input type="hidden" name="csrf" value="{{ csrf_token }}">
   <label>Chave da API do Immich <input name="token" type="password" autocomplete="off" placeholder="{{ '•••••• (guardada)' if immich_pessoal else 'colar aqui' }}"></label>
@@ -50,6 +57,7 @@
     {% if immich_pessoal %}<button class="perigo" name="acao" value="remover" formnovalidate onclick="return confirm('Remover a tua chave do Immich?')">Remover</button>{% endif %}
   </div>
 </form>
+{% endif %}
 {% if immich_link %}<p class="nota"><a href="{{ immich_link }}" target="_blank" rel="noopener">Abrir o Immich</a></p>{% endif %}
 {% endif %}
 {% endblock %}

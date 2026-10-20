@@ -950,6 +950,7 @@ body.a-personalizar .grupo-cabecalho { flex-wrap: wrap; }
 .comerciantes-periodo span { font-size: .8rem; padding: .15rem .5rem; border-radius: 6px; background: color-mix(in srgb, var(--suave) 12%, transparent); }
 .acoes-periodo { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; margin-top: .9rem; }
 .acoes-periodo form { display: inline; margin: 0; }
+.fotos-periodo-caixa { margin: 0 0 .6rem; }
 
 /* Viagens › Fotografias (Immich) */
 .grelha-fotos { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; margin: .6rem 0; }

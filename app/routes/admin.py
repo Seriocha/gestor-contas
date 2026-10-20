@@ -122,8 +122,32 @@ def editar_form(request: Request, uid: int, admin: Utilizador = Depends(exigir_a
     papeis = {p.entidade_id: p.papel for p in alvo.permissoes}
     v = {"nome": alvo.nome, "login": alvo.login, "email": alvo.email or "", "is_admin": alvo.is_admin,
          "ativo": alvo.ativo}
+    from .. import chaves_api
     return render(request, "admin/utilizador_form.html", alvo=alvo, entidades=_entidades(db), papeis=papeis,
-                  rotulos=PAPEIS_ROTULO, v=v)
+                  rotulos=PAPEIS_ROTULO, v=v, tokens_admin=chaves_api.pelo_admin(request.app.state.prefs),
+                  ligacoes=chaves_api.estado(alvo, request.app.state.defs.secret_key))
+
+
+@router.post("/utilizadores/{uid}/ligacao")
+async def ligacao_utilizador(request: Request, uid: int, admin: Utilizador = Depends(exigir_admin),
+                             db: Session = Depends(get_db)):
+    """Chave da API do Paperless/Immich de um utilizador, configurada pelo administrador (com a preferência ligada)."""
+    from .. import chaves_api
+    alvo = db.get(Utilizador, uid) or _404()
+    form = await ler_form(request)
+    servico = str(form.get("servico", ""))
+    if servico not in chaves_api.SERVICOS:
+        _404()
+    if not chaves_api.pelo_admin(request.app.state.prefs):
+        flash(request, "Liga primeiro, em Preferências, a opção de as chaves serem configuradas pelo administrador.", "erro")
+        return RedirectResponse(f"/admin/utilizadores/{uid}#ligacoes", status_code=303)
+    acao = str(form.get("acao", ""))
+    msg, tipo = chaves_api.gerir(alvo, servico, acao, str(form.get("token", "")), request.app.state.defs.secret_key)
+    if tipo == "ok" and acao != "testar":
+        auditar(db, admin, f"{servico}_token_{'removido' if acao == 'remover' else 'guardado'}", alvo.login)
+        db.commit()
+    flash(request, msg, tipo)
+    return RedirectResponse(f"/admin/utilizadores/{uid}#ligacoes", status_code=303)
 
 
 @router.post("/utilizadores/{uid}")
@@ -285,6 +309,8 @@ async def gravar_preferencias(request: Request, admin: Utilizador = Depends(exig
     preferencias.gravar(db, "avaliacao_automatica", avaliacao)
     minha_parte = "1" if form.get("mostrar_minha_parte") == "1" else "0"
     preferencias.gravar(db, "mostrar_minha_parte", minha_parte)
+    tokens_admin = "1" if form.get("tokens_pelo_admin") == "1" else "0"
+    preferencias.gravar(db, "tokens_pelo_admin", tokens_admin)
     dias = {}
     for chave in ("tarefas_dia_ini", "tarefas_dia_fim"):
         v = str(form.get(chave, "")).strip()
@@ -294,7 +320,7 @@ async def gravar_preferencias(request: Request, admin: Utilizador = Depends(exig
                 return RedirectResponse("/admin/preferencias", status_code=303)
             preferencias.gravar(db, chave, str(int(v)))
             dias[chave] = int(v)
-    auditar(db, admin, "preferencias", f"mostrar_iban_completo={mostrar} tarefas_ativas={ativas} avaliacao_automatica={avaliacao} mostrar_minha_parte={minha_parte} {dias}")
+    auditar(db, admin, "preferencias", f"mostrar_iban_completo={mostrar} tarefas_ativas={ativas} avaliacao_automatica={avaliacao} mostrar_minha_parte={minha_parte} tokens_pelo_admin={tokens_admin} {dias}")
     db.commit()
     request.app.state.prefs = preferencias.carregar(db)
     flash(request, "Preferências guardadas.")

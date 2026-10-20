@@ -120,3 +120,134 @@ def test_revisao_pela_ia(app, admin, monkeypatch):
     # analisar os que faltam: só o outro período
     admin.post("/viagens/detetar/ia", data={"csrf": _csrf(t), "entidade": "1"})
     assert len(enviados) == 2
+
+
+# ------------------------------------------------------------------ fotografias do Immich (simulado)
+FOTOS = [  # (dia, cidade, país, ficheiro)
+    ("2025-05-20", "Muros", "Spain", "IMG_0001.jpg"), ("2025-05-22", "Santiago de Compostela", "Spain", "IMG_0002.jpg"),
+    ("2025-05-23", "Santiago de Compostela", "Spain", "IMG_0003.jpg"),
+    ("2025-08-10", "Albufeira", "Portugal", "praia.jpg"), ("2025-08-11", "Albufeira", "Portugal", "jantar.jpg"),
+    ("2025-08-13", "Lagos", "Portugal", "barco.mp4"), ("2025-08-14", "Lisboa", "Portugal", "regresso.jpg"),
+    ("2025-09-06", "Lisboa", "Portugal", "casa.jpg"), ("2025-09-07", "Loures", "Portugal", "jardim.jpg"),
+]
+
+
+@pytest.fixture
+def immich_falso(monkeypatch):
+    from app import immich
+    monkeypatch.setenv("GESTOR_IMMICH_URL", "http://immich_server:2283")
+    monkeypatch.delenv("GESTOR_IMMICH_TOKEN", raising=False)
+    monkeypatch.delenv("GESTOR_CIDADES_CASA", raising=False)
+    pedidos = []
+
+    def falso(caminho, metodo="GET", corpo=None, binario=False, chave=None):
+        if not chave:
+            raise immich.ErroImmich("Guarda a tua chave da API do Immich em Perfil.")
+        pedidos.append(caminho)
+        if caminho == "/api/users/me":
+            return {"name": "Sérgio"}
+        assert caminho == "/api/search/metadata"
+        ini, fim = corpo["takenAfter"][:10], corpo["takenBefore"][:10]
+        return {"assets": {"nextPage": None, "items": [
+            {"id": f"id-{i}", "type": "IMAGE", "originalFileName": nome, "localDateTime": f"{dia}T12:00:00.000Z",
+             "exifInfo": {"city": cidade, "country": pais, "latitude": 37.08, "longitude": -8.25}}
+            for i, (dia, cidade, pais, nome) in enumerate(FOTOS) if ini <= dia <= fim]}}
+    monkeypatch.setattr(immich, "_pedido", falso)
+    return pedidos
+
+
+def _guardar_chave_immich(c):
+    r = c.post("/perfil/immich", data={"csrf": _csrf(c.get("/perfil")), "acao": "guardar", "token": "chave-boa"})
+    assert "Chave do Immich guardada" in r.text
+
+
+def test_resumo_fotos():
+    from app.immich import Foto, Fotos
+
+    def fotos(*lugares):
+        return Fotos([Foto(str(i), "x.jpg", None, c, p) for i, (c, p) in enumerate(lugares)], len(lugares))
+    galiza = vd.resumo_fotos(fotos(("Muros", "Spain"), ("Santiago de Compostela", "Spain"), ("Santiago de Compostela", "Spain"),
+                                   ("Lisboa", "Portugal")))
+    assert galiza.confirmada and galiza.estrangeiro == ["Spain"] and (galiza.destino, galiza.pais) == ("Santiago de Compostela", "Spain")
+    assert galiza.motivo == "fotos em Spain"
+    algarve = vd.resumo_fotos(fotos(("Albufeira", "Portugal"), ("Albufeira", "Portugal"), ("Lisboa", "Portugal")))
+    assert algarve.confirmada and (algarve.destino, algarve.pais) == ("Albufeira", "Portugal") and not algarve.estrangeiro
+    casa = vd.resumo_fotos(fotos(("Lisboa", "Portugal"), ("Loures", "Portugal"), ("Albufeira", "Portugal")))
+    assert not casa.confirmada and casa.destino == "Albufeira"            # 1 de 3 fora de casa: não chega
+    sem_gps = vd.resumo_fotos(fotos((None, None), (None, None)))
+    assert sem_gps.total == 2 and not sem_gps.confirmada and not sem_gps.destino and not sem_gps.lugares
+
+
+def test_resumo_fotos_cidades_casa_configuraveis(monkeypatch):
+    from app.immich import Foto, Fotos
+    monkeypatch.setenv("GESTOR_CIDADES_CASA", "Albufeira")
+    r = vd.resumo_fotos(Fotos([Foto("1", "x.jpg", None, "Albufeira", "Portugal")], 1))
+    assert not r.confirmada and not r.destino
+
+
+def test_fotos_por_periodo(app, admin, immich_falso):
+    t = admin.get("/viagens/detetar?entidade=1").text
+    assert "fotos-periodo-caixa" not in t                                    # sem chave do Immich: nada muda
+    _guardar_chave_immich(admin)
+    t = admin.get("/viagens/detetar?entidade=1").text
+    assert immich_falso == ["/api/users/me"]                                 # a página não espera pelo Immich
+    assert 'data-url="/viagens/detetar/fotos?entidade=1&ini=2025-08-10&fim=2025-08-14"' in t
+    assert 'data-url="/viagens/detetar/fotos?entidade=1&ini=2025-05-20&fim=2025-05-24"' in t
+    assert "criar-viagem" in t and "carregarFotos" in t
+    # Algarve: fotos longe de casa
+    f = admin.get("/viagens/detetar/fotos?entidade=1&ini=2025-08-10&fim=2025-08-14").text
+    assert "📷 4 fotos" in f and "Albufeira, Portugal <span class=\"nota\">(2)</span>" in f and "Lagos, Portugal" in f
+    assert "confirmada pelas fotos" in f and 'data-destino="Albufeira" data-pais="Portugal"' in f
+    assert "praia.jpg" not in f
+    # Galiza: o destino é o lugar mais fotografado no estrangeiro
+    f = admin.get("/viagens/detetar/fotos?entidade=1&ini=2025-05-20&fim=2025-05-24").text
+    assert "📷 3 fotos" in f and "confirmada pelas fotos" in f and 'title="fotos em Spain"' in f
+    assert 'data-destino="Santiago de Compostela" data-pais="Spain"' in f
+    # fotos só em casa: não confirma; sem fotos
+    f = admin.get("/viagens/detetar/fotos?entidade=1&ini=2025-09-06&fim=2025-09-07").text
+    assert "📷 2 fotos" in f and "confirmada" not in f
+    assert "Sem fotos no Immich" in admin.get("/viagens/detetar/fotos?entidade=1&ini=2025-01-10&fim=2025-01-12").text
+    # datas inválidas ou entidade alheia
+    assert admin.get("/viagens/detetar/fotos?entidade=1&ini=2025-02-30&fim=2025-03-02").status_code == 400
+    assert admin.get("/viagens/detetar/fotos?entidade=1&ini=2025-08-14&fim=2025-08-10").status_code == 400
+    assert admin.get("/viagens/detetar/fotos?entidade=99&ini=2025-08-10&fim=2025-08-14").status_code == 404
+
+
+def test_fotos_por_periodo_erro_do_immich(app, admin, immich_falso, monkeypatch):
+    from app import immich
+    _guardar_chave_immich(admin)
+
+    def em_baixo(*a, **k):
+        raise immich.ErroImmich("Sem ligação ao Immich (timeout).")
+    monkeypatch.setattr(immich, "_pedido", em_baixo)
+    f = admin.get("/viagens/detetar/fotos?entidade=1&ini=2025-08-10&fim=2025-08-14")
+    assert f.status_code == 200 and "Não foi possível ler as fotos do Immich: Sem ligação" in f.text
+
+
+def test_ia_recebe_os_lugares_das_fotos(app, admin, immich_falso, monkeypatch):
+    enviados = []
+
+    def falso(sistema, mensagem, ferramentas=None, modelo_ia=None):
+        enviados.append(mensagem)
+        return json.dumps({"viagem": True, "destino": None, "pais": None, "nome": "Algarve 2025", "motivo": "lazer",
+                           "confianca": 0.8, "explicacao": "Praia."})
+    monkeypatch.setattr(ia, "_chamar", falso)
+    monkeypatch.setattr(ia, "disponivel", lambda: True)
+    # sem chave do Immich: a mensagem não fala de fotos
+    admin.post("/viagens/detetar/ia", data={"csrf": _csrf(admin.get("/viagens/detetar?entidade=1")), "entidade": "1",
+                                            "chave": "20250520-20250524"})
+    assert "fotografias" not in enviados[0]
+    _guardar_chave_immich(admin)
+    r = admin.post("/viagens/detetar/ia", data={"csrf": _csrf(admin.get("/viagens/detetar?entidade=1")), "entidade": "1",
+                                                "chave": "20250810-20250814"})
+    msg = enviados[1]
+    assert "Lugares das fotografias: Albufeira, Portugal (2); Lagos, Portugal (1); Lisboa, Portugal (1)" in msg
+    # só cidade e país: nada de ficheiros, datas ou coordenadas
+    assert "praia.jpg" not in msg and "2025" not in msg and "37.08" not in msg and "-8.25" not in msg
+    # a resposta guardada é encontrada sem perguntar ao Immich (a chave da cache não inclui as fotos)
+    assert "Algarve 2025" in r.text
+    n = len(immich_falso)
+    t = admin.get("/viagens/detetar?entidade=1").text
+    assert "Algarve 2025" in t and len(immich_falso) == n
+    # a IA não deu destino: o «+ Criar viagem» fica sem destino (é o browser que o completa com as fotos)
+    assert "destino=&amp;" in t.split('id="p-20250810-20250814"')[1].split('criar-viagem')[1][:400]

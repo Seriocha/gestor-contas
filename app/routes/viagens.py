@@ -132,7 +132,42 @@ def detetar(request: Request, entidade: IntOpcional = None, todos: int = 0, u: U
         periodos = [p for p in periodos if not p.viagem]
     return render(request, "viagens/detetar.html", visiveis=visiveis, entidade=ent, periodos=periodos,
                   registados=registados, todos=todos, ia_ok=ia.disponivel(),
-                  pode_editar=PAPEIS[papel] >= PAPEIS["editar"])
+                  pode_editar=PAPEIS[papel] >= PAPEIS["editar"], fotos_ok=bool(_chave_immich(request, u)))
+
+
+@router.get("/detetar/fotos")
+def detetar_fotos(request: Request, entidade: int, ini: str, fim: str, u: Utilizador = Depends(utilizador_atual),
+                  db: Session = Depends(get_db)):
+    """Fragmento de um período detetado: as fotos do Immich nessas datas, os lugares e se confirmam a viagem."""
+    from .. import immich
+    from .. import viagens_detecao as vd
+    exigir_papel(db, u, entidade, "ver")
+    try:
+        d_ini, d_fim = parse_data(ini), parse_data(fim)
+    except ValueError:
+        d_ini = d_fim = None
+    if not d_ini or not d_fim or not (0 <= (d_fim - d_ini).days <= 120):
+        raise HTTPException(status_code=400, detail="Datas inválidas.")
+    ctx = {"r": None, "erro": None}
+    chave = _chave_immich(request, u)
+    if chave:
+        try:
+            ctx["r"] = vd.resumo_fotos(immich.fotos_entre(d_ini, d_fim, chave=chave))
+        except immich.ErroImmich as e:
+            ctx["erro"] = str(e)
+    return render(request, "viagens/_fotos_periodo.html", **ctx)
+
+
+def _lugares_fotos(request: Request, u: Utilizador, p) -> list | None:
+    """Lugares (cidade, país) das fotos do período, para a IA; sem chave do Immich ou com erro, nenhum."""
+    from .. import immich
+    chave = _chave_immich(request, u)
+    if not chave:
+        return None
+    try:
+        return immich.fotos_entre(p.ini, p.fim, chave=chave).lugares
+    except immich.ErroImmich:
+        return None
 
 
 @router.post("/detetar/ia")
@@ -148,7 +183,7 @@ async def detetar_ia(request: Request, u: Utilizador = Depends(utilizador_atual)
     feitos, erro = 0, None
     for p in alvo:
         try:
-            vd.analisar_com_ia(db, p)
+            vd.analisar_com_ia(db, p, _lugares_fotos(request, u, p))
             feitos += 1
         except ia.ErroIA as e:
             erro = str(e)

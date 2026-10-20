@@ -36,6 +36,10 @@
     </span>
   </div>
 
+  {% if fotos_ok %}
+  <p class="fotos-periodo-caixa nota" data-url="/viagens/detetar/fotos?entidade={{ entidade.id }}&ini={{ p.ini.isoformat() }}&fim={{ p.fim.isoformat() }}">📷 A procurar fotos no Immich…</p>
+  {% endif %}
+
   {% if p.ia %}
   <div class="ia-periodo {{ 'nao' if not p.ia.viagem }}">
     🤖 {% if p.ia.viagem %}<strong>{{ p.ia.nome or 'Viagem' }}</strong>{% if p.ia.destino or p.ia.pais %} · {{ p.ia.destino or '' }}{{ ', ' if p.ia.destino and p.ia.pais }}{{ p.ia.pais or '' }}{% endif %}
@@ -68,7 +72,7 @@
     {% set q = {'entidade': entidade.id, 'nome': p.nome_sugerido, 'data_ini': p.ini.isoformat(), 'data_fim': p.fim.isoformat(),
                 'destino': (p.ia.destino if p.ia else '') or '', 'pais': (p.ia.pais if p.ia else '') or '',
                 'motivo': (p.ia.motivo if p.ia else 'lazer') or 'lazer'} %}
-    <a class="botao primario pequeno" href="/viagens/nova?{{ q | urlencode }}">+ Criar viagem</a>
+    <a class="botao primario pequeno criar-viagem" href="/viagens/nova?{{ q | urlencode }}">+ Criar viagem</a>
     {% if ia_ok %}
     <form method="post" action="/viagens/detetar/ia">
       <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="entidade" value="{{ entidade.id }}">
@@ -90,3 +94,32 @@
 {% if not ia_ok %}<p class="nota">A análise pela IA precisa da chave da Claude API (<code>ANTHROPIC_API_KEY</code>) no NAS.</p>{% endif %}
 {% endif %}
 {% endblock %}
+
+{% block scripts %}{% if fotos_ok %}
+<script>
+  // fotos do Immich de cada período: carregadas depois da página, 3 períodos de cada vez (não a atrasam)
+  const caixasFotos = [...document.querySelectorAll('.fotos-periodo-caixa')];
+  async function carregarFotos(caixa) {
+    try {
+      const r = await fetch(caixa.dataset.url);
+      if (!r.ok) throw new Error(r.status);
+      caixa.innerHTML = await r.text();
+      caixa.classList.remove('nota');
+    } catch (e) {
+      caixa.textContent = '📷 Não foi possível ligar ao Immich.';
+      return;
+    }
+    const cartao = caixa.closest('.periodo-viagem');
+    const conf = caixa.querySelector('.confirmada-fotos');
+    if (conf) cartao.querySelector('.etiquetas-periodo').append(conf);
+    // «+ Criar viagem»: destino e país do lugar mais fotografado, quando a IA não os deu
+    const f = caixa.querySelector('.fotos-periodo'), a = cartao.querySelector('a.criar-viagem');
+    if (f && a) {
+      const url = new URL(a.href);
+      for (const k of ['destino', 'pais']) if (!url.searchParams.get(k) && f.dataset[k]) url.searchParams.set(k, f.dataset[k]);
+      a.href = url;
+    }
+  }
+  (async () => { while (caixasFotos.length) await Promise.all(caixasFotos.splice(0, 3).map(carregarFotos)); })();
+</script>
+{% endif %}{% endblock %}

@@ -15,9 +15,14 @@ de estrangeiro). As reservas (hotel, voo, …) até 120 dias antes aparecem junt
 
 A IA (opcional) recebe só as descrições dos comerciantes por dia relativo («dia 1», «dia 2»), as moedas e as zonas
 postais — nunca valores, datas, contas ou nomes de pessoas — e devolve se parece viagem, o destino e um nome.
+
+Fotografias (opcional, Immich com a chave de quem está a ver): os lugares das fotos tiradas no período (cidade e país do
+EXIF) confirmam o período quando são no estrangeiro ou longe de casa, dão o destino à viagem nova e vão para a IA (só
+«cidade, país» e quantas fotos — nunca nomes de ficheiros, datas ou coordenadas).
 """
 import hashlib
 import json
+import os
 import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
@@ -265,18 +270,66 @@ def detetar(db: Session, entidade_id: int, desde: date | None = None) -> list[Pe
     return sorted(out, key=lambda p: p.ini, reverse=True)
 
 
+# ------------------------------------------------------------------ fotografias (Immich, opcional)
+PAIS_CASA = "Portugal"
+CIDADES_CASA_OMISSAO = "Lisboa, Lisbon, Loures, Odivelas, Amadora, Oeiras, Sintra, Cascais, Almada, Seixal, Vila Franca de Xira"
+
+
+def cidades_casa() -> set[str]:
+    """Cidades (do EXIF das fotos) que são «casa»: GESTOR_CIDADES_CASA no .env, separadas por vírgulas."""
+    txt = os.environ.get("GESTOR_CIDADES_CASA") or CIDADES_CASA_OMISSAO
+    return {c.strip().casefold() for c in txt.split(",") if c.strip()}
+
+
+@dataclass
+class FotosPeriodo:
+    total: int = 0
+    lugares: list = field(default_factory=list)       # [(«Albufeira, Portugal», n)] dos mais fotografados
+    destino: str | None = None                        # a cidade mais fotografada fora de casa
+    pais: str | None = None
+    estrangeiro: list = field(default_factory=list)   # países (≠ Portugal) com fotos
+    confirmada: bool = False
+
+    @property
+    def motivo(self) -> str:
+        if self.estrangeiro:
+            return "fotos em " + ", ".join(self.estrangeiro[:3])
+        return f"fotos longe de casa ({self.destino})" if self.destino else ""
+
+
+def resumo_fotos(f) -> FotosPeriodo:
+    """Lê as fotos de um período (immich.Fotos): lugares, destino provável e se confirmam que é uma viagem.
+
+    Confirmam quando há fotos noutro país, ou quando metade (ou mais) das fotos com cidade são fora das cidades de casa."""
+    casa = cidades_casa()
+    r = FotosPeriodo(total=f.total, lugares=f.lugares)
+    r.estrangeiro = [p for p in f.paises if p.casefold() != PAIS_CASA.casefold()]
+    com_cidade = [x for x in f.fotos if x.cidade]
+    fora = [x for x in com_cidade if x.cidade.casefold() not in casa or (x.pais and x.pais in r.estrangeiro)]
+    # destino: o lugar mais fotografado fora de casa (no estrangeiro, de preferência)
+    alvo = [x for x in fora if x.pais in r.estrangeiro] or fora
+    if alvo:
+        (r.destino, r.pais), _ = Counter((x.cidade, x.pais) for x in alvo).most_common(1)[0]
+    elif r.estrangeiro:
+        r.pais = r.estrangeiro[0]
+    r.confirmada = bool(r.estrangeiro) or (bool(fora) and 2 * len(fora) >= len(com_cidade))
+    return r
+
+
 # ------------------------------------------------------------------ IA (opcional)
 SISTEMA_VIAGEM = """Recebes os gastos presenciais de um período em que uma família portuguesa (casa na zona de Lisboa) \
 parece ter estado fora de casa: por cada dia relativo («dia 1», «dia 2», …), as descrições curtas dos comerciantes tal \
 como aparecem no extrato bancário, mais as moedas estrangeiras usadas e as zonas postais portuguesas (2 primeiros \
-dígitos do código postal) fora de casa. Diz se é uma viagem (férias, escapadinha ou trabalho) ou não (ex.: compras \
+dígitos do código postal) fora de casa e, se houver, os lugares (cidade, país) das fotografias tiradas nesses dias, \
+com quantas fotos em cada um — um sinal forte do destino. Diz se é uma viagem (férias, escapadinha ou trabalho) ou não (ex.: compras \
 online, deslocações do dia a dia), o destino provável (cidade/região), o país e um nome curto para a viagem \
 (ex.: «Algarve — Albufeira 2026», «Japão e Coreia 2026»). Não inventes: se não houver pistas do destino, deixa-o a null.
 Responde só com um objeto JSON: {"viagem": true|false, "destino": str|null, "pais": str|null, "nome": str|null, \
 "motivo": "lazer"|"trabalho"|"outro", "confianca": 0..1, "explicacao": str (1–2 frases)}."""
 
 
-def _mensagem_ia(p: Periodo) -> str:
+def _mensagem_ia(p: Periodo, lugares: list | None = None) -> str:
+    """O que a IA recebe. `lugares` ([(«cidade, país», n)] das fotos) fica de fora da chave da cache (chave_ia)."""
     por_dia = defaultdict(list)
     for e in p.evidencias:
         nome = _comerciante(e.mov)
@@ -291,10 +344,13 @@ def _mensagem_ia(p: Periodo) -> str:
         linhas.append("Moedas estrangeiras: " + ", ".join(p.moedas))
     if p.zonas:
         linhas.append("Zonas postais fora de casa: " + ", ".join(sorted(p.zonas)))
+    if lugares:
+        linhas.append("Lugares das fotografias: " + "; ".join(f"{lugar} ({n})" for lugar, n in lugares[:8]))
     return "\n".join(linhas)
 
 
 def chave_ia(p: Periodo) -> str:
+    # sem os lugares das fotos: a página encontra a resposta guardada sem ter de perguntar ao Immich
     return "viagem|" + hashlib.sha1(_mensagem_ia(p).encode()).hexdigest()
 
 
@@ -307,12 +363,13 @@ def _juntar_ia(db: Session, periodos: list[Periodo]) -> None:
             pass
 
 
-def analisar_com_ia(db: Session, p: Periodo) -> dict:
-    """Pergunta à IA se o período é uma viagem e para onde. Guarda a resposta na cache (SugestaoIA)."""
+def analisar_com_ia(db: Session, p: Periodo, lugares: list | None = None) -> dict:
+    """Pergunta à IA se o período é uma viagem e para onde (com os lugares das fotos, se houver). Guarda a resposta na
+    cache (SugestaoIA)."""
     from . import ia
     if not ia.disponivel():
         raise ia.ErroIA("A chave da Claude API não está configurada (ANTHROPIC_API_KEY).")
-    texto = ia._chamar(SISTEMA_VIAGEM, _mensagem_ia(p))
+    texto = ia._chamar(SISTEMA_VIAGEM, _mensagem_ia(p, lugares))
     ini, fim = texto.find("{"), texto.rfind("}")
     try:
         d = json.loads(texto[ini:fim + 1]) if 0 <= ini < fim else None

@@ -1,0 +1,9 @@
+{# Fotos do Immich de um período (carregado à parte em Detetar viagens): quantas, os lugares mais fotografados e se
+   confirmam a viagem. O data-destino/data-pais preenche o «+ Criar viagem» quando a IA não deu o destino. #}
+{% if erro %}<span class="nota">📷 Não foi possível ler as fotos do Immich: {{ erro }}</span>
+{% elif r and r.total %}
+<span class="fotos-periodo" data-destino="{{ r.destino or '' }}" data-pais="{{ r.pais or '' }}">📷 {{ r.total }} foto{{ 's' if r.total != 1 }}
+  {%- for lugar, n in r.lugares[:3] %} · {{ lugar }} <span class="nota">({{ n }})</span>{% endfor %}</span>
+{% if r.confirmada %}<span class="etiqueta etiqueta-ok confirmada-fotos" title="{{ r.motivo }}">📷 confirmada pelas fotos</span>{% endif %}
+{% elif r %}<span class="nota">📷 Sem fotos no Immich nestas datas.</span>
+{% endif %}
