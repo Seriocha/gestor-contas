@@ -9,7 +9,8 @@
       ('/admin/backups', 'Backups e atividade', c.startswith('/admin/backups')),
       ('/admin/consolidar', 'Consolidação', c.startswith('/admin/consolidar')),
       ('/admin/importadores', 'Importadores', c.startswith('/admin/importadores')),
-      ('/admin/fuelio', 'Fuelio', c.startswith('/admin/fuelio'))] %}
+      ('/admin/fuelio', 'Fuelio', c.startswith('/admin/fuelio')),
+      ('/admin/paperless', 'Paperless', c.startswith('/admin/paperless'))] %}
   <a href="{{ href }}" {% if ativo %}class="ativo" aria-current="page"{% endif %}>{{ rotulo }}</a>
   {% endfor %}
 </nav>

@@ -115,6 +115,62 @@ async def novo(request: Request, admin: Utilizador = Depends(exigir_admin), db: 
     return RedirectResponse("/admin/utilizadores", status_code=303)
 
 
+def _utilizadores_paperless(request: Request, db: Session) -> list[tuple[Utilizador, bool]]:
+    """Utilizadores ativos e se têm token do Paperless (pessoal ou, para administradores, o partilhado)."""
+    from .. import paperless
+    segredo = request.app.state.defs.secret_key
+    return [(u, bool(paperless.token_de(u, segredo)))
+            for u in db.scalars(select(Utilizador).where(Utilizador.ativo).order_by(Utilizador.nome))]
+
+
+def _circuito_ctx(request: Request, db: Session, admin: Utilizador, modelo: str, params: dict, uid: int | None, **extra):
+    from .. import paperless, paperless_circuitos as pc
+    m = pc.MODELOS.get(modelo) or pc.MODELOS["recibo_vencimento"]
+    valores = {nome: params.get(nome, omissao) for nome, _, omissao, _ in m.parametros}
+    return dict(modelos=pc.MODELOS, modelo=m, valores=valores, utilizadores=_utilizadores_paperless(request, db),
+                uid=uid or admin.id, paperless_cfg=paperless.configurado(), paperless_link=paperless.url_browser(), **extra)
+
+
+@router.get("/paperless")
+def paperless_circuitos(request: Request, modelo: str = "recibo_vencimento", admin: Utilizador = Depends(exigir_admin),
+                        db: Session = Depends(get_db)):
+    """Circuitos de documentos no Paperless: escolher o modelo e os parâmetros, pré-visualizar e aplicar."""
+    return render(request, "admin/paperless.html", **_circuito_ctx(request, db, admin, modelo, {}, None, plano=None, erros=[]))
+
+
+@router.post("/paperless")
+async def paperless_circuito_executar(request: Request, admin: Utilizador = Depends(exigir_admin),
+                                      db: Session = Depends(get_db)):
+    """acao=ver: o que existe e o que seria criado (nada muda); acao=aplicar: cria o que falta."""
+    from .. import paperless, paperless_circuitos as pc
+    form = await ler_form(request)
+    modelo = str(form.get("modelo", ""))
+    if modelo not in pc.MODELOS:
+        return RedirectResponse("/admin/paperless", status_code=303)
+    params = {nome: str(form.get(nome, "")).strip()[:200] for nome, _, _, _ in pc.MODELOS[modelo].parametros}
+    uid = int(form["utilizador"]) if str(form.get("utilizador", "")).isdigit() else admin.id
+    u = db.get(Utilizador, uid)
+    token = paperless.token_de(u, request.app.state.defs.secret_key) if u else None
+    erros = pc.validar(modelo, params)
+    if not token:
+        erros.append(f"{u.nome if u else 'Esse utilizador'} não tem token do Paperless (Perfil, ou Utilizadores › Ligações).")
+    plano = None
+    if not erros:
+        try:
+            if form.get("acao") == "aplicar":
+                plano = pc.aplicar(modelo, params, token, senha_email=str(form.get("senha", "")) or None)
+                criados = [x for x in plano.passos if x.estado == "criado"]
+                auditar(db, admin, "paperless_circuito", f"{modelo} ({u.login}): {len(criados)} criados, "
+                                                          f"{sum(1 for x in plano.passos if x.estado == 'erro')} erros")
+                db.commit()
+            else:
+                plano = pc.planear(modelo, params, token)
+        except paperless.ErroPaperless as e:
+            erros.append(str(e))
+    return render(request, "admin/paperless.html", status_code=400 if erros else 200,
+                  **_circuito_ctx(request, db, admin, modelo, params, uid, plano=plano, erros=erros))
+
+
 @router.get("/utilizadores/{uid}")
 def editar_form(request: Request, uid: int, admin: Utilizador = Depends(exigir_admin),
                 db: Session = Depends(get_db)):

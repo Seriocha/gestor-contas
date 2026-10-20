@@ -37,6 +37,13 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.73.0 — Circuitos do Paperless pela app.** Administração › Paperless cria no Paperless, sem duplicar, o que um
+  tipo de documento precisa (em vez dos scripts PowerShell): modelos «Recibo de vencimento» (tipo, empregador, etiqueta
+  Vencimento, campos Período/Bruto/Descontos/Líquido/Cartão refeição, caminho Pessoal - Vencimentos e o fluxo de entrada
+  com dono = utilizador do token), «Fatura de fornecedor» (correspondente, etiquetas + Débito direto, caminho, fluxo pelo
+  conteúdo, regra de email) e «Conta de email» (IMAP; a palavra-passe de aplicação vai ao Paperless e não fica no Gestor).
+  «Ver o que seria criado» não altera nada; «Aplicar» cria o que falta. Para outra pessoa/entidade: outros parâmetros
+  (empregador, nome, filtro do fluxo) e o token de outro utilizador (app/paperless_circuitos.py).
 - **v0.72.0 — Consumos da E-Redes e €/kWh.** A E-Redes não tem API para clientes (o Balcão Digital usa uma API
   interna com reCAPTCHA no login): importa-se o Excel de leituras exportado no Balcão Digital (Comparar fornecedores ›
   Consumos (E-Redes) › Importar; um por contador, reimportar atualiza). app/eredes.py lê a morada, o CPE, o n.º do

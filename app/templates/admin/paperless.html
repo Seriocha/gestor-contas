@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block titulo %}Paperless · circuitos{% endblock %}
+{% block conteudo %}
+<h1>Administração</h1>
+{% include "admin/_menu.html" %}
+{% if not paperless_cfg %}
+<section class="cartao"><p class="vazio sem-margem">O Paperless não está configurado (paperless.env na NAS).</p></section>
+{% else %}
+<section class="cartao">
+  <h2>Circuitos de documentos no Paperless</h2>
+  <p class="nota">Cria no Paperless o que falta para um tipo de documento ser tratado sozinho (tipo, correspondente, etiquetas,
+    campos, caminho, fluxo de entrada com dono, regra de email) — em vez dos scripts PowerShell. «Ver» só mostra o que já
+    existe e o que seria criado; «Aplicar» cria o que falta e nunca duplica. Para outra pessoa/entidade, muda os parâmetros e
+    o utilizador: o fluxo atribui os documentos ao dono do token.</p>
+  <nav class="separadores">{% for k, m in modelos.items() %}<a href="/admin/paperless?modelo={{ k }}" {% if m.chave == modelo.chave %}class="ativo"{% endif %}>{{ m.nome }}</a>{% endfor %}</nav>
+  <p>{{ modelo.descricao }}</p>
+  <form method="post" action="/admin/paperless" class="formulario" style="max-width: 46rem">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="modelo" value="{{ modelo.chave }}">
+    {% for nome, rotulo, omissao, ajuda in modelo.parametros %}
+    <label>{{ rotulo }} <input name="{{ nome }}" value="{{ valores[nome] }}" maxlength="200">
+      {% if ajuda %}<span class="nota">{{ ajuda }}</span>{% endif %}</label>
+    {% endfor %}
+    {% if modelo.chave == 'conta_email' %}
+    <label>Palavra-passe de aplicação <input name="senha" type="password" autocomplete="new-password">
+      <span class="nota">só para «Aplicar»: vai diretamente para o Paperless e não fica guardada no Gestor.</span></label>
+    {% endif %}
+    <label>Com o token de
+      <select name="utilizador">{% for u, tem in utilizadores %}<option value="{{ u.id }}" {% if u.id == uid %}selected{% endif %} {% if not tem %}disabled{% endif %}>{{ u.nome }}{{ '' if tem else ' (sem token)' }}</option>{% endfor %}</select>
+      <span class="nota">o dono do token fica dono dos documentos que o fluxo de entrada recebe.</span></label>
+    <div class="acoes-form">
+      <button name="acao" value="ver">Ver o que seria criado</button>
+      <button class="primario" name="acao" value="aplicar" onclick="return confirm('Criar no Paperless o que falta?')">Aplicar</button>
+    </div>
+  </form>
+</section>
+
+{% for e in erros %}<div class="aviso aviso-erro">{{ e }}</div>{% endfor %}
+
+{% if plano %}
+<section class="cartao" id="plano">
+  <h2>{{ 'Resultado' if plano.aplicado else 'Pré-visualização' }} <span class="nota">· {{ plano.modelo.nome }} · dono: {{ plano.dono.username }}</span></h2>
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th>Elemento</th><th>Nome</th><th>Estado</th><th>Detalhe</th></tr></thead>
+    {% for p in plano.passos %}
+    <tr><td class="nota">{{ p.rotulo }}</td><td><strong>{{ p.nome }}</strong></td>
+      <td><span class="etiqueta {{ {'existe': '', 'criar': 'etiqueta-cor', 'criado': 'etiqueta-ok', 'erro': 'etiqueta-erro', 'falta': 'etiqueta-erro'}[p.estado] }}">
+        {{ {'existe': 'já existe', 'criar': 'seria criado', 'criado': 'criado', 'erro': 'erro', 'falta': 'em falta'}[p.estado] }}</span></td>
+      <td class="nota">{{ p.detalhe }}{% if p.endpoint == 'workflows' and p.estado in ('criar', 'criado') %}{{ ' · ' if p.detalhe }}gatilho: documento com «{{ p.corpo.triggers[0].match }}»{% endif %}</td></tr>
+    {% endfor %}
+  </table></div>
+  {% if not plano.aplicado %}
+  <p class="nota sem-margem">{{ plano.n_criar }} elemento{{ 's' if plano.n_criar != 1 }} a criar. Nada foi alterado.</p>
+  {% else %}
+  <p class="nota sem-margem"><a href="{{ paperless_link }}" target="_blank" rel="noopener">Abrir o Paperless</a> para confirmar.</p>
+  {% endif %}
+</section>
+{% endif %}
+{% endif %}
+{% endblock %}

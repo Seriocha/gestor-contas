@@ -89,6 +89,26 @@ def _pedido(caminho: str, params: dict | None = None, binario: bool = False, tok
     return dados if binario else json.loads(dados.decode())
 
 
+def enviar(metodo: str, caminho: str, corpo: dict, *, token: str | None):
+    """POST/PATCH com JSON (configuração do Paperless: tipos, etiquetas, fluxos…). Em erro 400, junta o detalhe."""
+    if not configurado():
+        raise ErroPaperless("O Paperless não está configurado (paperless.env na NAS).")
+    if not token:
+        raise ErroPaperless("Falta o token do Paperless.")
+    pedido = urllib.request.Request(f"{url_api()}{caminho}", data=json.dumps(corpo).encode(), method=metodo, headers={
+        "Authorization": f"Token {token.strip()}", "Accept": "application/json", "Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(pedido, timeout=30) as r:
+            dados = r.read()
+    except urllib.error.HTTPError as e:
+        detalhe = e.read().decode(errors="ignore")[:300] if e.code == 400 else ""
+        raise ErroPaperless(f"O Paperless respondeu {e.code}." + (f" {detalhe}" if detalhe else "")
+                            + (" Confirma o token." if e.code in (401, 403) else "")) from e
+    except (urllib.error.URLError, TimeoutError, OSError) as e:
+        raise ErroPaperless(f"Sem ligação ao Paperless ({e}).") from e
+    return json.loads(dados.decode()) if dados else {}
+
+
 @dataclass
 class Documento:
     id: int
