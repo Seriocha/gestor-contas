@@ -44,6 +44,13 @@
 </div>
 {% endif %}
 
+{% if immich_cfg %}
+<section class="cartao" id="fotos" data-url="/viagens/{{ viagem.id }}/fotos">
+  <h2>📷 Fotografias</h2>
+  <p class="nota sem-margem">A procurar no Immich as fotos de {{ viagem.data_ini | data }} a {{ viagem.data_fim | data }}…</p>
+</section>
+{% endif %}
+
 <section class="cartao" id="sugestoes">
   <div class="cartao-cabecalho">
     <h2>Sugestões <span class="nota">· {{ sugestoes | length }} movimento{{ 's' if sugestoes | length != 1 }} que podem ser desta viagem</span></h2>
@@ -118,6 +125,12 @@
 
 {% block scripts %}
 <script>
+  // fotografias do Immich: carregadas depois da página (não a atrasam se o Immich estiver lento)
+  const caixaFotos = document.getElementById('fotos');
+  if (caixaFotos) fetch(caixaFotos.dataset.url).then(r => r.text()).then(h => {
+    caixaFotos.innerHTML = h;
+    if (location.hash === '#fotos') caixaFotos.scrollIntoView();
+  }).catch(() => { caixaFotos.querySelector('.nota').textContent = 'Não foi possível ligar ao Immich.'; });
   document.getElementById('marcar-sug')?.addEventListener('change', e =>
     document.querySelectorAll('.sel-sug').forEach(c => { c.checked = e.target.checked; }));
 </script>

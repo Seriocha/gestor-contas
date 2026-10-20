@@ -47,6 +47,8 @@ class Utilizador(Base):
     ultimo_login: Mapped[datetime | None] = mapped_column(DateTime)
     # Token pessoal da API do Paperless-ngx, cifrado com a chave secreta da app (ver paperless.py).
     paperless_token: Mapped[str | None] = mapped_column(Text)
+    # Chave pessoal da API do Immich (fotografias), cifrada da mesma forma (ver immich.py).
+    immich_token: Mapped[str | None] = mapped_column(Text)
 
     permissoes: Mapped[list["Permissao"]] = relationship(
         back_populates="utilizador", cascade="all, delete-orphan"
@@ -578,6 +580,7 @@ class Viagem(Base):
     notas: Mapped[str | None] = mapped_column(Text)
     modelo_id: Mapped[int | None] = mapped_column(ForeignKey("modelo_viagem.id", ondelete="SET NULL"))
     etiqueta_id: Mapped[int | None] = mapped_column(ForeignKey("etiqueta.id", ondelete="SET NULL"))
+    immich_album_id: Mapped[str | None] = mapped_column(String(64))    # álbum da viagem no Immich
     criado_em: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, server_default=func.now())
 
     entidade: Mapped["Entidade"] = relationship()

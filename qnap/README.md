@@ -101,6 +101,28 @@ liga-os aos movimentos e aos itens do recheio. Os scripts estão em `qnap/paperl
 
 Atualizar o Paperless: correr outra vez `instalar_paperless.sh` (os dados ficam em `/share/Container/paperless/`).
 
+## Immich (fotografias das viagens)
+
+O Gestor lê no Immich que já corre na NAS as fotos tiradas nas datas de cada viagem (com a cidade/país do EXIF) e pode
+criar lá o álbum da viagem. Nada é copiado: as fotos ficam no Immich.
+
+1. **Pôr o Immich na rede `nas-apps`** — por SSH, como `admin` (o nome do container vê-se com `docker ps | grep immich`;
+   normalmente `immich_server`):
+   ```
+   docker network connect nas-apps immich_server
+   ```
+   Se o Immich for recriado (atualização no Container Station), repetir o comando — ou juntar a rede `nas-apps` como
+   rede externa no docker-compose do Immich.
+2. **Ligar o Gestor** — criar `/share/Container/gestor-contas/immich.env` (só legível pelo admin):
+   ```
+   GESTOR_IMMICH_URL=http://immich_server:2283
+   GESTOR_IMMICH_LINK=http://192.168.1.232:2283
+   ```
+   `chmod 600 …/immich.env` e correr outra vez o `update.sh` do Gestor.
+3. **Uma chave por pessoa** — no Immich: avatar › Definições da conta › Chaves de API › Nova chave (leitura de fotos e
+   álbuns, criar/editar álbuns) › copiar; no Gestor: **Perfil › Immich** › colar › Guardar (é testada antes).
+   Opcional: `GESTOR_IMMICH_TOKEN=…` no `immich.env` — chave partilhada, só para administradores sem chave pessoal.
+
 ## Segurança
 
 - **Não abrir a porta 8200 no router.** Acesso de fora só por VPN (QVPN/Tailscale).

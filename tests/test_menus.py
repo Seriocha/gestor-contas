@@ -23,7 +23,7 @@ def admin(app):
 
 def test_menu_em_grupos_e_contador(admin, app):
     p = admin.get("/inicio").text
-    for grupo in ("Visão geral", "Dinheiro", "Património", "Dados", "Configuração"):
+    for grupo in ("Visão geral", "Dinheiro", "Património", "Viagens", "Dados", "Configuração"):
         assert f'<p class="menu-grupo">{grupo}</p>' in p
     for rotulo in ("Início", "Relatórios", "Movimentos", "Contas", "Subscrições", "Previsões", "Viagens", "Importar",
                    "Categorias e regras", "Administração"):

@@ -120,9 +120,53 @@ def _paperless_ctx(request: Request, u: Utilizador) -> dict:
             "paperless_link": paperless.url_browser()}
 
 
+def _immich_ctx(request: Request, u: Utilizador) -> dict:
+    from .. import immich
+    segredo = request.app.state.defs.secret_key
+    pessoal = bool(immich.decifrar(u.immich_token, segredo))
+    return {"immich_cfg": immich.configurado(), "immich_pessoal": pessoal,
+            "immich_partilhado": not pessoal and bool(immich.chave_de(u, segredo)), "immich_link": immich.url_browser()}
+
+
 @router.get("/perfil")
 def perfil_form(request: Request, u: Utilizador = Depends(utilizador_atual)):
-    return render(request, "perfil.html", **_paperless_ctx(request, u))
+    return render(request, "perfil.html", **_paperless_ctx(request, u), **_immich_ctx(request, u))
+
+
+@router.post("/perfil/immich")
+async def perfil_immich(request: Request, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
+    """Chave pessoal da API do Immich: guardar (depois de a testar), testar ou remover."""
+    from .. import immich
+    form = await ler_form(request)
+    acao, segredo = str(form.get("acao", "")), request.app.state.defs.secret_key
+    if acao == "remover":
+        u.immich_token = None
+        auditar(db, u, "immich_token_removido")
+        db.commit()
+        flash(request, "Chave do Immich removida.")
+    elif acao == "testar":
+        c = immich.chave_de(u, segredo)
+        try:
+            flash(request, immich.testar(c) if c else "Ainda não guardaste a tua chave.", "ok" if c else "erro")
+        except immich.ErroImmich as e:
+            flash(request, f"Não foi possível: {e}", "erro")
+    else:
+        chave = str(form.get("token", "")).strip()
+        if not chave:
+            flash(request, "Cola a chave da API do Immich.", "erro")
+            return RedirectResponse("/perfil#immich", status_code=303)
+        try:
+            msg = immich.testar(chave)
+        except immich.ErroImmich as e:
+            if "401" in str(e) or "403" in str(e):
+                flash(request, f"Chave recusada pelo Immich ({e}). Não foi guardada.", "erro")
+                return RedirectResponse("/perfil#immich", status_code=303)
+            msg = f"Guardada, mas não foi possível confirmar agora: {e}"
+        u.immich_token = immich.cifrar(chave, segredo)
+        auditar(db, u, "immich_token_guardado")
+        db.commit()
+        flash(request, "Chave do Immich guardada. " + msg)
+    return RedirectResponse("/perfil#immich", status_code=303)
 
 
 @router.post("/perfil/paperless")
@@ -165,10 +209,10 @@ async def perfil_paperless(request: Request, u: Utilizador = Depends(utilizador_
 async def perfil(request: Request, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
     form = await ler_form(request)
     if not verificar_password(u.password_hash, str(form.get("atual", ""))):
-        return render(request, "perfil.html", status_code=400, erro="A password atual está errada.", **_paperless_ctx(request, u))
+        return render(request, "perfil.html", status_code=400, erro="A password atual está errada.", **_paperless_ctx(request, u), **_immich_ctx(request, u))
     erro = validar_password_nova(str(form.get("password", "")), str(form.get("password2", "")))
     if erro:
-        return render(request, "perfil.html", status_code=400, erro=erro, **_paperless_ctx(request, u))
+        return render(request, "perfil.html", status_code=400, erro=erro, **_paperless_ctx(request, u), **_immich_ctx(request, u))
     u.password_hash = hash_password(str(form["password"]))
     u.versao_sessao += 1  # termina as sessões noutros dispositivos
     auditar(db, u, "password_alterada")

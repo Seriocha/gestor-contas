@@ -263,9 +263,109 @@ def ficha(request: Request, vid: int, u: Utilizador = Depends(utilizador_atual),
         viagem.modelo_id = vg.modelo_omissao(db).id
     vg.etiqueta_da(db, viagem)
     db.commit()
+    from .. import immich
     return render(request, "viagens/detalhe.html", visiveis=visiveis, entidade=ent, viagem=viagem, modelos=_modelos(db),
                   r=vg.resumo(db, viagem), sugestoes=vg.candidatos(db, viagem), motivos=MOTIVOS_VIAGEM,
-                  pode_editar=PAPEIS[papel] >= PAPEIS["editar"])
+                  pode_editar=PAPEIS[papel] >= PAPEIS["editar"], immich_cfg=immich.configurado())
+
+
+# ------------------------------------------------------------------ fotografias (Immich)
+def _chave_immich(request: Request, u: Utilizador) -> str | None:
+    from .. import immich
+    return immich.chave_de(u, request.app.state.defs.secret_key)
+
+
+@router.get("/{vid}/fotos")
+def fotos(request: Request, vid: int, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
+    """Secção «Fotografias» (fragmento): as fotos tiradas nas datas da viagem, os lugares e o álbum no Immich."""
+    from .. import immich
+    viagem, papel = _viagem(db, u, vid)
+    ctx = {"viagem": viagem, "pode_editar": PAPEIS[papel] >= PAPEIS["editar"], "immich_link": immich.url_browser(),
+           "erro": None, "f": None, "album": None}
+    chave = _chave_immich(request, u)
+    if not chave:
+        ctx["erro"] = "sem_chave"
+    else:
+        try:
+            ctx["f"] = immich.fotos_entre(viagem.data_ini, viagem.data_fim, chave=chave)
+            if viagem.immich_album_id:
+                ctx["album"] = immich.album_existe(viagem.immich_album_id, chave=chave) or {"apagado": True}
+        except immich.ErroImmich as e:
+            ctx["erro"] = str(e)
+    return render(request, "viagens/_fotos.html", **ctx)
+
+
+@router.get("/fotos/{aid}/miniatura")
+def miniatura_foto(request: Request, aid: str, u: Utilizador = Depends(utilizador_atual)):
+    """Miniatura de uma foto do Immich, pedida com a chave de quem está a ver (o browser não fala com o Immich)."""
+    import re
+    from fastapi.responses import Response
+    from .. import immich
+    if not re.fullmatch(r"[0-9a-fA-F-]{36}", aid):
+        raise HTTPException(status_code=404, detail="Não encontrado.")
+    try:
+        img = immich.miniatura(aid, chave=_chave_immich(request, u))
+    except immich.ErroImmich:
+        raise HTTPException(status_code=404, detail="Não encontrado.")
+    tipo = "image/webp" if img[8:12] == b"WEBP" else "image/jpeg"
+    return Response(img, media_type=tipo, headers={"Cache-Control": "private, max-age=86400"})
+
+
+@router.post("/{vid}/album")
+async def album(request: Request, vid: int, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
+    """Cria no Immich o álbum da viagem com as fotos dessas datas (ou junta as que faltam ao álbum já ligado)."""
+    from .. import immich
+    viagem, _ = _viagem(db, u, vid, "editar")
+    await ler_form(request)
+    chave = _chave_immich(request, u)
+    try:
+        ids = [f.id for f in immich.fotos_entre(viagem.data_ini, viagem.data_fim, chave=chave).fotos]
+        if not ids:
+            flash(request, "Não há fotos no Immich nas datas desta viagem.", "erro")
+            return RedirectResponse(f"/viagens/{vid}#fotos", status_code=303)
+        existente = immich.album_existe(viagem.immich_album_id, chave=chave) if viagem.immich_album_id else None
+        if existente:
+            n = immich.juntar_ao_album(viagem.immich_album_id, ids, chave=chave)
+            msg = f"Álbum atualizado: {n} foto{'s' if n != 1 else ''} nova{'s' if n != 1 else ''}." if n else "O álbum já tinha todas as fotos."
+        else:
+            descricao = " · ".join(x for x in (viagem.destino, viagem.pais,
+                                                f"{viagem.data_ini:%d/%m/%Y} a {viagem.data_fim:%d/%m/%Y}") if x)
+            viagem.immich_album_id = immich.criar_album(viagem.nome, descricao, ids, chave=chave)
+            msg = f"Álbum «{viagem.nome}» criado no Immich com {len(ids)} foto{'s' if len(ids) != 1 else ''}."
+    except immich.ErroImmich as e:
+        flash(request, f"Não foi possível: {e}", "erro")
+        return RedirectResponse(f"/viagens/{vid}#fotos", status_code=303)
+    auditar(db, u, "viagem_album", f"{viagem.nome}: {viagem.immich_album_id}")
+    db.commit()
+    flash(request, msg)
+    return RedirectResponse(f"/viagens/{vid}#fotos", status_code=303)
+
+
+@router.post("/{vid}/album/desligar")
+async def album_desligar(request: Request, vid: int, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
+    """Esquece o álbum ligado (o álbum fica no Immich)."""
+    viagem, _ = _viagem(db, u, vid, "editar")
+    await ler_form(request)
+    viagem.immich_album_id = None
+    db.commit()
+    flash(request, "Álbum desligado da viagem (continua no Immich).")
+    return RedirectResponse(f"/viagens/{vid}#fotos", status_code=303)
+
+
+@router.post("/{vid}/destino-das-fotos")
+async def destino_das_fotos(request: Request, vid: int, u: Utilizador = Depends(utilizador_atual),
+                            db: Session = Depends(get_db)):
+    """Preenche o destino e o país da viagem com o lugar mais fotografado."""
+    viagem, _ = _viagem(db, u, vid, "editar")
+    form = await ler_form(request)
+    cidade, pais = str(form.get("cidade", "")).strip()[:120], str(form.get("pais", "")).strip()[:80]
+    if cidade:
+        viagem.destino = cidade
+    if pais:
+        viagem.pais = pais
+    db.commit()
+    flash(request, "Destino atualizado a partir das fotos.")
+    return RedirectResponse(f"/viagens/{vid}#fotos", status_code=303)
 
 
 @router.post("/{vid}/modelo")

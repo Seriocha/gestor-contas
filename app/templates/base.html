@@ -33,15 +33,17 @@
     ('/subscricoes', 'subscricoes', 'Subscrições', caminho.startswith('/subscricoes'), 0),
     ('/previsoes', 'previsoes', 'Previsões', caminho.startswith('/previsoes'), 0)]),
   ('Património', [
-    ('/patrimonio', 'patrimonio', 'Património', caminho.startswith('/patrimonio'), 0),
-    ('/viagens', 'viagens', 'Viagens', caminho.startswith('/viagens'), 0)]),
+    ('/patrimonio', 'patrimonio', 'Património', caminho.startswith('/patrimonio'), 0)]),
+  ('Viagens', [
+    ('/viagens', 'viagens', 'Viagens', caminho.startswith('/viagens') and not caminho.startswith('/viagens/detetar'), 0),
+    ('/viagens/detetar', 'procurar', 'Detetar viagens', caminho.startswith('/viagens/detetar'), 0)]),
   ('Dados', [
     ('/importar', 'importar', 'Importar', caminho.startswith('/importar'), n_validar)]),
   ('Configuração', [
     ('/categorias', 'categorias', 'Categorias e regras', caminho.startswith('/categorias') or caminho.startswith('/regras'), 0)]
     + ([('/admin/utilizadores', 'admin', 'Administração', em_admin, 0)] if utilizador.is_admin else [])),
 ] %}
-{% set itens_movel = [grupos_menu[0][1][0], grupos_menu[1][1][0], grupos_menu[0][1][1], grupos_menu[3][1][0]] %}
+{% set itens_movel = [grupos_menu[0][1][0], grupos_menu[1][1][0], grupos_menu[0][1][1], grupos_menu[4][1][0]] %}
 
 <header class="barra-movel">
   <a class="marca" href="/inicio">{{ logo() }}<span>Gestor de Contas</span></a>

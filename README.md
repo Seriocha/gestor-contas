@@ -37,6 +37,12 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.66.0 — Viagens com menu próprio e fotografias do Immich.** «Viagens» passa a ser um grupo do menu (ao nível de
+  Dinheiro e Dados), com «Viagens» e «Detetar viagens». Ligação ao Immich da NAS, como a do Paperless: `immich.env`
+  (GESTOR_IMMICH_URL/LINK, opcional GESTOR_IMMICH_TOKEN partilhado para administradores) e uma chave da API por pessoa
+  em Perfil › Immich (cifrada; migração 0036). A ficha da viagem ganha «📷 Fotografias»: as fotos e vídeos tirados nas
+  datas da viagem (pela hora local da foto), os lugares mais fotografados (EXIF) com «usar como destino», miniaturas
+  servidas pelo Gestor e «Criar o álbum no Immich» (ou juntar ao álbum as fotos que faltam). Nada é copiado.
 - **v0.65.0 — Viagens › Detetar viagens.** A app lê os gastos por ordem cronológica e propõe períodos em que a família
   esteve fora de casa: compras presenciais no estrangeiro ou noutra moeda, câmbios, seguro de viagem diário, códigos
   postais fora das zonas habituais (calculadas pelo histórico), hotéis/transportes e comerciantes pouco habituais —

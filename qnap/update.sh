@@ -42,6 +42,13 @@ if [ -f "$BASE/paperless.env" ]; then
   PAPERLESS_OPTS="--env-file $BASE/paperless.env"
   echo "Paperless: ligação lida de $BASE/paperless.env"
 fi
+# Immich (opcional): fotografias das viagens. Ligação em $BASE/immich.env (ver qnap/README.md › Immich). O container
+# do Immich tem de estar também na rede «nas-apps» (docker network connect nas-apps <container do Immich>).
+IMMICH_OPTS=""
+if [ -f "$BASE/immich.env" ]; then
+  IMMICH_OPTS="--env-file $BASE/immich.env"
+  echo "Immich: ligação lida de $BASE/immich.env"
+fi
 docker network inspect nas-apps >/dev/null 2>&1 || docker network create nas-apps
 
 echo "A obter a imagem mais recente ($IMAGE)..."
@@ -62,6 +69,7 @@ docker run -d \
   $IA_OPTS \
   $EXTRATOS_OPTS \
   $PAPERLESS_OPTS \
+  $IMMICH_OPTS \
   --network nas-apps \
   "$IMAGE"
 

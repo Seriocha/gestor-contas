@@ -1,0 +1,56 @@
+{# Secção «Fotografias» da ficha da viagem (carregada à parte): fotos do Immich nas datas da viagem, lugares e álbum. #}
+<div class="cartao-cabecalho">
+  <h2>📷 Fotografias {% if f %}<span class="nota">· {{ f.total }} no Immich de {{ viagem.data_ini | data }} a {{ viagem.data_fim | data }}</span>{% endif %}</h2>
+  {% if f and f.total and immich_link %}
+  <span class="acoes-titulo">
+    {% if album and not album.apagado %}<a class="botao pequeno" href="{{ immich_link }}/albums/{{ viagem.immich_album_id }}" target="_blank" rel="noopener">Abrir o álbum ({{ album.assetCount or 0 }})</a>{% endif %}
+  </span>
+  {% endif %}
+</div>
+
+{% if erro == 'sem_chave' %}
+<p class="sem-margem">Guarda a tua chave da API do Immich em <a href="/perfil#immich">Perfil</a> para veres aqui as fotos desta viagem.</p>
+{% elif erro %}
+<div class="aviso aviso-erro">Não foi possível ler as fotos do Immich: {{ erro }}</div>
+{% elif not f.total %}
+<p class="vazio sem-margem">Não há fotos no Immich tiradas entre {{ viagem.data_ini | data }} e {{ viagem.data_fim | data }}.</p>
+{% else %}
+
+{% if f.lugares %}
+<p class="lugares-fotos">📍 {% for lugar, n in f.lugares[:8] %}<span>{{ lugar }} <span class="nota">{{ n }}</span></span>{% endfor %}</p>
+{% set mais = f.lugares[0][0].split(', ') %}
+{% if pode_editar and not viagem.destino and f.lugares %}
+<form method="post" action="/viagens/{{ viagem.id }}/destino-das-fotos" class="separado">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  <input type="hidden" name="cidade" value="{{ mais[0] if mais | length > 1 else '' }}">
+  <input type="hidden" name="pais" value="{{ mais[-1] }}">
+  <button class="ligacao">Usar «{{ f.lugares[0][0] }}» como destino da viagem</button>
+</form>
+{% endif %}
+{% endif %}
+
+<div class="grelha-fotos">
+  {% for x in f.fotos[:48] %}
+  <a href="{{ x.link }}" target="_blank" rel="noopener" title="{{ x.quando.strftime('%d/%m/%Y %H:%M') if x.quando }}{{ ' · ' ~ x.cidade if x.cidade }}">
+    <img src="/viagens/fotos/{{ x.id }}/miniatura" alt="{{ x.nome }}" loading="lazy">{% if x.video %}<span class="foto-video">▶</span>{% endif %}
+  </a>
+  {% endfor %}
+</div>
+{% if f.total > 48 %}<p class="nota">Mostradas 48 de {{ f.total }} — vê todas no álbum do Immich.</p>{% endif %}
+
+{% if pode_editar %}
+<div class="acoes-form">
+  {% if album and album.apagado %}<span class="nota">O álbum ligado já não existe no Immich.</span>{% endif %}
+  <form method="post" action="/viagens/{{ viagem.id }}/album" style="display: inline">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <button class="{{ '' if album and not album.apagado else 'primario' }}">
+      {{ '➕ Juntar ao álbum as fotos que faltam' if album and not album.apagado else '📁 Criar o álbum «' ~ viagem.nome ~ '» no Immich' }}</button>
+  </form>
+  {% if viagem.immich_album_id %}
+  <form method="post" action="/viagens/{{ viagem.id }}/album/desligar" style="display: inline">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="ligacao">Desligar o álbum</button>
+  </form>
+  {% endif %}
+</div>
+{% endif %}
+{% endif %}
