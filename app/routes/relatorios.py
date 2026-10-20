@@ -272,6 +272,42 @@ async def contrato_casa(request: Request, u: Utilizador = Depends(utilizador_atu
     return RedirectResponse(voltar, status_code=303)
 
 
+@router.post("/fornecedores/atribuir")
+async def atribuir_debitos(request: Request, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
+    """Débitos escolhidos → uma casa, à mão (ganha aos contratos e conta também nas despesas da casa no Património);
+    «contratos» tira a escolha à mão e deixa-os outra vez às regras/contratos."""
+    from .. import patrimonio as pt
+    from ..models import Bem
+    form = await ler_form(request)
+    ent_id = int(form["entidade"]) if str(form.get("entidade", "")).isdigit() else 0
+    exigir_papel(db, u, ent_id, "editar")
+    voltar = str(form.get("voltar", ""))
+    voltar = voltar if voltar.startswith("/relatorios/fornecedores") else f"/relatorios/fornecedores?entidade={ent_id}"
+    ids = [int(x) for x in form.getlist("ids") if str(x).isdigit()]
+    movs = db.scalars(select(Movimento).join(Conta).where(Movimento.id.in_(ids), Conta.entidade_id == ent_id)).all() if ids else []
+    if not movs:
+        flash(request, "Escolhe os débitos (caixas à esquerda).", "erro")
+        return RedirectResponse(voltar, status_code=303)
+    alvo = str(form.get("bem", ""))
+    if alvo == "contratos":
+        for m in movs:
+            m.bem_manual, m.bem_id = False, None
+        pt.atribuir(db, ent_id, movs)
+        msg = f"{len(movs)} débito{'s' if len(movs) != 1 else ''} volta{'m' if len(movs) != 1 else ''} aos contratos."
+    else:
+        bem = db.get(Bem, int(alvo)) if alvo.isdigit() else None
+        if not bem or bem.entidade_id != ent_id or bem.tipo != "casa":
+            flash(request, "Escolhe a casa.", "erro")
+            return RedirectResponse(voltar, status_code=303)
+        for m in movs:
+            m.bem_id, m.bem_manual = bem.id, True
+        msg = f"{len(movs)} débito{'s' if len(movs) != 1 else ''} → {bem.nome} (à mão)."
+    auditar(db, u, "fornecedores_atribuir", f"{len(movs)} → {alvo}")
+    db.commit()
+    flash(request, msg)
+    return RedirectResponse(voltar, status_code=303)
+
+
 @router.post("/fornecedores/contrato/{cid}/apagar")
 async def apagar_contrato_casa(request: Request, cid: int, u: Utilizador = Depends(utilizador_atual),
                                db: Session = Depends(get_db)):

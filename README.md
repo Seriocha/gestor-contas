@@ -37,6 +37,11 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.71.0 — Comparar fornecedores: ver e atribuir cada débito.** Cada contrato proposto tem «Ver os N débitos» (data,
+  dia do mês, descrição, conta, valor) para confirmar antes de o ligar a uma casa. Qualquer débito do serviço — por
+  atribuir, de uma proposta, de uma casa ou da lista de todos — pode ser escolhido e atribuído à mão a uma casa
+  (Movimento.bem_id com bem_manual: ganha aos contratos e conta também nas despesas da casa no Património); «devolver aos
+  contratos» tira a escolha à mão. A lista mostra a casa de cada débito e porquê («contrato» ou «à mão»).
 - **v0.70.0 — Comparar fornecedores por casa.** Contratos por casa (tabela contrato_servico, migração 0038): fornecedor,
   referência (o n.º no fim do débito direto) e, quando o mesmo fornecedor cobra as duas casas com a mesma referência (a G9),
   o intervalo de dias do mês. A página propõe os contratos a partir dos débitos (por fornecedor e referência; com 2 débitos

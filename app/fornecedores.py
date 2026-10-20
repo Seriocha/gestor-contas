@@ -200,6 +200,11 @@ class Proposta:
         return len(self.movimentos)
 
     @property
+    def itens(self) -> list:
+        """[(Movimento, fornecedor)] — como nas outras listas de débitos."""
+        return [(m, self.fornecedor) for m in self.movimentos]
+
+    @property
     def media(self) -> int:
         return round(-sum(m.montante for m in self.movimentos) / self.n) if self.n else 0
 
@@ -253,6 +258,8 @@ class Analise:
     contratos: list = field(default_factory=list)
     propostas: list = field(default_factory=list)
     sem_categoria: list = field(default_factory=list)       # apanhados pelos textos extra, sem categoria
+    # movimento.id → (nome da casa | None, «à mão» | «contrato» | None) — para a lista dos débitos
+    atribuicao: dict = field(default_factory=dict)
 
     @property
     def movimentos(self) -> list:
@@ -314,14 +321,23 @@ def analisar(db: Session, entidade_id: int, categoria_id: int | None, extras: li
     a.contratos = sorted(db.scalars(select(ContratoServico).where(ContratoServico.entidade_id == entidade_id)
                                     .options(selectinload(ContratoServico.bem))).all(),
                          key=lambda c: (c.referencia is None, c.dia_de is None, c.id))
-    if not a.contratos or not itens:
+    # casas atribuídas à mão a um débito (Movimento.bem_id com bem_manual): ganham aos contratos
+    casas_mao = {b.id: b for b in db.scalars(select(Bem).where(Bem.entidade_id == entidade_id, Bem.tipo == "casa"))}
+    a_mao = {m.id: casas_mao[m.bem_id] for m, _ in itens if m.bem_manual and m.bem_id in casas_mao}
+    if not itens or (not a.contratos and not a_mao):
         a.propostas = propostas(itens) if itens else []
+        a.atribuicao = {m.id: (None, None) for m, _ in itens}
         return a
     por_casa, por_atribuir = defaultdict(list), []
+    bens = {c.bem_id: c.bem for c in a.contratos} | {b.id: b for b in a_mao.values()}
     for m, f in itens:
+        if m.id in a_mao:
+            por_casa[a_mao[m.id].id].append((m, f))
+            a.atribuicao[m.id] = (a_mao[m.id].nome, "à mão")
+            continue
         c = next((c for c in a.contratos if corresponde(c, m)), None)
         (por_casa[c.bem_id] if c else por_atribuir).append((m, f))
-    bens = {c.bem_id: c.bem for c in a.contratos}
+        a.atribuicao[m.id] = (c.bem.nome, "contrato") if c else (None, None)
     # a casa com mais gasto primeiro (normalmente a casa onde se vive)
     a.casas = sorted((resumir(bens[b].nome, por_casa[b], hoje, bens[b]) for b in por_casa), key=lambda r: -r.total)
     if por_atribuir:

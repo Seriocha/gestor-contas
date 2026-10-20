@@ -134,3 +134,41 @@ def test_duas_casas_contratos_e_dia_do_mes(app, admin):
     assert {s["pilha"] for s in dados["fornecedores_casas"]["series"]} == {"Póvoa", "Algarve"}
     assert "Póvoa · EDP" in [s["nome"] for s in dados["fornecedores_casas"]["series"]]
     assert "160,00 €/mês" in t and "12,00 €/mês" in t
+
+
+def test_ver_debitos_da_proposta_e_atribuir_a_mao(app, admin):
+    from app.models import Bem
+    with app.state.SessionLocal() as db:
+        povoa, algarve = Bem(entidade_id=1, tipo="casa", nome="Póvoa", uso="principal"), Bem(entidade_id=1, tipo="casa", nome="Algarve", uso="ferias")
+        db.add_all([povoa, algarve])
+        db.commit()
+        ids = (povoa.id, algarve.id)
+    t = admin.get(f"/relatorios/fornecedores?entidade=1&categoria={admin.luz}").text
+    assert "Ver os 23 débitos" in t and 'action="/relatorios/fornecedores/atribuir"' in t
+    assert "DÉBITO DIRETO-EDP COMERCIAL CO-60230660104" in t and "por atribuir" in t
+    with app.state.SessionLocal() as db:
+        edp = db.scalars(select(Movimento.id).where(Movimento.descricao_original.contains("EDP")).order_by(Movimento.data_mov)).all()
+
+    def atribuir(ids_movs, bem):
+        return admin.post("/relatorios/fornecedores/atribuir", data={
+            "csrf": _csrf(admin.get("/relatorios")), "entidade": "1", "bem": str(bem), "ids": [str(i) for i in ids_movs],
+            "voltar": f"/relatorios/fornecedores?entidade=1&categoria={admin.luz}"})
+    r = atribuir(edp[:3], ids[1])
+    assert "3 débitos → Algarve (à mão)." in r.text and "Algarve <span class=\"nota\">· à mão</span>" in r.text
+    with app.state.SessionLocal() as db:
+        m = db.get(Movimento, edp[0])
+        assert (m.bem_id, m.bem_manual) == (ids[1], True)
+        a = fo.analisar(db, 1, admin.luz, [], HOJE)
+    algarve_r = next(c for c in a.casas if c.nome == "Algarve")
+    assert len(algarve_r.movimentos) == 3 and any(c.nome == fo.POR_ATRIBUIR for c in a.casas)
+    # a escolha à mão ganha a um contrato que diria outra casa
+    admin.post("/relatorios/fornecedores/contrato", data={"csrf": _csrf(admin.get("/relatorios")), "entidade": "1", "texto": "EDP",
+                                                         "referencia": "60230660104", "bem": str(ids[0])})
+    with app.state.SessionLocal() as db:
+        a = fo.analisar(db, 1, admin.luz, [], HOJE)
+        assert a.atribuicao[edp[0]] == ("Algarve", "à mão") and a.atribuicao[edp[5]] == ("Póvoa", "contrato")
+    r = atribuir(edp[:3], "contratos")
+    assert "3 débitos voltam aos contratos." in r.text
+    with app.state.SessionLocal() as db:
+        assert not db.get(Movimento, edp[0]).bem_manual
+        assert fo.analisar(db, 1, admin.luz, [], HOJE).atribuicao[edp[0]] == ("Póvoa", "contrato")

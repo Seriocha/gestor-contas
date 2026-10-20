@@ -32,6 +32,35 @@
 </div>
 {% endfor %}
 {%- endmacro %}
+{% macro lista_debitos(itens, rotulo='') -%}
+{# itens: [(Movimento, fornecedor)]. Escolher débitos → casa (à mão), ou devolvê-los aos contratos. #}
+<form method="post" action="/relatorios/fornecedores/atribuir" class="lista-debitos">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="entidade" value="{{ entidade.id }}">
+  <input type="hidden" name="voltar" value="{{ voltar }}">
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr>{% if pode_editar and casas %}<th><input type="checkbox" class="marcar-todos" aria-label="Marcar todos"></th>{% endif %}
+      <th>Data</th><th>Fornecedor</th><th>Descrição</th><th>Casa</th><th class="num">Valor</th></tr></thead>
+    {% for m, f in itens | reverse %}
+    {% set casa, origem = a.atribuicao.get(m.id, (none, none)) %}
+    <tr>{% if pode_editar and casas %}<td><input type="checkbox" name="ids" value="{{ m.id }}" aria-label="Escolher"></td>{% endif %}
+      <td class="sem-quebra">{{ m.data_mov | data }} <span class="nota">dia {{ m.data_mov.day }}</span></td>
+      <td><span class="pastilha" style="background: {{ cores.get(f, '#8a8a85') }}"></span>{{ f }}</td>
+      <td><a href="/movimentos/{{ m.id }}/detalhe">{{ m.descricao_original }}</a>{% if not m.categoria_id %} <span class="etiqueta">sem categoria</span>{% endif %}
+        <br><span class="nota">{{ m.conta.nome }}</span></td>
+      <td class="sem-quebra">{% if casa %}{{ casa }} <span class="nota">· {{ origem }}</span>{% else %}<span class="nota">por atribuir</span>{% endif %}</td>
+      <td class="num">{{ m.montante | eur }}</td></tr>
+    {% endfor %}
+  </table></div>
+  {% if pode_editar and casas %}
+  <div class="acoes-form linha" style="gap: .5rem; align-items: center; flex-wrap: wrap">
+    <span class="nota">Os escolhidos{{ ' ' ~ rotulo if rotulo }}:</span>
+    <select name="bem" aria-label="Casa">{% for c in casas %}<option value="{{ c.id }}">{{ c.nome }}</option>{% endfor %}
+      <option value="contratos">— devolver aos contratos (tirar a escolha à mão)</option></select>
+    <button class="pequeno">Atribuir</button>
+  </div>
+  {% endif %}
+</form>
+{%- endmacro %}
 {% block conteudo %}
 <div class="titulo-acoes">
   <h1>Comparar fornecedores</h1>
@@ -115,6 +144,9 @@
         <input type="hidden" name="dia_de" value="{{ p.dia_de or '' }}"><input type="hidden" name="dia_ate" value="{{ p.dia_ate or '' }}">
         <select name="bem" aria-label="Casa">{% for c in casas %}<option value="{{ c.id }}">{{ c.nome }}</option>{% endfor %}</select>
         <button class="pequeno">Ligar</button></form></td></tr>
+    <tr class="detalhe-proposta"><td colspan="7">
+      <details><summary>Ver os {{ p.n }} débitos{% if p.dia_de %} (dias {{ p.dia_de }}–{{ p.dia_ate }}){% endif %}</summary>
+        {{ lista_debitos(p.itens, 'desta proposta') }}</details></td></tr>
     {% endfor %}
   </table></div>
   {% endif %}
@@ -136,6 +168,8 @@
   {{ mudancas(b) }}
   {% if not graficos.fornecedores_casas and graficos.despesas_bem %}<div class="grafico grafico-medio"><canvas data-grafico="despesas_bem" aria-label="Total por ano e fornecedor" role="img"></canvas></div>{% endif %}
   {{ tabela_anos(b) }}
+  <details class="separado"><summary>Os {{ b.movimentos | length }} débitos{{ ' por atribuir' if not b.bem else ' de ' ~ b.nome }}
+    <span class="nota">· escolher e atribuir a outra casa</span></summary>{{ lista_debitos(b.movimentos) }}</details>
   {% if b.anos_sem_dados %}<p class="nota">Sem débitos em {{ b.anos_sem_dados | join(', ') }} — se faltam extratos, ver Contas › Meses importados.</p>{% endif %}
   <details class="separado">
     <summary>Mês a mês <span class="nota">· o mesmo mês entre anos tira o efeito da estação</span></summary>
@@ -152,22 +186,21 @@
 </section>
 {% endfor %}
 
-<details class="cartao">
-  <summary>Os {{ a.movimentos | length }} débitos</summary>
-  <div class="rolar"><table class="tabela compacta">
-    <thead><tr><th>Data</th><th>Fornecedor</th><th>Descrição</th><th>Conta</th><th class="num">Valor</th></tr></thead>
-    {% for m, f in a.movimentos | reverse %}
-    <tr><td class="sem-quebra">{{ m.data_mov | data }}</td><td><span class="pastilha" style="background: {{ cores[f] }}"></span>{{ f }}</td>
-      <td><a href="/movimentos/{{ m.id }}/detalhe">{{ m.descricao_original }}</a>{% if not m.categoria_id %} <span class="etiqueta">sem categoria</span>{% endif %}</td>
-      <td class="nota">{{ m.conta.nome }}</td><td class="num">{{ m.montante | eur }}</td></tr>
-    {% endfor %}
-  </table></div>
+<details class="cartao" id="debitos">
+  <summary>Todos os {{ a.movimentos | length }} débitos <span class="nota">· qualquer um pode ser atribuído à mão a uma casa</span></summary>
+  <p class="nota">A escolha à mão ganha aos contratos e conta também nas despesas da casa (Património). «Devolver aos contratos»
+    tira-a.</p>
+  {{ lista_debitos(a.movimentos) }}
 </details>
 {% endif %}
 {% endif %}
 {% endblock %}
 
 {% block scripts %}
+<script>
+  document.querySelectorAll('.marcar-todos').forEach(c => c.addEventListener('change', () =>
+    c.closest('form').querySelectorAll('input[name="ids"]').forEach(x => { x.checked = c.checked; })));
+</script>
 {% if entidade and graficos %}
 <script type="application/json" id="dados-graficos">{{ graficos | tojson }}</script>
 <script src="/static/vendor/chart.umd.min.js?v={{ versao }}"></script>
