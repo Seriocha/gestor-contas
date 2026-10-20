@@ -51,5 +51,53 @@
     esteja é recusado como duplicado.</p>{% endif %}
 </section>
 {% endif %}
+
+<section class="cartao" id="valores">
+  <h2>Valores dos recibos (Paperless → Gestor)</h2>
+  <p class="nota">Lê os recibos do tipo «Recibo de vencimento» que já estão no Paperless, tira Período, Bruto, Descontos,
+    Cartão refeição e Líquido, confirma as contas (Bruto − Descontos − Cartão = Líquido e Abonos = Bruto − Cartão) e grava-os
+    nos campos do documento, sem mexer nos outros campos. Se as contas não baterem certo o recibo fica sem valores e com a
+    etiqueta «Valor por verificar». Depois liga cada recibo ao crédito do vencimento: o movimento com o valor do Líquido
+    perto do fim do mês. Os recibos que já têm Líquido ficam como estão, a não ser que marques «Voltar a ler».</p>
+  <form method="post" action="/importar/recibos/valores#valores" class="formulario" style="max-width: 40rem">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <div class="linha">
+      <label>Recibos de
+        <select name="utilizador">{% for x, tem in utilizadores %}<option value="{{ x.id }}" {% if x.id == uid %}selected{% endif %} {% if not tem %}disabled{% endif %}>{{ x.nome }}{{ '' if tem else ' (sem token)' }}</option>{% endfor %}</select></label>
+      <label>Janela (dias) <input type="number" name="dias" min="1" max="31" value="{{ dias or 12 }}">
+        <span class="nota">antes e depois do fim do mês</span></label>
+    </div>
+    <label class="caixa"><input type="checkbox" name="forcar" value="sim" {% if forcar %}checked{% endif %}> Voltar a ler os que já têm valores</label>
+    <div class="acoes-form">
+      <button name="acao" value="ensaio">Ensaio (não grava)</button>
+      <button class="primario" name="acao" value="gravar">Gravar valores e ligar</button>
+    </div>
+  </form>
+</section>
+
+{% if erro_valores %}<div class="aviso aviso-erro">{{ erro_valores }}</div>{% endif %}
+
+{% if linhas is defined and linhas is not none %}
+{% set est = {'gravado': ('gravado', 'etiqueta-ok'), 'ja_tinha': ('já tinha valores', ''), 'por_verificar': ('valor por verificar', 'etiqueta-erro'), 'ensaio': ('ensaio', '')} %}
+<section class="cartao">
+  <h2>{{ 'Ensaio' if ensaio else 'Resultado' }} <span class="nota">· {{ linhas | length }} recibo{{ 's' if linhas | length != 1 }}{{ ' · nada foi alterado' if ensaio }}</span></h2>
+  {% if not linhas %}<p class="vazio sem-margem">Não há recibos do tipo «Recibo de vencimento» visíveis com este token.</p>{% else %}
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th>Doc.</th><th>Período</th><th class="num">Bruto</th><th class="num">Descontos</th><th class="num">Cartão</th>
+      <th class="num">Líquido</th><th>Estado</th><th>Movimento</th></tr></thead>
+    {% for l in linhas %}{% set r = l.recibo %}
+    <tr><td class="nota">#{{ l.id }}</td><td><strong>{{ r.periodo or '?' }}</strong></td>
+      <td class="num">{{ r.bruto | eur if r.bruto is not none }}</td><td class="num">{{ r.descontos | eur if r.descontos is not none }}</td>
+      <td class="num">{{ (r.cartao | eur) if r.cartao else '—' }}</td><td class="num"><strong>{{ r.liquido | eur if r.liquido is not none }}</strong></td>
+      <td>{% set e = est.get(l.resultado, (l.resultado, '')) %}<span class="etiqueta {{ e[1] }}">{{ e[0] }}</span>
+        {% if l.resultado == 'ensaio' %}<span class="etiqueta {{ 'etiqueta-ok' if r.valido else 'etiqueta-erro' }}">{{ 'contas certas' if r.valido else 'por verificar' }}</span>{% endif %}
+        {% if r.erros %}<br><span class="nota">{{ r.erros | join('; ') }}</span>{% endif %}</td>
+      <td>{% if l.movimento %}<a href="/movimentos/{{ l.movimento.id }}">{{ l.movimento.data_mov | data }}</a>
+          <span class="nota">{{ l.ligacao if l.ligacao != 'ligado' or not ensaio else 'a ligar' }}</span>
+        {% elif l.ligacao %}<span class="etiqueta {{ 'etiqueta-cor' if l.ligacao == 'ambíguo' else '' }}">{{ l.ligacao }}</span>{% if l.candidatos > 1 %} <span class="nota">{{ l.candidatos }} créditos iguais</span>{% endif %}{% endif %}</td></tr>
+    {% endfor %}
+  </table></div>{% endif %}
+</section>
+{% endif %}
 {% endif %}
 {% endblock %}

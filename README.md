@@ -37,6 +37,7 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.75.0 — Valores dos recibos de vencimento (Paperless → Gestor).** Em Importar › Recibos, «Valores dos recibos» lê o texto dos recibos do tipo «Recibo de vencimento», tira Período, Bruto, Descontos, Cartão refeição e Líquido, confirma as contas (Bruto − Descontos − Cartão = Líquido e Abonos = Bruto − Cartão) e grava os campos personalizados sem perder os que o documento já tinha; se não baterem certo, o recibo fica com a etiqueta «Valor por verificar». Depois liga cada recibo ao crédito do vencimento (valor do Líquido, janela à volta do fim do mês): ligado, sem movimento ou ambíguo. Tem ensaio, não volta a ler os que já têm Líquido (a não ser com «Voltar a ler») e também corre na linha de comandos: `python -m app.recibos --dry-run --force` (token em GESTOR_PAPERLESS_TOKEN).
 - **v0.74.1 — Circuitos do Paperless: fluxos que já existiam por engano.** A API do Paperless ignora o filtro por nome
   nos fluxos de trabalho (e nas contas/regras de email) e devolve todos: o Gestor tomava o 1.º («Entrada Lar») por
   «Entrada Vencimento» e dizia «já existe» sem o criar. Agora o nome confirma-se sempre em cada resultado.

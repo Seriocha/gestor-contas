@@ -139,6 +139,43 @@ async def recibos_enviar(request: Request, u: Utilizador = Depends(utilizador_at
                   **_recibos_ctx(request, db, u, resultados=resultados, erro=erro, uid=uid))
 
 
+@router.post("/recibos/valores")
+async def recibos_valores(request: Request, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
+    """Ler os valores dos recibos que já estão no Paperless, gravá-los nos campos personalizados e ligar cada recibo
+    ao crédito do vencimento (valor igual ao Líquido, perto do fim do mês)."""
+    from .. import paperless, recibos
+    form = await ler_form(request)
+    uid = int(form["utilizador"]) if str(form.get("utilizador", "")).isdigit() else u.id
+    if uid != u.id and not u.is_admin:
+        raise HTTPException(status_code=403, detail="Sem permissão para esta operação.")
+    dono = db.get(Utilizador, uid) or u
+    token = paperless.token_de(dono, request.app.state.defs.secret_key)
+    ensaio, forcar = form.get("acao") != "gravar", form.get("forcar") == "sim"
+    dias = int(form["dias"]) if str(form.get("dias", "")).isdigit() else 12
+    dias = max(1, min(dias, 31))
+    erro, linhas = None, None
+    if not token:
+        erro = f"{dono.nome} não tem token do Paperless (Perfil, ou Administração › Utilizadores › Ligações)."
+    else:
+        try:
+            linhas = sorted(recibos.processar(token, ensaio=ensaio, forcar=forcar),
+                            key=lambda x: (x.recibo.periodo or "", x.id), reverse=True)
+        except paperless.ErroPaperless as e:
+            erro = str(e)
+    if linhas is not None:
+        ids = [e.id for e, papel in entidades_visiveis(db, u) if PAPEIS[papel] >= PAPEIS["editar"]]
+        recibos.ligar(db, ids, linhas, u, dias_antes=dias, dias_depois=dias, ensaio=ensaio)
+        if not ensaio:
+            n = sum(1 for x in linhas if x.resultado == "gravado")
+            m = sum(1 for x in linhas if x.ligacao == "ligado")
+            v = sum(1 for x in linhas if x.resultado == "por_verificar")
+            auditar(db, u, "recibos_valores", f"{n} gravado(s), {v} por verificar, {m} ligado(s) (token de {dono.login})")
+            db.commit()
+    return render(request, "importar/recibos.html", status_code=400 if erro else 200,
+                  **_recibos_ctx(request, db, u, resultados=None, linhas=linhas, ensaio=ensaio, forcar=forcar, dias=dias,
+                                 erro_valores=erro, uid=uid))
+
+
 @router.get("")
 def form(request: Request, conta: IntOpcional = None, u: Utilizador = Depends(utilizador_atual),
          db: Session = Depends(get_db)):
