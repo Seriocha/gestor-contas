@@ -23,6 +23,8 @@ def falso(monkeypatch):
         ep = caminho.strip("/").split("/")[1]
         itens = estado["dados"].get(ep, [])
         nome = (params or {}).get("name__iexact")
+        if ep in ("workflows", "mail_accounts", "mail_rules"):
+            nome = None                                  # como o Paperless real: estes ignoram o filtro por nome
         res = [x for x in itens if nome is None or x["name"].lower() == nome.lower()]
         return {"count": len(res), "results": res}
 
@@ -116,3 +118,12 @@ def test_validacao_e_sem_token(admin, falso, monkeypatch):
     monkeypatch.delenv("GESTOR_PAPERLESS_TOKEN")
     r = _correr(admin, "recibo_vencimento", "ver", empregador="X")
     assert "não tem token do Paperless" in r.text and not falso["enviados"]
+
+
+def test_fluxo_de_outro_circuito_nao_conta_como_existente(admin, falso):
+    """Regressão: o Paperless devolve todos os fluxos (ignora name__iexact); «Entrada Lar» não é «Entrada Vencimento»."""
+    falso["dados"]["workflows"] = [{"id": 6, "name": "Entrada Lar"}]
+    r = _correr(admin, "recibo_vencimento", "ver", empregador="Banco Santander Totta")
+    assert "10 elementos a criar" in r.text
+    _correr(admin, "recibo_vencimento", "aplicar", empregador="Banco Santander Totta")
+    assert [c["name"] for ep, c in falso["enviados"] if ep == "workflows"] == ["Entrada Vencimento"]

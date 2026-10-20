@@ -37,6 +37,9 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.74.1 — Circuitos do Paperless: fluxos que já existiam por engano.** A API do Paperless ignora o filtro por nome
+  nos fluxos de trabalho (e nas contas/regras de email) e devolve todos: o Gestor tomava o 1.º («Entrada Lar») por
+  «Entrada Vencimento» e dizia «já existe» sem o criar. Agora o nome confirma-se sempre em cada resultado.
 - **v0.74.0 — Recibos com password para o Paperless.** Importar › Recibos (Paperless): escolhem-se vários PDFs de uma
   vez (até 24), a password (e uma 2.ª opcional, para recibos antigos) e o dono; o Gestor tira a password em memória
   (pypdf), confirma que o PDF tem texto e envia-o ao Paperless (POST /api/documents/post_document/) com o token do dono,

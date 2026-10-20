@@ -87,11 +87,14 @@ def _sim(v: str) -> bool:
 
 
 def _procurar(endpoint: str, nome: str, token: str) -> dict | None:
-    if endpoint in ("mail_accounts", "mail_rules"):        # estes não filtram pelo nome
-        r = paperless._pedido(f"/api/{endpoint}/", {"page_size": 1000}, token=token)
-        return next((x for x in r.get("results", []) if (x.get("name") or "").lower() == nome.lower()), None)
-    r = paperless._pedido(f"/api/{endpoint}/", {"name__iexact": nome, "page_size": 5}, token=token)
-    return next(iter(r.get("results", [])), None)
+    """O elemento com este nome (sem diferenciar maiúsculas). O nome confirma-se SEMPRE em cada resultado: alguns
+    endpoints ignoram o filtro «name__iexact» e devolvem tudo (os fluxos e as contas/regras de email) — tomar o 1.º
+    resultado fazia passar «Entrada Lar» por «Entrada Vencimento»."""
+    alvo = nome.strip().lower()
+    params = {"page_size": 1000} if endpoint in ("mail_accounts", "mail_rules", "workflows") else \
+        {"name__iexact": nome, "page_size": 100}
+    r = paperless._pedido(f"/api/{endpoint}/", params, token=token)
+    return next((x for x in r.get("results", []) if (x.get("name") or "").strip().lower() == alvo), None)
 
 
 def utilizador_do_token(token: str) -> dict:
