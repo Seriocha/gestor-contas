@@ -967,3 +967,8 @@ body.a-personalizar .grupo-cabecalho { flex-wrap: wrap; }
 .plafond-barra .usado { position: absolute; inset: 0 auto 0 0; border-radius: 999px; background: var(--pos); }
 .plafond-barra .usado.neg { background: var(--neg); }
 .plafond-barra .tempo { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--texto); border-radius: 1px; }
+
+/* Relatórios › Comparar fornecedores */
+.tabela-fornecedor .valor-mes { display: block; padding: .4rem 0; border-radius: 7px; font-size: .8rem; font-weight: 600;
+  font-variant-numeric: tabular-nums; background: color-mix(in srgb, var(--cor-f) 22%, transparent); }
+.mudanca-fornecedor { border-left: 4px solid var(--destaque); }

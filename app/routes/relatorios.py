@@ -187,6 +187,73 @@ def exportar_csv(request: Request, entidade: IntOpcional = None, periodo: str = 
                              headers={"Content-Disposition": f'attachment; filename="{nome.encode("ascii", "ignore").decode()}"'})
 
 
+@router.get("/fornecedores")
+def comparar_fornecedores(request: Request, entidade: IntOpcional = None, categoria: IntOpcional = None, extras: str = "",
+                          u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
+    """Um serviço da casa (luz, gás, água, telecomunicações) ano a ano e por fornecedor, com as mudanças de fornecedor."""
+    from collections import Counter
+    from .. import fornecedores as fo
+    from ..models import CORES
+    visiveis, ent, papel = entidade_escolhida(request, db, u, entidade)
+    if not ent:
+        return render(request, "relatorios_fornecedores.html", entidade=None, visiveis=visiveis)
+    if categoria is None:          # por omissão: a eletricidade
+        categoria = db.scalar(select(Categoria.id).where(func.lower(Categoria.nome).in_(("eletricidade", "electricidade", "luz"))))
+    lista_extras = [e.strip() for e in extras.replace(";", ",").split(",") if e.strip()][:6]
+    a = fo.analisar(db, ent.id, categoria, lista_extras, date.today())
+    # fornecedores conhecidos com débitos sem categoria (ex.: o novo fornecedor ainda sem regra) — para sugerir
+    sugeridos = Counter()
+    if a.categoria:
+        ja = set(a.fornecedores) | {e.upper() for e in lista_extras}
+        for m in db.scalars(select(Movimento).join(Conta).where(Conta.entidade_id == ent.id, Movimento.montante < 0,
+                                                                Movimento.categoria_id.is_(None), ~Movimento.transferencia)):
+            nome = next((n for n, rx in fo.CONHECIDOS if re.search(rx, (m.descricao_original or "").upper())), None)
+            if nome and nome not in ja and nome.upper() not in ja and fo.mesmo_servico(nome, a.fornecedores):
+                sugeridos[nome] += 1
+    cores = {f: CORES[i % len(CORES)] for i, f in enumerate(a.fornecedores)}
+    graficos = {"despesas_bem": {"rotulos": [str(x.ano) for x in a.anos],
+                                 "series": [{"nome": f, "cor": cores[f],
+                                             "valores": [x.por_fornecedor.get(f, (0, 0))[1] / 100 for x in a.anos]}
+                                            for f in a.fornecedores]}} if a.anos else {}
+    grelha = {}
+    for d, v in a.mensal:
+        if v:                                    # meses sem débitos ficam vazios (e anos sem extratos não aparecem)
+            grelha.setdefault(d.year, [None] * 12)[d.month - 1] = (sum(v.values()), max(v, key=v.get))
+    return render(request, "relatorios_fornecedores.html", visiveis=visiveis, entidade=ent, a=a, categoria_id=categoria,
+                  extras=", ".join(lista_extras), categorias=_categorias(db), cores=cores, graficos=graficos,
+                  sugeridos=[(n, k) for n, k in sugeridos.most_common() if k >= 3], grelha=sorted(grelha.items(), reverse=True),
+                  meses_pt=rel.MESES_PT, pode_editar=PAPEIS[papel] >= PAPEIS["editar"])
+
+
+@router.post("/fornecedores/categorizar")
+async def categorizar_fornecedor(request: Request, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
+    """Cria a regra «<texto> → categoria» (débitos) e aplica-a aos débitos ainda sem categoria."""
+    from ..models import Regra
+    from ..qualificacao import aplicar_regras
+    form = await ler_form(request)
+    ent_id = int(form["entidade"]) if str(form.get("entidade", "")).isdigit() else 0
+    exigir_papel(db, u, ent_id, "editar")
+    cat = db.get(Categoria, int(form["categoria"])) if str(form.get("categoria", "")).isdigit() else None
+    texto = str(form.get("texto", "")).strip().upper()[:60]
+    extras = str(form.get("extras", ""))
+    if not cat or not texto:
+        flash(request, "Falta a categoria ou o texto.", "erro")
+        return RedirectResponse(f"/relatorios/fornecedores?entidade={ent_id}", status_code=303)
+    regra = db.scalar(select(Regra).where(Regra.padrao == texto, Regra.categoria_id == cat.id))
+    if not regra:
+        regra = Regra(padrao=texto, modo="contem", sentido="SAIDA", categoria_id=cat.id, prioridade=100, ativa=True)
+        db.add(regra)
+        db.flush()
+    movs = db.scalars(select(Movimento).join(Conta).where(
+        Conta.entidade_id == ent_id, Movimento.montante < 0, Movimento.categoria_id.is_(None),
+        func.upper(Movimento.descricao_original).contains(texto))).all()
+    n = aplicar_regras(db, movs, [regra])
+    auditar(db, u, "regra_fornecedor", f"{texto} → {cat.nome_completo}: {n} movimentos")
+    db.commit()
+    flash(request, f"Regra «{texto}» → {cat.nome_completo} criada; {n} débito{'s' if n != 1 else ''} categorizado{'s' if n != 1 else ''}.")
+    return RedirectResponse(f"/relatorios/fornecedores?entidade={ent_id}&categoria={cat.id}&extras={extras}", status_code=303)
+
+
 @router.get("/cartoes")
 def pagamentos_cartoes(request: Request, entidade: IntOpcional = None, u: Utilizador = Depends(utilizador_atual),
                        db: Session = Depends(get_db)):

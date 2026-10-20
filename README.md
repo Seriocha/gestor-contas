@@ -37,6 +37,12 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.69.0 — Relatórios › Comparar fornecedores.** Um serviço da casa (por omissão a Eletricidade; qualquer categoria
+  de despesa) ano a ano e por fornecedor (EDP, G9, Galp, Endesa, … reconhecidos na descrição): total, n.º de débitos,
+  média por mês com dados, variação face ao ano anterior e gráfico empilhado. Deteta as mudanças de fornecedor (ex.:
+  EDP → G9, 1.º débito do novo) e compara os 12 meses antes com os 12 meses depois (média por mês e diferença por ano).
+  Grelha mês a mês (o mesmo mês entre anos tira o efeito da estação). Textos extra apanham um fornecedor novo ainda sem
+  categoria; a página sugere-o (só do mesmo tipo de serviço) e ««G9» → Eletricidade» cria a regra e categoriza-os.
 - **v0.68.0 — Viatura da empresa igual aos outros carros, com plafond de manutenção.** Um carro só conta como
   vendido/devolvido a partir da data indicada: a viatura da empresa com a data de devolução no futuro volta a ter o
   plano de manutenção (IA), o registo de km e as idas à oficina. Todos os carros têm os mesmos separadores

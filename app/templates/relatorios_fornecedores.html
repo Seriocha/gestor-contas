@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block titulo %}Comparar fornecedores{% endblock %}
+{% block conteudo %}
+<div class="titulo-acoes">
+  <h1>Comparar fornecedores</h1>
+  <a href="/relatorios{{ '?entidade=' ~ entidade.id if entidade }}">‹ Relatórios</a>
+</div>
+{% set destino = '/relatorios/fornecedores' %}{% include "_entidades.html" %}
+{% if entidade %}
+<form method="get" class="filtros cartao">
+  <input type="hidden" name="entidade" value="{{ entidade.id }}">
+  <label>Serviço (categoria)
+    <select name="categoria">
+      {% set nat = namespace(atual='') %}
+      {% for c, nivel in categorias if c.natureza == 'DESPESA' %}
+      <option value="{{ c.id }}" {% if c.id == categoria_id %}selected{% endif %}>{{ ('&nbsp;&nbsp;&nbsp;' * nivel) | safe }}{{ c.nome }}</option>
+      {% endfor %}
+    </select></label>
+  <label>Também os débitos com <input name="extras" value="{{ extras }}" placeholder="ex.: G9, Goldenergy" maxlength="120"></label>
+  <button>Analisar</button>
+  <span class="nota">Os débitos da categoria (e subcategorias) e, além desses, os que têm um destes textos — útil para um
+    fornecedor novo que ainda não tem regra. Sem os kWh das faturas, compara-se o que se pagou.</span>
+</form>
+
+{% if sugeridos %}
+<div class="aviso">Há débitos sem categoria de {% for n, k in sugeridos %}<strong>{{ n }}</strong> ({{ k }}){{ ', ' if not loop.last }}{% endfor %}.
+  {% for n, k in sugeridos[:3] %}<a href="?entidade={{ entidade.id }}&categoria={{ categoria_id }}&extras={{ ((extras ~ ', ') if extras) ~ n }}">Juntar {{ n }}</a>{{ ' · ' if not loop.last }}{% endfor %}</div>
+{% endif %}
+
+{% if not a.movimentos %}
+<section class="cartao"><p class="vazio sem-margem">Sem débitos deste serviço. Escolhe a categoria (ex.: Casa › Eletricidade) ou indica o nome do fornecedor.</p></section>
+{% else %}
+
+{% if a.sem_categoria and pode_editar and a.categoria %}
+{% set textos = a.sem_categoria | map(attribute='descricao_original') | list %}
+<section class="cartao">
+  <p class="sem-margem">{{ a.sem_categoria | length }} débito{{ 's' if a.sem_categoria | length != 1 }} apanhado{{ 's' if a.sem_categoria | length != 1 }}
+    pelos textos extra não {{ 'têm' if a.sem_categoria | length != 1 else 'tem' }} categoria. Criar a regra e pô-los em «{{ a.categoria.nome_completo }}»:</p>
+  <div class="acoes-form">
+    {% for e in a.extras %}
+    <form method="post" action="/relatorios/fornecedores/categorizar" style="display: inline">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="entidade" value="{{ entidade.id }}">
+      <input type="hidden" name="categoria" value="{{ a.categoria.id }}"><input type="hidden" name="texto" value="{{ e }}">
+      <input type="hidden" name="extras" value="{{ extras }}">
+      <button class="primario pequeno">«{{ e | upper }}» → {{ a.categoria.nome }}</button>
+    </form>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+{% for mu in a.mudancas %}
+<section class="cartao mudanca-fornecedor">
+  <h2>{{ mu.de }} → {{ mu.para }} <span class="nota">· 1.º débito de {{ mu.para }} em {{ mu.data | data }}</span></h2>
+  <div class="kpi-linha">
+    <div class="kpi"><span class="nota">12 meses antes ({{ mu.de }})</span><strong>{{ mu.media_antes | eur }}/mês</strong>
+      <span class="nota">{{ mu.antes | eur }} em {{ mu.meses_antes }} meses</span></div>
+    <div class="kpi"><span class="nota">{{ 'Desde a mudança' if mu.meses_depois < 12 else '12 meses depois' }} ({{ mu.para }})</span>
+      <strong>{{ mu.media_depois | eur }}/mês</strong><span class="nota">{{ mu.depois | eur }} em {{ mu.meses_depois }} meses</span></div>
+    <div class="kpi"><span class="nota">Diferença</span>
+      {% if mu.variacao is not none %}<strong class="{{ 'pos' if mu.variacao < 0 else 'neg' }}">{{ '▼' if mu.variacao < 0 else '▲' }} {{ mu.variacao | pct }}</strong>
+      <span class="nota">{{ ((mu.media_depois - mu.media_antes) * 12) | eur }} por ano</span>{% else %}<strong>—</strong>{% endif %}</div>
+  </div>
+  {% if mu.meses_depois < 12 %}<p class="nota sem-margem">Ainda não passaram 12 meses desde a mudança: a média mistura estações (o inverno pesa mais).</p>{% endif %}
+</section>
+{% endfor %}
+
+<section class="cartao">
+  <h2>Ano a ano <span class="nota">· {{ a.categoria.nome_completo if a.categoria else 'textos' }}{{ ' + ' ~ a.extras | join(', ') if a.extras and a.categoria }}</span></h2>
+  {% if graficos.despesas_bem %}<div class="grafico grafico-medio"><canvas data-grafico="despesas_bem" aria-label="Total por ano e fornecedor" role="img"></canvas></div>{% endif %}
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th>Ano</th>{% for f in a.fornecedores %}<th class="num"><span class="pastilha" style="background: {{ cores[f] }}"></span>{{ f }}</th>{% endfor %}
+      <th class="num">Total</th><th class="num">Débitos</th><th class="num">Média/mês</th><th class="num">vs ano anterior</th></tr></thead>
+    <tbody>
+    {% for x in a.anos | reverse %}
+    {% set ant = (a.anos | selectattr('ano', 'equalto', x.ano - 1) | list | first) %}
+    <tr><th scope="row">{{ x.ano }}{% if x.meses | length < 12 %} <span class="nota">({{ x.meses | length }} meses)</span>{% endif %}</th>
+      {% for f in a.fornecedores %}<td class="num">{% if f in x.por_fornecedor %}{{ x.por_fornecedor[f][1] | eur }}{% else %}<span class="nota">—</span>{% endif %}</td>{% endfor %}
+      <td class="num"><strong>{{ x.total | eur }}</strong></td><td class="num">{{ x.n }}</td><td class="num">{{ x.media_mes | eur }}</td>
+      <td class="num">{% if ant and ant.media_mes %}{% set v = (x.media_mes - ant.media_mes) / ant.media_mes * 100 %}<span class="{{ 'pos' if v < 0 else 'neg' }}">{{ '▼' if v < 0 else '▲' }} {{ v | pct }}</span>{% else %}<span class="nota">—</span>{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% if a.anos_sem_dados %}<p class="nota">Sem extratos em {{ a.anos_sem_dados | join(', ') }} — ver Contas › Meses importados.</p>{% endif %}
+  <p class="nota sem-margem">«vs ano anterior» compara a média por mês com dados. Num ano incompleto, os meses que faltam mudam a média.</p>
+</section>
+
+<section class="cartao">
+  <h2>Mês a mês <span class="nota">· cor do fornecedor principal do mês</span></h2>
+  <div class="rolar"><table class="tabela compacta tabela-meses tabela-fornecedor">
+    <thead><tr><th>Ano</th>{% for m in meses_pt %}<th class="mi-col">{{ m }}</th>{% endfor %}</tr></thead>
+    <tbody>
+    {% for ano, meses in grelha %}
+    <tr><th scope="row">{{ ano }}</th>
+      {% for v in meses %}<td class="mi-c">{% if v %}<span class="valor-mes" style="--cor-f: {{ cores[v[1]] }}" title="{{ v[1] }}">{{ (v[0] / 100) | round | int }}</span>{% endif %}</td>{% endfor %}</tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  <p class="nota sem-margem">Valores em euros, arredondados. Compara a mesma coluna (o mesmo mês) entre anos: tira o efeito da estação.</p>
+</section>
+
+<details class="cartao">
+  <summary>Os {{ a.movimentos | length }} débitos</summary>
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th>Data</th><th>Fornecedor</th><th>Descrição</th><th>Conta</th><th class="num">Valor</th></tr></thead>
+    {% for m, f in a.movimentos | reverse %}
+    <tr><td class="sem-quebra">{{ m.data_mov | data }}</td><td><span class="pastilha" style="background: {{ cores[f] }}"></span>{{ f }}</td>
+      <td><a href="/movimentos/{{ m.id }}/detalhe">{{ m.descricao_original }}</a>{% if not m.categoria_id %} <span class="etiqueta">sem categoria</span>{% endif %}</td>
+      <td class="nota">{{ m.conta.nome }}</td><td class="num">{{ m.montante | eur }}</td></tr>
+    {% endfor %}
+  </table></div>
+</details>
+{% endif %}
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if entidade and graficos %}
+<script type="application/json" id="dados-graficos">{{ graficos | tojson }}</script>
+<script src="/static/vendor/chart.umd.min.js?v={{ versao }}"></script>
+<script src="/static/graficos.js?v={{ versao }}"></script>
+{% endif %}
+{% endblock %}
