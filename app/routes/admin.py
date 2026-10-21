@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from .. import preferencias
+from .. import backup as bk
 from ..backup import fazer_backup, ultimo_backup
 from ..deps import auditar, exigir_admin, flash, get_db, render
 from ..models import MODULOS, PAPEIS, PAPEIS_ROTULO, TIPOS_ENTIDADE, Auditoria, Entidade, Permissao, Utilizador
@@ -74,7 +75,7 @@ def backups(request: Request, periodo: str = "", admin: Utilizador = Depends(exi
     eventos = db.execute(q).all()
     return render(request, "admin/backups.html", eventos=eventos, periodo=periodo,
                   periodos_atividade={k: r for k, (r, _) in PERIODOS_ATIVIDADE.items()},
-                  ultimo_backup=ultimo_backup(request.app.state.defs))
+                  ultimo_backup=ultimo_backup(request.app.state.defs), est=bk.estado(request.app.state.defs))
 
 
 @router.get("/utilizadores/novo")
@@ -634,6 +635,36 @@ async def backup_agora(request: Request, admin: Utilizador = Depends(exigir_admi
     auditar(db, admin, "backup_manual", destino.name)
     db.commit()
     flash(request, f"Backup criado: {destino.name}")
+    return RedirectResponse("/admin/backups", status_code=303)
+
+
+@router.post("/pacote")
+async def pacote_agora(request: Request, admin: Utilizador = Depends(exigir_admin), db: Session = Depends(get_db)):
+    """Gera já o pacote cifrado para a cloud (normalmente é feito uma vez por dia, sozinho)."""
+    import asyncio
+    from ..main import VERSAO
+    await ler_form(request)
+    try:
+        p = await asyncio.to_thread(bk.fazer_pacote, request.app.state.defs, VERSAO)
+    except Exception as e:                                   # ErroBackup, disco cheio, permissões…
+        flash(request, f"O pacote não foi criado: {e}", "erro")
+        return RedirectResponse("/admin/backups#pacote", status_code=303)
+    auditar(db, admin, "pacote_cloud", f"{p.caminho.name} ({p.ficheiros} ficheiros)")
+    db.commit()
+    flash(request, f"Pacote criado e verificado: {p.caminho.name}.")
+    return RedirectResponse("/admin/backups#pacote", status_code=303)
+
+
+@router.post("/verificar-base")
+async def verificar_base(request: Request, admin: Utilizador = Depends(exigir_admin), db: Session = Depends(get_db)):
+    import asyncio
+    await ler_form(request)
+    res = await asyncio.to_thread(bk.verificar_base, request.app.state.defs)
+    auditar(db, admin, "verificar_base", res[:200])
+    db.commit()
+    ok = res == "ok"
+    flash(request, "Base de dados verificada: sem problemas." if ok else f"A verificação encontrou problemas: {res}",
+          "ok" if ok else "erro")
     return RedirectResponse("/admin/backups", status_code=303)
 
 

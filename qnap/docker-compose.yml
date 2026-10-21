@@ -20,6 +20,13 @@ services:
       - GESTOR_COOKIE_SECURE=0
       - GESTOR_BACKUP_INTERVALO_HORAS=24
       - GESTOR_BACKUP_RETENCAO_DIAS=30
+      # Só para mostrar em Administração › Backups onde estão as pastas na NAS.
+      - GESTOR_DATA_HOST=/share/Container/gestor-contas/data
+      - GESTOR_BACKUP_HOST=/share/Container/gestor-contas/backup
+    # Pacote diário cifrado para a cloud: GESTOR_PACOTE_SENHA=... neste ficheiro (chmod 600). Pacotes em backup/cloud.
+    env_file:
+      - path: /share/Container/gestor-contas/pacote.env
+        required: false
       # Pasta partilhada com os extratos (uma subpasta por banco), montada em /importar (ver volumes).
       - GESTOR_IMPORT_DIR=/importar
     volumes:

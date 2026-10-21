@@ -37,6 +37,7 @@ Certificados de Aforro. O design completo e as fases estão em [DESIGN.md](DESIG
   conta que o paga. Assim a despesa conta só uma vez (as compras). A página do cartão mostra a
   dívida, as compras desde o último fecho, o próximo fecho e a data de pagamento. Um extrato de
   cartão importado numa conta à ordem é recusado.
+- **v0.76.0 — Resiliência: localização dos dados e pacote diário para a cloud.** Administração › Backups mostra onde estão a base, a pasta dos dados, os backups e os pacotes (no container e na NAS), os tamanhos, o espaço livre, a verificação de integridade («Verificar a base agora») e avisos: backup atrasado, falhas, backups dentro da pasta dos dados, pouco espaço. Cada backup é verificado antes de ficar guardado e, antes de uma migração da base, é feita uma cópia «antes-migracao-…». Uma vez por dia é gerado um pacote `gestor-pacote-…gcpk` em `backup/cloud`: a base, `secret.key`, os extratos originais e um manifesto (sha256), cifrado com AES-256-GCM (senha em `GESTOR_PACOTE_SENHA`, ficheiro `pacote.env` na NAS), lido outra vez e verificado depois de escrito; um job do HBS3 leva-o para a cloud. Restauro com `python -m app.backup verificar|restaurar`. O `/healthz` passa a confirmar que a base responde.
 - **v0.75.0 — Valores dos recibos de vencimento (Paperless → Gestor).** Em Importar › Recibos, «Valores dos recibos» lê o texto dos recibos do tipo «Recibo de vencimento», tira Período, Bruto, Descontos, Cartão refeição e Líquido, confirma as contas (Bruto − Descontos − Cartão = Líquido e Abonos = Bruto − Cartão) e grava os campos personalizados sem perder os que o documento já tinha; se não baterem certo, o recibo fica com a etiqueta «Valor por verificar». Depois liga cada recibo ao crédito do vencimento (valor do Líquido, janela à volta do fim do mês): ligado, sem movimento ou ambíguo. Tem ensaio, não volta a ler os que já têm Líquido (a não ser com «Voltar a ler») e também corre na linha de comandos: `python -m app.recibos --dry-run --force` (token em GESTOR_PAPERLESS_TOKEN).
 - **v0.74.1 — Circuitos do Paperless: fluxos que já existiam por engano.** A API do Paperless ignora o filtro por nome
   nos fluxos de trabalho (e nas contas/regras de email) e devolve todos: o Gestor tomava o 1.º («Entrada Lar») por
@@ -568,5 +569,9 @@ python -m alembic revision --autogenerate -m "descricao"
 | `GESTOR_BACKUP_DIR` | `$GESTOR_DATA_DIR/backup` (container: `/backup`) | |
 | `GESTOR_BACKUP_INTERVALO_HORAS` | `24` | `0` desativa os backups automáticos |
 | `GESTOR_BACKUP_RETENCAO_DIAS` | `30` | |
+| `GESTOR_PACOTE_SENHA` | — | senha (≥ 12 caracteres) do pacote diário cifrado para a cloud; sem ela não se gera |
+| `GESTOR_PACOTE_DIR` | `$GESTOR_BACKUP_DIR/cloud` | onde ficam os pacotes (a pasta que se sincroniza com a cloud) |
+| `GESTOR_PACOTE_RETENCAO_DIAS` | `14` | |
+| `GESTOR_DATA_HOST`, `GESTOR_BACKUP_HOST` | — | caminhos na NAS, só para mostrar em Administração › Backups |
 | `GESTOR_COOKIE_SECURE` | `0` | `1` atrás de HTTPS |
 | `GESTOR_SECRET_KEY` | gerada em `secret.key` | |

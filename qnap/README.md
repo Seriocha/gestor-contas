@@ -28,6 +28,38 @@ sh /share/Container/gestor-contas/update.sh
 ```
 (copiar `qnap/update.sh` para essa pasta na 1.ª vez.)
 
+## Backups para a cloud (pacote diário cifrado)
+
+A app faz, sozinha:
+- **backup da base** de 24 em 24 h para `/share/Container/gestor-contas/backup` (30 dias), cada cópia verificada;
+- **cópia antes de cada migração** da base (atualização com mudanças de estrutura): `backup/antes-migracao-…db`;
+- **pacote diário para a cloud** em `/share/Container/gestor-contas/backup/cloud`: um ficheiro
+  `gestor-pacote-AAAAMMDD-HHMMSS.gcpk` com a base, `secret.key`, os extratos originais e um manifesto (sha256),
+  **cifrado** com AES-256-GCM. Ficam 14 dias (`GESTOR_PACOTE_RETENCAO_DIAS`).
+
+Em Administração › Backups vê-se onde está cada coisa (no container e na NAS), os tamanhos, o último backup e
+pacote, a verificação de integridade e os avisos (backup atrasado, falhas, pouco espaço).
+
+1. **Senha do pacote** — por SSH, como admin (escolhe uma senha longa e guarda-a também fora da NAS, num gestor de
+   passwords: sem ela o pacote não se abre):
+   ```bash
+   vi /share/Container/gestor-contas/pacote.env      # uma linha: GESTOR_PACOTE_SENHA=...
+   chmod 600 /share/Container/gestor-contas/pacote.env
+   sh /share/Container/gestor-contas/update.sh       # copiar antes a versão nova de qnap/update.sh
+   ```
+   Em Administração › Backups, «Gerar pacote agora» para confirmar.
+2. **Enviar para a cloud** — HBS3 (Hybrid Backup Sync) › Sincronização › **Sincronização unidirecional** (Um sentido):
+   origem `/Container/gestor-contas/backup/cloud`, destino OneDrive / Google Drive / Dropbox (pasta, p. ex.,
+   `Backups/GestorContas`), agendamento diário **depois das 04:00**. Desligar «eliminar ficheiros no destino» se
+   quiseres que a cloud guarde mais do que os 14 dias da NAS. Não é preciso a cifra do HBS3: o pacote já vai cifrado.
+3. **Testar o restauro** (de vez em quando) — num PC com o código:
+   ```bash
+   python -m app.backup verificar gestor-pacote-AAAAMMDD-HHMMSS.gcpk
+   python -m app.backup restaurar gestor-pacote-AAAAMMDD-HHMMSS.gcpk /tmp/restauro
+   ```
+   (pede a senha, ou lê `GESTOR_PACOTE_SENHA`). Para repor na NAS: parar o container, trocar o conteúdo de
+   `/share/Container/gestor-contas/data` pelo da pasta restaurada, arrancar.
+
 ## Sugestões por IA (Claude API) — opcional
 
 Em **Categorias e regras › Por classificar**, o botão «Pedir sugestões à IA»

@@ -23,19 +23,33 @@ from .routes import (abastecer, admin, auth, documentos, inicio, posicoes, categ
 from .seed import semear
 
 APP_DIR = Path(__file__).resolve().parent
-VERSAO = "0.75.0"
+VERSAO = "0.76.0"
 
 
-def aplicar_migracoes(db_path: Path) -> None:
+def aplicar_migracoes(db_path: Path, backup_dir: Path | None = None) -> None:
+    """Leva a base à última revisão. Se já existe e vai ser migrada, faz antes uma cópia verificada (backup_dir)."""
     cfg = Config(str(BASE_DIR / "alembic.ini"))
     cfg.set_main_option("script_location", str(BASE_DIR / "migrations"))
     cfg.set_main_option("sqlalchemy.url", url_sqlite(db_path))
+    if backup_dir is not None and db_path.exists() and db_path.stat().st_size:
+        from alembic.runtime.migration import MigrationContext
+        from alembic.script import ScriptDirectory
+        from sqlalchemy import create_engine
+        eng = create_engine(url_sqlite(db_path))
+        try:
+            with eng.connect() as c:
+                atual = MigrationContext.configure(c).get_current_revision()
+        finally:
+            eng.dispose()
+        destino = ScriptDirectory.from_config(cfg).get_current_head()
+        if atual and atual != destino:
+            backup.backup_antes_de_migrar(db_path, backup_dir, atual, destino)
     command.upgrade(cfg, "head")
 
 
 def create_app(data_dir: Path | None = None, backups_automaticos: bool = True) -> FastAPI:
     defs = carregar_definicoes(data_dir)
-    aplicar_migracoes(defs.db_path)
+    aplicar_migracoes(defs.db_path, defs.backup_dir)
     engine = criar_engine(defs.db_path)
     SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
     with SessionLocal() as db:
@@ -44,7 +58,7 @@ def create_app(data_dir: Path | None = None, backups_automaticos: bool = True) -
 
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI):
-        tarefas_fundo = [asyncio.create_task(backup.ciclo_backups(defs)),
+        tarefas_fundo = [asyncio.create_task(backup.ciclo_backups(defs, VERSAO)),
                          asyncio.create_task(pt.ciclo_revisoes(SessionLocal, lambda: app.state.prefs)),
                          asyncio.create_task(pasta_importacao.ciclo(SessionLocal, defs, lambda: app.state.prefs)),
                          asyncio.create_task(extratos.ciclo_paperless(SessionLocal, defs, lambda: app.state.prefs))] \
@@ -86,6 +100,13 @@ def create_app(data_dir: Path | None = None, backups_automaticos: bool = True) -
 
     @app.get("/healthz", include_in_schema=False)
     def healthz():
+        """Para o HEALTHCHECK do container: a app responde e a base lê-se."""
+        from sqlalchemy import text
+        try:
+            with SessionLocal() as db:
+                db.execute(text("SELECT 1"))
+        except Exception:
+            return PlainTextResponse("base de dados indisponível", status_code=503)
         return PlainTextResponse("ok")
 
     @app.exception_handler(NaoAutenticado)

@@ -3,6 +3,32 @@
 {% block conteudo %}
 <h1>Administração</h1>
 {% include "admin/_menu.html" %}
+{% macro tam(b) %}{{ '—' if b is none else ('%.1f GB' % (b / 1024 ** 3) if b >= 1024 ** 3 else ('%.1f MB' % (b / 1024 ** 2) if b >= 1024 ** 2 else '%d KB' % (b // 1024))) }}{% endmacro %}
+{% for a in est.avisos %}<div class="aviso aviso-erro">{{ a }}</div>{% endfor %}
+
+<section class="cartao">
+  <div class="cartao-cabecalho">
+    <h2>Onde estão os dados</h2>
+    <form method="post" action="/admin/verificar-base">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
+      <button>Verificar a base agora</button>
+    </form>
+  </div>
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th></th><th>No container</th><th>Na NAS</th><th class="num">Tamanho</th></tr></thead>
+    <tr><td><strong>Base de dados</strong></td><td><code>{{ est.db }}</code></td><td>{% if est.db_nas %}<code>{{ est.db_nas }}</code>{% else %}<span class="nota">—</span>{% endif %}</td>
+      <td class="num">{{ tam(est.db_bytes) }}{% if est.wal_bytes %} <span class="nota">+ {{ tam(est.wal_bytes) }} (WAL)</span>{% endif %}</td></tr>
+    <tr><td>Pasta dos dados <span class="nota">(base, secret.key, extratos originais)</span></td><td><code>{{ est.dados_dir }}</code></td>
+      <td>{% if est.dados_nas %}<code>{{ est.dados_nas }}</code>{% else %}<span class="nota">—</span>{% endif %}</td><td></td></tr>
+    <tr><td>Backups da base</td><td><code>{{ est.backup_dir }}</code></td><td>{% if est.backup_nas %}<code>{{ est.backup_nas }}</code>{% else %}<span class="nota">—</span>{% endif %}</td>
+      <td class="num">{{ est.backups }} · {{ tam(est.backups_bytes) }}</td></tr>
+    <tr><td>Pacotes para a cloud</td><td><code>{{ est.pacote_dir }}</code></td><td>{% if est.pacote_nas %}<code>{{ est.pacote_nas }}</code>{% else %}<span class="nota">—</span>{% endif %}</td>
+      <td class="num">{{ est.pacotes }} · {{ tam(est.pacotes_bytes) }}</td></tr>
+  </table></div>
+  <p class="nota sem-margem">Integridade da base: {% if est.integridade %}<span class="etiqueta {{ 'etiqueta-ok' if est.integridade_ok else 'etiqueta-erro' }}">{{ 'sem problemas' if est.integridade_ok else 'com problemas' }}</span> em {{ est.integridade.quando.replace('T', ' ')[:16] }}{% else %}ainda não verificada{% endif %}
+    · Espaço livre no disco dos backups: {{ tam(est.livre_bytes) }}{% if not est.db_nas %} · Para ver os caminhos na NAS, definir GESTOR_DATA_HOST e GESTOR_BACKUP_HOST (o update.sh já o faz).{% endif %}</p>
+</section>
+
 <section class="cartao">
   <div class="cartao-cabecalho">
     <h2>Backups</h2>
@@ -11,7 +37,34 @@
       <button>Fazer backup agora</button>
     </form>
   </div>
-  <p>Último backup: {{ ultimo_backup.strftime('%d/%m/%Y %H:%M') if ultimo_backup else 'nenhum ainda' }}. Automático a cada 24 h, guardados 30 dias.</p>
+  <p>Último backup: {{ ultimo_backup.strftime('%d/%m/%Y %H:%M') if ultimo_backup else 'nenhum ainda' }}.
+    {% if est.intervalo_horas > 0 %}Automático a cada {{ est.intervalo_horas }} h, guardados {{ est.retencao_dias }} dias.{% else %}Backups automáticos desligados.{% endif %}</p>
+  <p class="nota sem-margem">Cada cópia é verificada (integridade) antes de ficar guardada. Antes de uma atualização que mude a
+    estrutura da base é feita uma cópia «antes-migracao-…» (ficam as 5 mais recentes).</p>
+</section>
+
+<section class="cartao" id="pacote">
+  <div class="cartao-cabecalho">
+    <h2>Pacote diário para a cloud</h2>
+    {% if est.pacote_senha %}<form method="post" action="/admin/pacote">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
+      <button>Gerar pacote agora</button>
+    </form>{% endif %}
+  </div>
+  <p class="nota">Uma vez por dia é gerado um único ficheiro <code>gestor-pacote-AAAAMMDD-HHMMSS.gcpk</code> com tudo o que é
+    preciso para restaurar noutra máquina: a base (cópia verificada), <code>secret.key</code>, os extratos originais e um
+    manifesto com o sha256 de cada ficheiro. Vai <strong>cifrado</strong> (AES-256-GCM, chave tirada da senha do pacote) e por
+    isso pode ir para a OneDrive ou a Google Drive. Depois de escrito é lido outra vez e verificado. Ficam
+    {{ est.retencao_pacotes }} dias nesta pasta; um job do HBS3 sincroniza-a com a cloud.</p>
+  {% if est.pacote_senha %}
+  <p class="sem-margem">Último pacote: {% if est.ultimo_pacote %}<strong>{{ est.ultimo_pacote.name }}</strong> · {{ est.ultimo_pacote_quando.strftime('%d/%m/%Y %H:%M') }} · {{ tam(est.ultimo_pacote_bytes) }}{% else %}nenhum ainda{% endif %}</p>
+  {% else %}
+  <p class="vazio sem-margem">Falta a senha do pacote: ver qnap/README.md › Backups para a cloud (ficheiro
+    <code>pacote.env</code> na NAS, só legível pelo admin). Guarda a senha também fora da NAS (gestor de passwords): sem ela
+    o pacote não se abre.</p>
+  {% endif %}
+  <p class="nota sem-margem">Restaurar: <code>python -m app.backup verificar &lt;pacote&gt;</code> e
+    <code>python -m app.backup restaurar &lt;pacote&gt; &lt;pasta vazia&gt;</code> (instruções no LEIA-ME de cada pacote).</p>
 </section>
 
 <section class="cartao">

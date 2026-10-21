@@ -12,7 +12,7 @@ IMAGE="ghcr.io/seriocha/gestor-contas:latest"
 NAME="gestor-contas"
 BASE="/share/Container/gestor-contas"
 
-mkdir -p "$BASE/data" "$BASE/backup"
+mkdir -p "$BASE/data" "$BASE/backup" "$BASE/backup/cloud"
 
 # Sugestões por IA (opcional): chave da Claude API num ficheiro só legível pelo admin, ex.:
 #   printf 'ANTHROPIC_API_KEY=sk-ant-...\n' > $BASE/ia.env && chmod 600 $BASE/ia.env
@@ -49,6 +49,15 @@ if [ -f "$BASE/immich.env" ]; then
   IMMICH_OPTS="--env-file $BASE/immich.env"
   echo "Immich: ligação lida de $BASE/immich.env"
 fi
+# Pacote diário cifrado para a cloud (opcional): senha em $BASE/pacote.env (ver qnap/README.md › Backups para a cloud).
+# Os pacotes ficam em $BASE/backup/cloud — é essa pasta que o job do HBS3 sincroniza com a cloud.
+PACOTE_OPTS=""
+if [ -f "$BASE/pacote.env" ]; then
+  PACOTE_OPTS="--env-file $BASE/pacote.env"
+  echo "Pacote para a cloud: senha lida de $BASE/pacote.env"
+else
+  echo "Pacote para a cloud: sem $BASE/pacote.env — desligado"
+fi
 docker network inspect nas-apps >/dev/null 2>&1 || docker network create nas-apps
 
 echo "A obter a imagem mais recente ($IMAGE)..."
@@ -64,12 +73,15 @@ docker run -d \
   -e GESTOR_COOKIE_SECURE=0 \
   -e GESTOR_BACKUP_INTERVALO_HORAS=24 \
   -e GESTOR_BACKUP_RETENCAO_DIAS=30 \
+  -e GESTOR_DATA_HOST="$BASE/data" \
+  -e GESTOR_BACKUP_HOST="$BASE/backup" \
   -v "$BASE/data:/data:rw" \
   -v "$BASE/backup:/backup:rw" \
   $IA_OPTS \
   $EXTRATOS_OPTS \
   $PAPERLESS_OPTS \
   $IMMICH_OPTS \
+  $PACOTE_OPTS \
   --network nas-apps \
   "$IMAGE"
 
