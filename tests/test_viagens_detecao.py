@@ -4,7 +4,6 @@ revisão pela IA (simulada; só recebe descrições por dia relativo — sem val
 import hashlib
 import json
 from datetime import date, timedelta
-from urllib.parse import unquote_plus
 
 import pytest
 from fastapi.testclient import TestClient
@@ -77,11 +76,11 @@ def test_pagina_criar_e_descartar(app, admin):
     assert "2 períodos por registar" in t and "confiança alta" in t and "🌍 estrangeiro" in t
     assert 'id="p-20250810-20250814"' in t
     assert "Detetar viagens" in admin.get("/viagens?entidade=1").text
-    # o «Criar viagem» leva ao formulário preenchido
-    link = unquote_plus(t.split('id="p-20250520-20250524"')[1].split('href="/viagens/nova?')[1].split('"')[0]).replace("&amp;", "&")
-    assert "data_ini=2025-05-20" in link and "data_fim=2025-05-24" in link
-    f = admin.get("/viagens/nova?" + t.split('id="p-20250520-20250524"')[1].split('href="/viagens/nova?')[1].split('"')[0].replace("&amp;", "&"))
-    assert 'value="2025-05-20"' in f.text and 'value="2025-05-24"' in f.text
+    # o «Criar viagem» é um formulário com as datas detetadas, que podem ser acertadas antes de criar
+    cartao = t.split('id="p-20250520-20250524"')[1].split('class="form-inline criar-viagem"')[1].split("</form>")[0]
+    assert 'name="data_ini" value="2025-05-20"' in cartao and 'name="data_fim" value="2025-05-24"' in cartao
+    f = admin.get("/viagens/nova?entidade=1&nome=Galiza&data_ini=2025-05-19&data_fim=2025-05-25")   # datas acertadas
+    assert 'value="2025-05-19"' in f.text and 'value="2025-05-25"' in f.text
     r = admin.post("/viagens/nova?entidade=1", data={"csrf": _csrf(f), "nome": "Galiza 2025", "data_ini": "2025-05-20",
                                                     "data_fim": "2025-05-24", "pessoas": "2", "motivo": "lazer"})
     assert r.status_code == 200
@@ -116,7 +115,7 @@ def test_revisao_pela_ia(app, admin, monkeypatch):
     # a resposta fica guardada (não volta a perguntar) e preenche a viagem nova
     admin.get("/viagens/detetar?entidade=1")
     assert len(enviados) == 1
-    assert "nome=Algarve" in r.text and "destino=Albufeira" in r.text
+    assert 'name="nome" value="Algarve' in r.text and 'name="destino" value="Albufeira"' in r.text
     # analisar os que faltam: só o outro período
     admin.post("/viagens/detetar/ia", data={"csrf": _csrf(t), "entidade": "1"})
     assert len(enviados) == 2
@@ -250,4 +249,4 @@ def test_ia_recebe_os_lugares_das_fotos(app, admin, immich_falso, monkeypatch):
     t = admin.get("/viagens/detetar?entidade=1").text
     assert "Algarve 2025" in t and len(immich_falso) == n
     # a IA não deu destino: o «+ Criar viagem» fica sem destino (é o browser que o completa com as fotos)
-    assert "destino=&amp;" in t.split('id="p-20250810-20250814"')[1].split('criar-viagem')[1][:400]
+    assert 'name="destino" value=""' in t.split('id="p-20250810-20250814"')[1].split('criar-viagem')[1][:600]

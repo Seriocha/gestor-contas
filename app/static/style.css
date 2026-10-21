@@ -989,3 +989,13 @@ body.a-personalizar .grupo-cabecalho { flex-wrap: wrap; }
 .formulario label.chip:hover { border-color: var(--destaque); }
 .formulario label.chip:has(input:checked) { background: var(--destaque); border-color: var(--destaque); color: var(--destaque-texto); }
 .formulario label.chip:has(input:focus-visible) { outline: 2px solid var(--destaque); outline-offset: 2px; }
+
+/* Viagens: acertar o intervalo na revisão (período detetado, sugestões da viagem) */
+.form-inline.criar-viagem, .form-inline.datas-viagem { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .6rem; }
+.form-inline.criar-viagem label, .form-inline.datas-viagem label { display: inline-flex; align-items: center; gap: .3rem; margin: 0; }
+.form-inline.criar-viagem input[type=date], .form-inline.datas-viagem input[type=date] { width: auto; padding: .25rem .45rem; min-height: 0; font-size: .85rem; }
+.form-inline.criar-viagem .campo-data, .form-inline.datas-viagem .campo-data { width: 8.6rem; }
+.form-inline.criar-viagem .campo-data > input, .form-inline.datas-viagem .campo-data > input { padding: .3rem 2rem .3rem .55rem; min-height: 0; font-size: .85rem; }
+.form-inline.criar-viagem .botao-data, .form-inline.datas-viagem .botao-data { right: .15rem; }
+.form-inline.datas-viagem { margin: 0 0 .8rem; }
+.acoes-periodo .form-inline.criar-viagem { flex: 0 1 auto; }

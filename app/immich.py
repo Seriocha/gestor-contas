@@ -29,8 +29,19 @@ def url_api() -> str:
     return (os.environ.get("GESTOR_IMMICH_URL") or "").rstrip("/")
 
 
-def url_browser() -> str:
-    return (os.environ.get("GESTOR_IMMICH_LINK") or url_api()).rstrip("/")
+def url_browser(host: str | None = None) -> str:
+    """Endereço do Immich para o browser: GESTOR_IMMICH_LINK; sem ele, o endereço da NAS por onde se abriu o Gestor
+    (host do pedido) com a porta do Immich — o GESTOR_IMMICH_URL (ex.: http://immich_server:2283) só existe dentro da
+    rede dos containers."""
+    link = (os.environ.get("GESTOR_IMMICH_LINK") or "").rstrip("/")
+    if link:
+        return link
+    api = url_api()
+    if host and api:
+        from urllib.parse import urlsplit
+        u = urlsplit(api)
+        return f"{u.scheme}://{host}{':' + str(u.port) if u.port else ''}"
+    return api
 
 
 def configurado() -> bool:
@@ -185,5 +196,19 @@ def juntar_ao_album(album_id: str, ids: list[str], *, chave: str | None) -> int:
     return sum(1 for x in r if isinstance(x, dict) and x.get("success")) if isinstance(r, list) else 0
 
 
-def link_album(album_id: str) -> str:
-    return f"{url_browser()}/albums/{album_id}"
+def atualizar_album(album_id: str, *, chave: str | None, nome: str | None = None, descricao: str | None = None) -> None:
+    corpo = {k: v for k, v in (("albumName", nome and nome[:120]), ("description", descricao and descricao[:500])) if v}
+    if corpo:
+        _pedido(f"/api/albums/{album_id}", "PATCH", corpo, chave=chave)
+
+
+PREFIXO_ALBUM = "GC - "
+
+
+def nome_album(nome_viagem: str) -> str:
+    """«Japão 2026» → «GC - Japão 2026»: os álbuns criados pelo Gestor de Contas ficam juntos no Immich."""
+    return nome_viagem if nome_viagem.startswith(PREFIXO_ALBUM) else PREFIXO_ALBUM + nome_viagem
+
+
+def link_album(album_id: str, host: str | None = None) -> str:
+    return f"{url_browser(host)}/albums/{album_id}"

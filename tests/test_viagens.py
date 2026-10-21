@@ -247,3 +247,25 @@ def test_reutiliza_etiqueta_com_o_mesmo_nome(admin, app):
     with app.state.SessionLocal() as db:
         assert db.get(Viagem, vid).etiqueta.nome == "Viagem: Maurícias 2026"
         assert db.query(Etiqueta).filter(Etiqueta.nome.like("Viagem:%")).count() == 1
+
+
+def test_acertar_as_datas_na_revisao(admin, app):
+    """Na ficha (revisão das sugestões) o intervalo acerta-se sem ir ao Editar; as sugestões seguem as novas datas."""
+    vid = _criar(admin, data_ini="2026-07-11", data_fim="2026-07-15")
+    p = admin.get(f"/viagens/{vid}").text
+    assert f'action="/viagens/{vid}/datas"' in p and 'name="data_ini" value="2026-07-11"' in p
+    with app.state.SessionLocal() as db:
+        antes = {s.mov.descricao_original for s in vg.candidatos(db, db.get(Viagem, vid))}
+    assert "RESTAURANT LE PORT" not in antes                                    # 10/07: fora do intervalo
+    r = admin.post(f"/viagens/{vid}/datas", data={"csrf": _csrf(admin.get(f"/viagens/{vid}")),
+                                                  "data_ini": "2026-07-09", "data_fim": "2026-07-15"}, follow_redirects=True)
+    assert "Datas da viagem: 09/07/2026 a 15/07/2026" in r.text
+    with app.state.SessionLocal() as db:
+        v = db.get(Viagem, vid)
+        assert (v.data_ini, v.data_fim) == (date(2026, 7, 9), date(2026, 7, 15))
+        assert "RESTAURANT LE PORT" in {s.mov.descricao_original for s in vg.candidatos(db, v)}
+    r = admin.post(f"/viagens/{vid}/datas", data={"csrf": _csrf(admin.get(f"/viagens/{vid}")),
+                                                  "data_ini": "2026-07-20", "data_fim": "2026-07-15"}, follow_redirects=True)
+    assert "o regresso não pode ser antes da partida" in r.text
+    with app.state.SessionLocal() as db:
+        assert db.get(Viagem, vid).data_ini == date(2026, 7, 9)

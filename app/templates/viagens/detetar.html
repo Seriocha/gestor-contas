@@ -69,10 +69,17 @@
     {% if p.viagem %}
     <span>✓ Já registada: <a href="/viagens/{{ p.viagem.id }}">{{ p.viagem.nome }}</a></span>
     {% elif pode_editar %}
-    {% set q = {'entidade': entidade.id, 'nome': p.nome_sugerido, 'data_ini': p.ini.isoformat(), 'data_fim': p.fim.isoformat(),
-                'destino': (p.ia.destino if p.ia else '') or '', 'pais': (p.ia.pais if p.ia else '') or '',
-                'motivo': (p.ia.motivo if p.ia else 'lazer') or 'lazer'} %}
-    <a class="botao primario pequeno criar-viagem" href="/viagens/nova?{{ q | urlencode }}">+ Criar viagem</a>
+    {# as datas detetadas podem ser acertadas aqui antes de criar a viagem (as fotos acompanham o novo intervalo) #}
+    <form method="get" action="/viagens/nova" class="form-inline criar-viagem">
+      <input type="hidden" name="entidade" value="{{ entidade.id }}">
+      <input type="hidden" name="nome" value="{{ p.nome_sugerido }}">
+      <input type="hidden" name="destino" value="{{ (p.ia.destino if p.ia else '') or '' }}">
+      <input type="hidden" name="pais" value="{{ (p.ia.pais if p.ia else '') or '' }}">
+      <input type="hidden" name="motivo" value="{{ (p.ia.motivo if p.ia else 'lazer') or 'lazer' }}">
+      <label class="nota">De <input type="date" name="data_ini" value="{{ p.ini.isoformat() }}" required></label>
+      <label class="nota">a <input type="date" name="data_fim" value="{{ p.fim.isoformat() }}" required></label>
+      <button class="primario pequeno">+ Criar viagem</button>
+    </form>
     {% if ia_ok %}
     <form method="post" action="/viagens/detetar/ia">
       <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="entidade" value="{{ entidade.id }}">
@@ -113,13 +120,32 @@
     const conf = caixa.querySelector('.confirmada-fotos');
     if (conf) cartao.querySelector('.etiquetas-periodo').append(conf);
     // «+ Criar viagem»: destino e país do lugar mais fotografado, quando a IA não os deu
-    const f = caixa.querySelector('.fotos-periodo'), a = cartao.querySelector('a.criar-viagem');
-    if (f && a) {
-      const url = new URL(a.href);
-      for (const k of ['destino', 'pais']) if (!url.searchParams.get(k) && f.dataset[k]) url.searchParams.set(k, f.dataset[k]);
-      a.href = url;
+    const f = caixa.querySelector('.fotos-periodo'), form = cartao.querySelector('form.criar-viagem');
+    if (f && form) {
+      for (const k of ['destino', 'pais']) if (!form.elements[k].value && f.dataset[k]) form.elements[k].value = f.dataset[k];
     }
   }
   (async () => { while (caixasFotos.length) await Promise.all(caixasFotos.splice(0, 3).map(carregarFotos)); })();
+  // datas acertadas à mão: as fotos passam a ser as do novo intervalo
+  document.querySelectorAll('form.criar-viagem').forEach(form => {
+    let espera;
+    form.addEventListener('change', () => {
+      clearTimeout(espera);
+      espera = setTimeout(() => {
+        // o campo mostra dd/mm/aaaa (datas.js): aaaa-mm-dd para comparar e pedir as fotos
+        const iso = v => { const m = (v || '').match(/^(\d{2})\/(\d{2})\/(\d{4})$/); return m ? `${m[3]}-${m[2]}-${m[1]}` : v; };
+        const ini = iso(form.elements.data_ini.value), fim = iso(form.elements.data_fim.value);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(ini) || !/^\d{4}-\d{2}-\d{2}$/.test(fim)) return;
+        const caixa = form.closest('.periodo-viagem').querySelector('.fotos-periodo-caixa');
+        if (!caixa || !ini || !fim || fim < ini) return;
+        const url = new URL(caixa.dataset.url, location.href);
+        url.searchParams.set('ini', ini); url.searchParams.set('fim', fim);
+        caixa.dataset.url = url.pathname + url.search;
+        caixa.textContent = '📷 A procurar fotos no Immich…';
+        caixa.classList.add('nota');
+        carregarFotos(caixa);
+      }, 400);
+    });
+  });
 </script>
 {% endif %}{% endblock %}

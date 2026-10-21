@@ -66,6 +66,15 @@
       {% if viagem.modelo %}<a href="/viagens/modelos/{{ viagem.modelo_id }}">afinar o modelo</a>{% endif %}
     </div>
   </div>
+  {% if pode_editar %}
+  <form method="post" action="/viagens/{{ viagem.id }}/datas" class="form-inline datas-viagem">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <span class="nota">Intervalo da viagem</span>
+    <label class="nota">De <input type="date" name="data_ini" value="{{ viagem.data_ini.isoformat() }}" required></label>
+    <label class="nota">a <input type="date" name="data_fim" value="{{ viagem.data_fim.isoformat() }}" required></label>
+    <button class="pequeno">Atualizar datas</button>
+  </form>
+  {% endif %}
   {% if not sugestoes %}
   <p class="vazio sem-margem">Sem sugestões{% if r.movimentos %} novas{% endif %}. Se faltar algo, ajusta o modelo (contas, dias antes/depois, textos a incluir)
     ou importa os extratos do período.</p>

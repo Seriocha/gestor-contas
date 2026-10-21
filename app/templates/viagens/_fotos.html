@@ -1,9 +1,10 @@
 {# Secção «Fotografias» da ficha da viagem (carregada à parte): fotos do Immich nas datas da viagem, lugares e álbum. #}
 <div class="cartao-cabecalho">
   <h2>📷 Fotografias {% if f %}<span class="nota">· {{ f.total }} no Immich de {{ viagem.data_ini | data }} a {{ viagem.data_fim | data }}</span>{% endif %}</h2>
-  {% if f and f.total and immich_link %}
+  {% if album and not album.apagado and immich_link %}
   <span class="acoes-titulo">
-    {% if album and not album.apagado %}<a class="botao pequeno" href="{{ immich_link }}/albums/{{ viagem.immich_album_id }}" target="_blank" rel="noopener">Abrir o álbum ({{ album.assetCount or 0 }})</a>{% endif %}
+    <a class="botao pequeno" href="{{ immich_link }}/albums/{{ viagem.immich_album_id }}" target="_blank" rel="noopener"
+       title="{{ immich_link }}/albums/{{ viagem.immich_album_id }}">Abrir o álbum «{{ album.albumName or nome_album }}» ({{ album.assetCount or 0 }})</a>
   </span>
   {% endif %}
 </div>
@@ -31,7 +32,7 @@
 
 <div class="grelha-fotos">
   {% for x in f.fotos[:48] %}
-  <a href="{{ x.link }}" target="_blank" rel="noopener" title="{{ x.quando.strftime('%d/%m/%Y %H:%M') if x.quando }}{{ ' · ' ~ x.cidade if x.cidade }}">
+  <a href="{{ immich_link }}/photos/{{ x.id }}" target="_blank" rel="noopener" title="{{ x.quando.strftime('%d/%m/%Y %H:%M') if x.quando }}{{ ' · ' ~ x.cidade if x.cidade }}">
     <img src="/viagens/fotos/{{ x.id }}/miniatura" alt="{{ x.nome }}" loading="lazy">{% if x.video %}<span class="foto-video">▶</span>{% endif %}
   </a>
   {% endfor %}
@@ -44,7 +45,7 @@
   <form method="post" action="/viagens/{{ viagem.id }}/album" style="display: inline">
     <input type="hidden" name="csrf" value="{{ csrf_token }}">
     <button class="{{ '' if album and not album.apagado else 'primario' }}">
-      {{ '➕ Juntar ao álbum as fotos que faltam' if album and not album.apagado else '📁 Criar o álbum «' ~ viagem.nome ~ '» no Immich' }}</button>
+      {{ '➕ Juntar ao álbum as fotos que faltam' if album and not album.apagado else '📁 Criar o álbum «' ~ nome_album ~ '» no Immich' }}</button>
   </form>
   {% if viagem.immich_album_id %}
   <form method="post" action="/viagens/{{ viagem.id }}/album/desligar" style="display: inline">

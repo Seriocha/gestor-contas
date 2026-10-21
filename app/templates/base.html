@@ -37,13 +37,15 @@
   ('Viagens', [
     ('/viagens', 'viagens', 'Viagens', caminho.startswith('/viagens') and not caminho.startswith('/viagens/detetar'), 0),
     ('/viagens/detetar', 'procurar', 'Detetar viagens', caminho.startswith('/viagens/detetar'), 0)]),
+  ('Saúde', [
+    ('/saude', 'saude', 'Perfil de saúde', caminho.startswith('/saude'), 0)]),
   ('Dados', [
     ('/importar', 'importar', 'Importar', caminho.startswith('/importar'), n_validar)]),
   ('Configuração', [
     ('/categorias', 'categorias', 'Categorias e regras', caminho.startswith('/categorias') or caminho.startswith('/regras'), 0)]
     + ([('/admin/utilizadores', 'admin', 'Administração', em_admin, 0)] if utilizador.is_admin else [])),
 ] %}
-{% set itens_movel = [grupos_menu[0][1][0], grupos_menu[1][1][0], grupos_menu[0][1][1], grupos_menu[4][1][0]] %}
+{% set itens_movel = [grupos_menu[0][1][0], grupos_menu[1][1][0], grupos_menu[0][1][1], grupos_menu[5][1][0]] %}
 
 <header class="barra-movel">
   <a class="marca" href="/inicio">{{ logo() }}<span>Gestor de Contas</span></a>

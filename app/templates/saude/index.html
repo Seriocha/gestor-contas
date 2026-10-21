@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block titulo %}Saúde{% endblock %}
+{% macro n(v, casas=0) -%}{{ '—' if v is none else ('{:,.%df}' % casas).format(v).replace(',', ' ').replace('.', ',').replace(' ', '.') }}{%- endmacro %}
+{% macro horas(minutos) -%}{% if minutos is none %}—{% else %}{{ (minutos // 60) | int }} h {{ '%02d' % ((minutos % 60) | round | int) }}{% endif %}{%- endmacro %}
+{% block conteudo %}
+<div class="titulo-acoes"><h1>Saúde</h1></div>
+{% set destino = '/saude' %}{% include "_entidades.html" %}
+{% if entidade %}
+
+{% if perfis %}
+<nav class="separadores">
+  {% for p in perfis %}<a href="/saude?entidade={{ entidade.id }}&perfil={{ p.id }}&periodo={{ periodo }}" {% if atual and p.id == atual.id %}class="ativo"{% endif %}>{{ p.nome }}</a>{% endfor %}
+</nav>
+{% endif %}
+
+{% if not perfis %}
+<section class="cartao">
+  <p class="sem-margem">Cada pessoa tem um perfil de saúde, com os dados que exporta do <strong>Google Health</strong> (Google
+    Takeout): peso e gordura, passos e distância, sono, frequência cardíaca em repouso, variabilidade, oxigénio e respiração,
+    e os treinos. Vê os perfis quem tem acesso à {{ entidade.nome }}.</p>
+</section>
+{% endif %}
+
+{% if atual %}
+{% set k = r.kpis if r and not r.vazio else {} %}
+<div class="titulo-acoes">
+  <h2 class="sem-margem">{{ atual.nome }}
+    <span class="nota">{% if r and not r.vazio %}· dados de {{ r.primeiro | data }} a {{ r.ultimo | data }}{% endif %}
+      {% if atual.importado_em %}· importado a {{ atual.importado_em.strftime('%d/%m/%Y') }}{% endif %}</span></h2>
+  {% if r and not r.vazio %}
+  <nav class="separadores sem-margem">
+    {% for kp, (rot, _) in periodos.items() %}<a href="/saude?entidade={{ entidade.id }}&perfil={{ atual.id }}&periodo={{ kp }}" {% if kp == periodo %}class="ativo"{% endif %}>{{ rot }}</a>{% endfor %}
+  </nav>
+  {% endif %}
+</div>
+
+{% if r and not r.vazio %}
+<section class="kpi-grelha">
+  {% if k.peso %}<div class="cartao kpi"><span class="nota">Peso · {{ k.peso.data | data }}</span><strong>{{ n(k.peso.valor, 1) }} kg</strong>
+    <span class="nota">{% if k.peso.delta is not none %}{{ '+' if k.peso.delta > 0 }}{{ n(k.peso.delta, 1) }} kg em 4 semanas{% endif %}
+      {% if k.imc %}· IMC {{ n(k.imc, 1) }}{% endif %}{% if k.gordura %} · gordura {{ n(k.gordura.valor, 1) }}%{% endif %}</span></div>{% endif %}
+  {% if k.passos %}<div class="cartao kpi"><span class="nota">Passos por dia</span><strong>{{ n(k.passos.m7) }}</strong>
+    <span class="nota">média de 7 dias · 30 dias: {{ n(k.passos.m30) }}</span></div>{% endif %}
+  {% if k.sono %}<div class="cartao kpi"><span class="nota">Sono por noite</span><strong>{{ horas(k.sono.m7) }}</strong>
+    <span class="nota">média de 7 noites · 30: {{ horas(k.sono.m30) }}</span></div>{% endif %}
+  {% if k.fc %}<div class="cartao kpi"><span class="nota">FC em repouso</span><strong>{{ n(k.fc.m7) }} bpm</strong>
+    <span class="nota">7 dias · 30 dias: {{ n(k.fc.m30) }}{% if k.vfc %} · VFC {{ n(k.vfc.m7) }} ms{% endif %}</span></div>{% endif %}
+  {% if k.spo2 %}<div class="cartao kpi"><span class="nota">Oxigénio no sangue</span><strong>{{ n(k.spo2.m7, 1) }}%</strong>
+    <span class="nota">7 dias{% if k.resp %} · respiração {{ n(k.resp.m7, 1) }} rpm{% endif %}</span></div>{% endif %}
+</section>
+
+<p class="nota">{{ {'dia': 'Valores por dia', 'semana': 'Médias por semana', 'mes': 'Médias por mês'}[r.agrupar] }} de {{ r.ini | data }} a {{ r.fim | data }}.</p>
+<div class="grelha-2">
+  {% if r.tem.peso %}<section class="cartao"><h2>Peso{% if r.tem.gordura %} e gordura{% endif %}</h2>
+    <div class="grafico grafico-medio"><canvas data-saude="peso" aria-label="Evolução do peso" role="img"></canvas></div></section>{% endif %}
+  {% if r.tem.passos %}<section class="cartao"><h2>Passos</h2>
+    <div class="grafico grafico-medio"><canvas data-saude="passos" aria-label="Passos por dia" role="img"></canvas></div></section>{% endif %}
+  {% if r.tem.sono %}<section class="cartao"><h2>Sono <span class="nota">· horas por noite</span></h2>
+    <div class="grafico grafico-medio"><canvas data-saude="sono" aria-label="Sono por noite e fases" role="img"></canvas></div></section>{% endif %}
+  {% if r.tem.fc or r.tem.vfc %}<section class="cartao"><h2>Coração</h2>
+    <div class="grafico grafico-medio"><canvas data-saude="coracao" aria-label="Frequência cardíaca em repouso e variabilidade" role="img"></canvas></div></section>{% endif %}
+  {% if r.tem.spo2 or r.tem.resp %}<section class="cartao"><h2>Oxigénio e respiração</h2>
+    <div class="grafico grafico-medio"><canvas data-saude="respiracao" aria-label="Oxigénio no sangue e respiração" role="img"></canvas></div></section>{% endif %}
+</div>
+<p class="nota">Não há tensão arterial nesta exportação do Google Health; se passares a registá-la (Health Connect), aparece na
+  próxima importação.</p>
+
+{% if r.treinos %}
+<section class="cartao">
+  <h2>Treinos <span class="nota">· {{ r.n_treinos }}{{ ', os 25 mais recentes' if r.n_treinos > 25 }}</span></h2>
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th>Data</th><th>Atividade</th><th class="num">Duração</th><th class="num">Distância</th><th class="num">Passos</th><th class="num">Calorias</th><th class="num">FC média</th></tr></thead>
+    {% for t in r.treinos %}
+    <tr><td class="sem-quebra">{{ t.inicio.strftime('%d/%m/%Y %H:%M') }}</td><td>{{ t.atividade }}{% if t.manual %} <span class="nota">(manual)</span>{% endif %}</td>
+      <td class="num">{{ horas(t.duracao_min) if t.duracao_min else '—' }}</td><td class="num">{{ n(t.distancia_km, 2) ~ ' km' if t.distancia_km else '—' }}</td>
+      <td class="num">{{ n(t.passos) if t.passos else '—' }}</td><td class="num">{{ n(t.calorias) if t.calorias else '—' }}</td>
+      <td class="num">{{ n(t.fc_media) if t.fc_media else '—' }}</td></tr>
+    {% endfor %}
+  </table></div>
+</section>
+{% endif %}
+{% elif r %}
+<section class="cartao"><p class="vazio sem-margem">Ainda sem dados. Importa a exportação do Google Health abaixo.</p></section>
+{% endif %}
+{% endif %}
+
+{% if pode_editar %}
+<div class="grelha-2">
+  {% if atual %}
+  <section class="cartao" id="importar">
+    <h2>Importar Google Health · {{ atual.nome }}</h2>
+    <p class="nota">No <a href="https://takeout.google.com" target="_blank" rel="noopener">Google Takeout</a>: «Desmarcar tudo»,
+      marcar <strong>Google Health</strong> (ou Fit), exportar uma vez em .zip e escolher aqui esse ficheiro (pode ter centenas
+      de MB). Importar outra vez acrescenta os dias novos e atualiza os que mudaram — não duplica.</p>
+    <form method="post" action="/saude/perfis/{{ atual.id }}/importar" enctype="multipart/form-data" class="formulario">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
+      <label>Ficheiro .zip do Takeout <input type="file" name="ficheiro" accept=".zip,application/zip" required></label>
+      <div class="acoes-form"><button class="primario">Importar</button></div>
+    </form>
+  </section>
+  {% endif %}
+  <section class="cartao">
+    <h2>Perfis da {{ entidade.nome }}</h2>
+    {% if perfis %}
+    <div class="rolar"><table class="tabela compacta">
+      {% for p in perfis %}
+      <tr><td><form method="post" action="/saude/perfis/{{ p.id }}/editar" class="form-inline">
+          <input type="hidden" name="csrf" value="{{ csrf_token }}">
+          <input name="nome" value="{{ p.nome }}" maxlength="80" aria-label="Nome do perfil" style="max-width: 10rem">
+          <select name="utilizador_id" aria-label="Utilizador da app"><option value="">— sem conta na app —</option>
+            {% for x in utilizadores %}<option value="{{ x.id }}" {% if x.id == p.utilizador_id %}selected{% endif %}>{{ x.nome }}</option>{% endfor %}</select>
+          <button class="pequeno">Guardar</button></form></td>
+        <td class="num nota">{{ contagens.get(p.id, 0) }} valores</td>
+        <td><form method="post" action="/saude/perfis/{{ p.id }}/apagar" onsubmit="return confirm('Apagar o perfil «{{ p.nome }}» e todos os dados de saúde?')">
+          <input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="ligacao">Apagar</button></form></td></tr>
+      {% endfor %}
+    </table></div>
+    {% endif %}
+    <form method="post" action="/saude/perfis" class="formulario separado">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="entidade" value="{{ entidade.id }}">
+      <div class="linha">
+        <label>Novo perfil <input name="nome" placeholder="nome da pessoa" maxlength="80" required></label>
+        <label>Utilizador da app <select name="utilizador_id"><option value="">— sem conta na app —</option>
+          {% for x in utilizadores %}<option value="{{ x.id }}">{{ x.nome }}</option>{% endfor %}</select></label>
+      </div>
+      <div class="acoes-form"><button>+ Criar perfil</button></div>
+    </form>
+  </section>
+</div>
+{% endif %}
+{% endif %}
+{% endblock %}
+
+{% block scripts %}{% if r and not r.vazio %}
+<script type="application/json" id="dados-saude">{{ r.graficos | tojson }}</script>
+<script src="/static/vendor/chart.umd.min.js?v={{ versao }}"></script>
+<script src="/static/saude.js?v={{ versao }}"></script>
+{% endif %}{% endblock %}

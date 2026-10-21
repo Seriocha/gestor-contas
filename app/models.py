@@ -58,7 +58,8 @@ class Utilizador(Base):
 TIPOS_ENTIDADE = {"pessoal": "Pessoal", "heranca": "Herança"}
 # Módulos que cada entidade usa (Administração › Entidades): os ecrãs só mostram o que a entidade tem.
 MODULOS = {"imoveis": "Casas e propriedades", "viaturas": "Viaturas (carros, Via Verde, abastecimentos)",
-           "subscricoes": "Subscrições e assinaturas", "viagens": "Viagens"}
+           "subscricoes": "Subscrições e assinaturas", "viagens": "Viagens",
+           "saude": "Saúde (perfis e dados do Google Health)"}
 
 
 def fracao(pct: float | None) -> str:
@@ -89,7 +90,7 @@ class Entidade(Base):
     # 2.º cenário da partilha (ex.: hoje 1/6 de cada filho e 4/6 da mãe; por morte da mãe, 1/2 de cada filho).
     quota_futura: Mapped[float | None] = mapped_column(Float)
     quota_futura_nota: Mapped[str | None] = mapped_column(String(100))
-    modulos: Mapped[str] = mapped_column(String(120), default="imoveis,viaturas,subscricoes,viagens",
+    modulos: Mapped[str] = mapped_column(String(120), default="imoveis,viaturas,subscricoes,viagens,saude",
                                          server_default="imoveis,viaturas,subscricoes,viagens")
 
     contas: Mapped[list["Conta"]] = relationship(back_populates="entidade")
@@ -1157,3 +1158,52 @@ class Auditoria(Base):
     utilizador_id: Mapped[int | None] = mapped_column(ForeignKey("utilizador.id", ondelete="SET NULL"))
     acao: Mapped[str] = mapped_column(String(50))
     detalhe: Mapped[str | None] = mapped_column(Text)
+
+
+# ---------------------------------------------------------------- saúde (Google Health / Takeout)
+class PerfilSaude(Base):
+    """Perfil de saúde de uma pessoa da entidade (ex.: Família › Sérgio). Vê-o quem tem acesso à entidade; os dados
+    vêm da exportação do Google Health (Takeout). Ligar a um utilizador é opcional (pessoas sem conta na app)."""
+    __tablename__ = "perfil_saude"
+    __table_args__ = (UniqueConstraint("entidade_id", "nome"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entidade_id: Mapped[int] = mapped_column(ForeignKey("entidade.id", ondelete="CASCADE"), index=True)
+    nome: Mapped[str] = mapped_column(String(80))
+    utilizador_id: Mapped[int | None] = mapped_column(ForeignKey("utilizador.id", ondelete="SET NULL"))
+    altura_cm: Mapped[float | None] = mapped_column(Float)
+    importado_em: Mapped[datetime | None] = mapped_column(DateTime)
+    importado_ate: Mapped[date | None] = mapped_column(Date)      # último dia com dados na última importação
+
+
+class MedidaSaude(Base):
+    """Um valor diário de um perfil: passos, peso, sono, frequência cardíaca em repouso… (tipos em app/saude.py).
+    Reimportar substitui o valor do dia."""
+    __tablename__ = "medida_saude"
+    __table_args__ = (UniqueConstraint("perfil_id", "data", "tipo"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    perfil_id: Mapped[int] = mapped_column(ForeignKey("perfil_saude.id", ondelete="CASCADE"), index=True)
+    data: Mapped[date] = mapped_column(Date, index=True)
+    tipo: Mapped[str] = mapped_column(String(30))
+    valor: Mapped[float] = mapped_column(Float)
+    fonte: Mapped[str | None] = mapped_column(String(60))
+
+
+class TreinoSaude(Base):
+    """Treino/exercício registado (Google Health › UserExercises)."""
+    __tablename__ = "treino_saude"
+    __table_args__ = (UniqueConstraint("perfil_id", "externo_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    perfil_id: Mapped[int] = mapped_column(ForeignKey("perfil_saude.id", ondelete="CASCADE"), index=True)
+    externo_id: Mapped[str] = mapped_column(String(40))
+    inicio: Mapped[datetime] = mapped_column(DateTime)            # hora local
+    duracao_min: Mapped[float | None] = mapped_column(Float)
+    atividade: Mapped[str] = mapped_column(String(60))
+    calorias: Mapped[float | None] = mapped_column(Float)
+    passos: Mapped[int | None] = mapped_column(Integer)
+    distancia_km: Mapped[float | None] = mapped_column(Float)
+    fc_media: Mapped[float | None] = mapped_column(Float)
+    fc_maxima: Mapped[float | None] = mapped_column(Float)
+    manual: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")

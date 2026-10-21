@@ -43,7 +43,11 @@ def api(monkeypatch):
                  "exifInfo": {"city": "Lisboa", "country": "Portugal"}}]}}
         if caminho == "/api/albums" and metodo == "POST":
             estado["albuns"]["alb-1"] = list(corpo["assetIds"])
+            estado["meta"] = {"albumName": corpo["albumName"], "description": corpo["description"]}
             return {"id": "alb-1", "albumName": corpo["albumName"]}
+        if caminho == "/api/albums/alb-1" and metodo == "PATCH":
+            estado.setdefault("meta", {}).update(corpo)
+            return {"id": "alb-1", **estado["meta"]}
         if caminho.startswith("/api/albums/alb-1/assets"):
             novos = [i for i in corpo["ids"] if i not in estado["albuns"]["alb-1"]]
             estado["albuns"]["alb-1"] += novos
@@ -51,7 +55,7 @@ def api(monkeypatch):
         if caminho.startswith("/api/albums/"):
             aid = caminho.split("/")[3].split("?")[0]
             if aid in estado["albuns"]:
-                return {"id": aid, "assetCount": len(estado["albuns"][aid])}
+                return {"id": aid, "assetCount": len(estado["albuns"][aid]), **estado.get("meta", {})}
             raise immich.ErroImmich("O Immich respondeu 404.")
         raise AssertionError(caminho)
     monkeypatch.setattr(immich, "_pedido", falso)
@@ -111,13 +115,16 @@ def test_fotos_da_viagem_e_album(admin, app, api):
     admin.post("/viagens/1/destino-das-fotos", data={"csrf": _csrf(admin.get("/viagens/1")), "cidade": "Albufeira", "pais": "Portugal"})
     # criar o álbum e, depois, juntar só o que falta
     r = admin.post("/viagens/1/album", data={"csrf": _csrf(admin.get("/viagens/1"))})
-    assert "Álbum «Algarve 2025» criado no Immich com 3 fotos." in r.text
+    assert "Álbum «GC - Algarve 2025» criado no Immich com 3 fotos." in r.text
     assert api["albuns"]["alb-1"] == [A1, A2, A3]
+    assert api["meta"]["albumName"] == "GC - Algarve 2025"
+    assert "Albufeira · Portugal · 10/08/2025 a 14/08/2025" in api["meta"]["description"]
+    assert "Gestor de Contas: http://testserver/viagens/1" in api["meta"]["description"]          # link de volta
     with app.state.SessionLocal() as db:
         v = db.get(Viagem, 1)
         assert (v.immich_album_id, v.destino, v.pais) == ("alb-1", "Albufeira", "Portugal")
     f = admin.get("/viagens/1/fotos").text
-    assert "Abrir o álbum (3)" in f and "http://nas:2283/albums/alb-1" in f and "Juntar ao álbum" in f
+    assert "Abrir o álbum «GC - Algarve 2025» (3)" in f and "http://nas:2283/albums/alb-1" in f and "Juntar ao álbum" in f
     r = admin.post("/viagens/1/album", data={"csrf": _csrf(admin.get("/viagens/1"))})
     assert "O álbum já tinha todas as fotos." in r.text
     r = admin.post("/viagens/1/album/desligar", data={"csrf": _csrf(admin.get("/viagens/1"))})
@@ -134,3 +141,34 @@ def test_menu_viagens_agrupamento(admin):
     p = admin.get("/inicio").text
     assert '<p class="menu-grupo">Viagens</p>' in p and 'href="/viagens/detetar"' in p
     assert p.index('<p class="menu-grupo">Património</p>') < p.index('<p class="menu-grupo">Viagens</p>') < p.index('<p class="menu-grupo">Dados</p>')
+
+
+def test_album_antigo_passa_ao_nome_novo(admin, app, api):
+    """Álbum criado antes com o nome simples da viagem e sem link: ao juntar fotos passa a «GC - …» com o link."""
+    _guardar_chave(admin)
+    api["albuns"]["alb-1"] = [A1]
+    api["meta"] = {"albumName": "Algarve 2025", "description": "antiga"}
+    with app.state.SessionLocal() as db:
+        db.get(Viagem, 1).immich_album_id = "alb-1"
+        db.commit()
+    admin.post("/viagens/1/album", data={"csrf": _csrf(admin.get("/viagens/1"))})
+    assert api["meta"]["albumName"] == "GC - Algarve 2025" and "/viagens/1" in api["meta"]["description"]
+    # um nome dado à mão no Immich não é mexido
+    api["meta"] = {"albumName": "As nossas férias", "description": api["meta"]["description"]}
+    n = len([x for x in api["pedidos"] if x[0] == "PATCH"])
+    admin.post("/viagens/1/album", data={"csrf": _csrf(admin.get("/viagens/1"))})
+    assert api["meta"]["albumName"] == "As nossas férias" and len([x for x in api["pedidos"] if x[0] == "PATCH"]) == n
+
+
+def test_link_do_immich_sem_gestor_immich_link(admin, monkeypatch):
+    """Sem GESTOR_IMMICH_LINK, os links usam o endereço por onde se abriu o Gestor com a porta do Immich (o
+    GESTOR_IMMICH_URL é o nome do container, que o browser não conhece)."""
+    monkeypatch.delenv("GESTOR_IMMICH_LINK", raising=False)
+    monkeypatch.setenv("GESTOR_IMMICH_URL", "http://immich_server:2283")
+    assert immich.url_browser("192.168.1.232") == "http://192.168.1.232:2283"
+    assert immich.link_album("alb-1", "192.168.1.232") == "http://192.168.1.232:2283/albums/alb-1"
+    _guardar_chave(admin)
+    f = admin.get("/viagens/1/fotos", headers={"host": "192.168.1.232:8200"}).text
+    assert f'href="http://192.168.1.232:2283/photos/{A1}"' in f
+    monkeypatch.setenv("GESTOR_IMMICH_LINK", "http://192.168.1.232:2283/")
+    assert immich.url_browser("outro") == "http://192.168.1.232:2283"

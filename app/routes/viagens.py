@@ -315,7 +315,8 @@ def fotos(request: Request, vid: int, u: Utilizador = Depends(utilizador_atual),
     """Secção «Fotografias» (fragmento): as fotos tiradas nas datas da viagem, os lugares e o álbum no Immich."""
     from .. import immich
     viagem, papel = _viagem(db, u, vid)
-    ctx = {"viagem": viagem, "pode_editar": PAPEIS[papel] >= PAPEIS["editar"], "immich_link": immich.url_browser(),
+    ctx = {"viagem": viagem, "pode_editar": PAPEIS[papel] >= PAPEIS["editar"],
+           "immich_link": immich.url_browser(request.url.hostname), "nome_album": immich.nome_album(viagem.nome),
            "erro": None, "f": None, "album": None}
     chave = _chave_immich(request, u)
     if not chave:
@@ -359,14 +360,22 @@ async def album(request: Request, vid: int, u: Utilizador = Depends(utilizador_a
             flash(request, "Não há fotos no Immich nas datas desta viagem.", "erro")
             return RedirectResponse(f"/viagens/{vid}#fotos", status_code=303)
         existente = immich.album_existe(viagem.immich_album_id, chave=chave) if viagem.immich_album_id else None
+        nome = immich.nome_album(viagem.nome)
+        # link de volta para a viagem no Gestor, na descrição do álbum
+        ligacao = f"Gestor de Contas: {str(request.base_url).rstrip('/')}/viagens/{viagem.id}"
+        descricao = " · ".join(x for x in (viagem.destino, viagem.pais,
+                                            f"{viagem.data_ini:%d/%m/%Y} a {viagem.data_fim:%d/%m/%Y}") if x) + "\n" + ligacao
         if existente:
             n = immich.juntar_ao_album(viagem.immich_album_id, ids, chave=chave)
             msg = f"Álbum atualizado: {n} foto{'s' if n != 1 else ''} nova{'s' if n != 1 else ''}." if n else "O álbum já tinha todas as fotos."
+            # álbum criado antes com o nome simples da viagem / sem o link: passa ao formato novo (um nome dado à mão fica)
+            novo_nome = nome if existente.get("albumName") == viagem.nome else None
+            nova_desc = descricao if ligacao not in (existente.get("description") or "") else None
+            if novo_nome or nova_desc:
+                immich.atualizar_album(viagem.immich_album_id, chave=chave, nome=novo_nome, descricao=nova_desc)
         else:
-            descricao = " · ".join(x for x in (viagem.destino, viagem.pais,
-                                                f"{viagem.data_ini:%d/%m/%Y} a {viagem.data_fim:%d/%m/%Y}") if x)
-            viagem.immich_album_id = immich.criar_album(viagem.nome, descricao, ids, chave=chave)
-            msg = f"Álbum «{viagem.nome}» criado no Immich com {len(ids)} foto{'s' if len(ids) != 1 else ''}."
+            viagem.immich_album_id = immich.criar_album(nome, descricao, ids, chave=chave)
+            msg = f"Álbum «{nome}» criado no Immich com {len(ids)} foto{'s' if len(ids) != 1 else ''}."
     except immich.ErroImmich as e:
         flash(request, f"Não foi possível: {e}", "erro")
         return RedirectResponse(f"/viagens/{vid}#fotos", status_code=303)
@@ -374,6 +383,29 @@ async def album(request: Request, vid: int, u: Utilizador = Depends(utilizador_a
     db.commit()
     flash(request, msg)
     return RedirectResponse(f"/viagens/{vid}#fotos", status_code=303)
+
+
+@router.post("/{vid}/datas")
+async def datas(request: Request, vid: int, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
+    """Acertar só o intervalo da viagem enquanto se revêem as sugestões; as sugestões passam a ser as das novas datas."""
+    viagem, _ = _viagem(db, u, vid, "editar")
+    form = await ler_form(request)
+    try:
+        ini, fim = parse_data(str(form.get("data_ini", ""))), parse_data(str(form.get("data_fim", "")))
+    except ValueError:
+        ini = fim = None
+    if not ini or not fim or fim < ini:
+        flash(request, "Datas inválidas: o regresso não pode ser antes da partida.", "erro")
+        return RedirectResponse(f"/viagens/{vid}#sugestoes", status_code=303)
+    if (ini, fim) != (viagem.data_ini, viagem.data_fim):
+        antes = f"{viagem.data_ini:%d/%m/%Y} a {viagem.data_fim:%d/%m/%Y}"
+        viagem.data_ini, viagem.data_fim = ini, fim
+        db.flush()
+        vg.sincronizar(db, viagem)
+        auditar(db, u, "viagem_datas", f"{viagem.nome}: {antes} → {ini:%d/%m/%Y} a {fim:%d/%m/%Y}")
+        db.commit()
+        flash(request, f"Datas da viagem: {ini:%d/%m/%Y} a {fim:%d/%m/%Y}. As sugestões foram recalculadas.")
+    return RedirectResponse(f"/viagens/{vid}#sugestoes", status_code=303)
 
 
 @router.post("/{vid}/album/desligar")
