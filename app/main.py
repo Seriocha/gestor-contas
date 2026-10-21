@@ -23,7 +23,7 @@ from .routes import (abastecer, admin, auth, documentos, inicio, posicoes, categ
 from .seed import semear
 
 APP_DIR = Path(__file__).resolve().parent
-VERSAO = "0.76.1"
+VERSAO = "0.77.0"
 
 
 def aplicar_migracoes(db_path: Path, backup_dir: Path | None = None) -> None:

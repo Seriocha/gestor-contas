@@ -116,8 +116,8 @@ def verificar_saldos(movs: list[MovimentoBruto]) -> list[str]:
 
 def consertar_texto(valor):
     """Texto UTF-8 que foi lido como Latin-1/Windows-1252 («CONCLUÃ\\x8dDA», «cartÃ£o») → «CONCLUÍDA», «cartão».
-    Só mexe quando aparecem as marcas típicas (Ã, Â) e a reconversão dá UTF-8 válido."""
-    if not isinstance(valor, str) or ("Ã" not in valor and "Â" not in valor):
+    Só mexe quando aparecem as marcas típicas (Ã, Â, «â‚¬» = €) e a reconversão dá UTF-8 válido."""
+    if not isinstance(valor, str) or ("Ã" not in valor and "Â" not in valor and "â‚" not in valor):
         return valor
     for codificacao in ("latin-1", "cp1252"):
         try:
@@ -168,10 +168,10 @@ def ler_linhas(nome: str, conteudo: bytes) -> list[list]:
 def todos() -> list:
     """Todos os parsers, pela ordem de deteção (o 1.º que reconhecer o ficheiro ganha)."""
     from . import activobank, big, creditoagricola, revolut, santander, santander_cartao, santander_emprestimo
-    from . import revolut_pdf, santander_debito, santander_pdf, santander_refeicao
+    from . import revolut_consolidado, revolut_pdf, santander_debito, santander_pdf, santander_refeicao
     return [santander.Parser, santander_cartao.Parser, santander_emprestimo.Parser,
             santander_refeicao.Parser, santander_debito.Parser, santander_pdf.Parser, revolut_pdf.Parser, activobank.Parser,
-            creditoagricola.Parser, big.Parser, revolut.Parser]
+            creditoagricola.Parser, big.Parser, revolut_consolidado.Parser, revolut.Parser]
 
 
 def ler_extrato(nome: str, conteudo: bytes) -> Extrato:

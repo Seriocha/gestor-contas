@@ -16,6 +16,15 @@ from tests.test_previsoes import _mov
 HOJE = date.today()
 
 
+def _dia(delta: int) -> int:
+    """Dia do mês perto de HOJE + delta, entre 1 e 28 (o pagamento do cartão tem de cair na agenda, seja que dia for)."""
+    passo = 1 if delta >= 0 else -1
+    d = HOJE + timedelta(days=delta)
+    while d.day > 28:
+        d += timedelta(days=passo)
+    return d.day
+
+
 @pytest.fixture
 def app(tmp_path):
     return create_app(tmp_path, backups_automaticos=False)
@@ -28,7 +37,7 @@ def admin(app):
     _post(c, "/contas/nova?entidade=1", nome="Ordem", tipo="ORDEM", moeda="EUR", instituicao_id="1",
           saldo_inicial="5.000,00", data_saldo_inicial=(HOJE - timedelta(days=400)).isoformat())
     _post(c, "/contas/nova?entidade=1", nome="Cartão", tipo="CARTAO_CREDITO", moeda="EUR", instituicao_id="1",
-          conta_pagamento_id="1", dia_fecho="5", dia_pagamento="20")
+          conta_pagamento_id="1", dia_fecho=str(_dia(-10)), dia_pagamento=str(_dia(5)))
     _mov(c, 2, (HOJE - timedelta(days=2)).isoformat(), "300,00", "COMPRA LOJA", sentido="saida")
     return c
 
