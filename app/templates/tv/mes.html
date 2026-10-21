@@ -1,0 +1,38 @@
+{% extends "tv/base.html" %}
+{% block titulo %}{{ dados.rotulo }}{% endblock %}
+{% block conteudo %}
+{% set d = dados %}
+<div class="tv-mesnav">
+  <a href="?e={{ ent.id }}&amp;m={{ nav.anterior }}" class="tv-botao" data-nav>‹ Mês anterior</a>
+  <h1>{{ d.rotulo }}</h1>
+  {% if nav.seguinte %}<a href="?e={{ ent.id }}&amp;m={{ nav.seguinte }}" class="tv-botao" data-nav>Mês seguinte ›</a>{% else %}<span class="tv-botao tv-inativo">Mês seguinte ›</span>{% endif %}
+</div>
+<div class="tv-linha">
+  <section class="tv-cartao tv-col-1"><div class="tv-rotulo">Receitas</div><div class="tv-medio valor pos">{{ d.r.receitas|eur }}</div>
+    <div class="tv-nota">mês anterior <span class="valor">{{ d.anterior.receitas|eur }}</span></div></section>
+  <section class="tv-cartao tv-col-1"><div class="tv-rotulo">Despesas</div><div class="tv-medio valor neg">{{ d.r.despesas|eur }}</div>
+    <div class="tv-nota">mês anterior <span class="valor">{{ d.anterior.despesas|eur }}</span></div></section>
+  <section class="tv-cartao tv-col-1"><div class="tv-rotulo">Poupança</div>
+    <div class="tv-medio valor {{ 'pos' if d.r.poupanca >= 0 else 'neg' }}">{{ d.r.poupanca|eur }}</div>
+    <div class="tv-nota">{% if d.r.taxa_poupanca is not none %}{{ '%.0f'|format(d.r.taxa_poupanca) }}% das receitas{% else %}sem receitas{% endif %}</div></section>
+</div>
+<div class="tv-linha">
+  <section class="tv-cartao tv-col-2" data-nav tabindex="-1">
+    <div class="tv-rotulo">Para onde foi o dinheiro</div>
+    {% for l in d.despesas %}
+    <div class="tv-cat">
+      <span class="tv-cat-nome">{{ l.nome }}</span>
+      <span class="tv-cat-barra"><span style="width:{{ '%.1f'|format(l.pct) }}%;background:{{ l.cor }}"></span></span>
+      <span class="tv-cat-valor valor">{{ l.total|eur }}</span>
+      <span class="tv-cat-var">{% if l.variacao is not none %}<span class="{{ 'neg' if l.variacao > 0 else 'pos' }}">{{ l.variacao|pct }}</span>{% endif %}</span>
+    </div>
+    {% else %}<p class="tv-nota">Sem despesas neste mês.</p>{% endfor %}
+    {% if d.outras %}<div class="tv-par"><span>Outras</span><span class="valor">{{ d.outras|eur }}</span></div>{% endif %}
+  </section>
+  <section class="tv-cartao tv-col-1">
+    <div class="tv-rotulo">Receitas</div>
+    {% for l in d.receitas %}<div class="tv-par"><span>{{ l.nome }}</span><span class="valor pos">{{ l.total|eur }}</span></div>
+    {% else %}<p class="tv-nota">Sem receitas neste mês.</p>{% endfor %}
+  </section>
+</div>
+{% endblock %}

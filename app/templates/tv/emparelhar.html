@@ -1,0 +1,19 @@
+{% extends "tv/base.html" %}
+{% block refrescar %}{% endblock %}
+{% block titulo %}Emparelhar{% endblock %}
+{% block corpo %}
+<main class="tv-emparelhar" id="emparelhar" data-estado="/tv/emparelhar/estado">
+  <div class="tv-emp-texto">
+    <div class="tv-marca">Gestor<span>·</span><small>televisão</small></div>
+    <h1>Ligar esta TV ao Gestor</h1>
+    <ol>
+      <li>No telemóvel ou no PC, com sessão iniciada no Gestor, aponta a câmara ao código QR
+        ou abre <b>{{ url_aprovar }}</b></li>
+      <li>Escreve o código e escolhe o que esta TV pode mostrar.</li>
+    </ol>
+    <div class="tv-codigo">{{ codigo[:3] }} {{ codigo[3:] }}</div>
+    <p class="tv-nota" id="emp-msg">O código vale {{ minutos }} minutos. Esta página abre sozinha quando aprovares.</p>
+  </div>
+  <div class="tv-qr">{{ qr|safe }}</div>
+</main>
+{% endblock %}

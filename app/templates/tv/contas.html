@@ -1,0 +1,17 @@
+{% extends "tv/base.html" %}
+{% block titulo %}Contas{% endblock %}
+{% block conteudo %}
+{% if not dados %}<section class="tv-cartao"><p class="tv-nota">Esta entidade ainda não tem contas com saldo.</p></section>{% endif %}
+<div class="tv-colunas">
+{% for g in dados %}
+  <section class="tv-cartao tv-bloco" data-nav tabindex="-1">
+    <div class="tv-cab"><span class="tv-rotulo">{{ g.titulo }}</span>
+      <span class="tv-medio valor{{ ' neg' if g.passivo }}">{{ g.total|eur }}</span></div>
+    {% for c in g.itens %}
+    <div class="tv-par"><span>{{ c.nome }}{% if c.banco %} <small>{{ c.banco }}</small>{% endif %}</span>
+      <span class="valor{{ ' neg' if g.passivo or c.saldo < 0 }}">{{ c.saldo|eur }}</span></div>
+    {% endfor %}
+  </section>
+{% endfor %}
+</div>
+{% endblock %}

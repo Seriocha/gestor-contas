@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block titulo %}Emparelhar TV{% endblock %}
+{% block conteudo %}
+<h1>Emparelhar uma televisão</h1>
+<p class="nota">Na TV, abre o Gestor em <code>/tv</code>: aparece um código de 6 dígitos. A TV fica só de consulta
+  (não altera nada) e vê apenas as entidades que escolheres aqui, com as tuas permissões. Podes desligá-la a qualquer
+  momento em <a href="/perfil#tv">Perfil › Televisões</a>; mudar a tua password também a desliga.</p>
+{% if erro %}<div class="aviso aviso-erro">{{ erro }}</div>{% endif %}
+<form method="post" action="/tv/aprovar" class="formulario estreito">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  <label>Código que aparece na TV
+    <input name="codigo" value="{{ codigo }}" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]{6,7}" maxlength="7" required autofocus></label>
+  <label>Nome desta TV <input name="nome" value="{{ nome }}" maxlength="60" required></label>
+  <fieldset class="tv-entidades-form">
+    <legend>O que a TV mostra</legend>
+    {% for e, _ in visiveis %}
+    <label class="caixa"><input type="checkbox" name="entidade" value="{{ e.id }}" {{ 'checked' if e.id in marcadas }}> {{ e.nome }}</label>
+    {% endfor %}
+  </fieldset>
+  <button class="primario">Emparelhar</button>
+</form>
+{% endblock %}

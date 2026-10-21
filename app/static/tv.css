@@ -1,0 +1,114 @@
+/* Vista da TV (/tv). Browsers de TV antigos (Tizen 4 ≈ Chromium 56): sem variáveis CSS, sem grid, sem gap no flexbox.
+   Tamanhos em rem com o rem ligado à largura do ecrã, para ficar igual em 1280, 1920 ou 3840 px.
+   Margens largas (~4%) por causa do overscan de algumas TVs. */
+@font-face { font-family: "Bricolage Grotesque"; font-weight: 200 800; font-display: swap;
+  src: url("/static/fonts/bricolage-grotesque-latin-wght-normal.woff2") format("woff2"); }
+@font-face { font-family: "Geist"; font-weight: 100 900; font-display: swap;
+  src: url("/static/fonts/geist-latin-wght-normal.woff2") format("woff2"); }
+
+html { font-size: 1.05vw; }
+body.tv { margin: 0; padding: 2rem 3.2rem 1.4rem; min-height: 100vh; box-sizing: border-box;
+  background: #0b0d12; color: #eef0f4; font-family: "Geist", "Samsung One", Roboto, Arial, sans-serif;
+  font-size: 1rem; line-height: 1.35; -webkit-font-smoothing: antialiased; }
+.tv * { box-sizing: border-box; }
+.tv a { color: inherit; text-decoration: none; }
+.tv h1 { font-family: "Bricolage Grotesque", sans-serif; font-weight: 800; font-size: 2.2rem; margin: 0; }
+.tv small { color: #9aa1ad; font-size: .8em; }
+
+/* foco do comando: bem visível a 3 metros */
+.tv [data-nav]:focus { outline: .22rem solid #ffd23f; outline-offset: .2rem; }
+.tv a[data-nav]:focus, .tv button[data-nav]:focus { -webkit-transform: scale(1.06); transform: scale(1.06); }
+
+.tv-topo { display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center;
+  -webkit-justify-content: space-between; justify-content: space-between; margin-bottom: 1.2rem; }
+.tv-marca { font-family: "Bricolage Grotesque", sans-serif; font-weight: 800; font-size: 1.7rem; white-space: nowrap; }
+.tv-marca span { color: #ffd23f; margin: 0 .35rem; }
+.tv-marca small { font-family: "Geist", sans-serif; font-weight: 500; font-size: 1.1rem; }
+.tv-abas { display: -webkit-flex; display: flex; }
+.tv-aba, .tv-chip, .tv-botao { display: inline-block; padding: .55rem 1.4rem; margin: 0 .3rem; border-radius: 999px;
+  background: #1b2029; color: #eef0f4; font: inherit; font-size: 1.1rem; font-weight: 600; border: 0; cursor: pointer;
+  -webkit-transition: -webkit-transform .12s; transition: transform .12s; }
+.tv-aba.ativa, .tv-chip.ativa { background: #ffd23f; color: #0b0d12; }
+.tv-relogio { font-family: "Bricolage Grotesque", sans-serif; font-weight: 800; font-size: 1.9rem; }
+.tv-entidades { margin: -.2rem 0 1.1rem -.3rem; }
+.tv-chip { font-size: .95rem; padding: .4rem 1.1rem; }
+
+.tv-conteudo { min-height: 30rem; }
+.tv-linha { display: -webkit-flex; display: flex; -webkit-align-items: stretch; align-items: stretch; }
+.tv-linha > * { margin-right: 1.2rem; }
+.tv-linha > *:last-child { margin-right: 0; }
+.tv-col-1 { -webkit-flex: 1 1 0; flex: 1 1 0; min-width: 0; }
+.tv-col-2 { -webkit-flex: 2 1 0; flex: 2 1 0; min-width: 0; }
+
+.tv-cartao { background: #161a22; border-radius: 1.2rem; padding: 1.3rem 1.6rem; margin-bottom: 1.2rem; }
+.tv-destaque { background: #1b2130; }
+.tv-rotulo { color: #9aa1ad; font-size: .95rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+.tv-espaco { margin-top: 1.2rem; }
+.tv-grande { font-family: "Bricolage Grotesque", sans-serif; font-weight: 800; font-size: 4.2rem; line-height: 1.1; margin: .3rem 0; }
+.tv-medio { font-family: "Bricolage Grotesque", sans-serif; font-weight: 800; font-size: 2rem; line-height: 1.2; }
+.tv-nota { color: #9aa1ad; font-size: 1rem; margin: .3rem 0 0; }
+.tv-variacoes { margin-top: .4rem; }
+.tv-var { display: inline-block; margin-right: 2rem; font-size: 1.25rem; font-weight: 600; }
+.pos { color: #3ddc97; }
+.neg { color: #ff7a7a; }
+.tv-grafico { display: block; width: 100%; height: 8rem; margin-top: 1rem; }
+.tv-grafico .linha { fill: none; stroke: #ffd23f; stroke-width: 3; stroke-linejoin: round; }
+.tv-grafico .area { fill: rgba(255, 210, 63, .12); stroke: none; }
+
+.tv-par { display: -webkit-flex; display: flex; -webkit-justify-content: space-between; justify-content: space-between;
+  padding: .45rem 0; border-top: 1px solid #232937; font-size: 1.1rem; }
+.tv-par > span:first-child { padding-right: 1rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tv-par .valor { white-space: nowrap; font-weight: 600; }
+.tv-cab { display: -webkit-flex; display: flex; -webkit-justify-content: space-between; justify-content: space-between;
+  -webkit-align-items: baseline; align-items: baseline; margin-bottom: .4rem; }
+.tv-cab .tv-medio { font-size: 1.6rem; }
+
+.tv-barra { display: -webkit-flex; display: flex; height: 1.4rem; border-radius: .7rem; overflow: hidden; margin: .8rem 0; background: #232937; }
+.tv-barra span { display: block; height: 100%; }
+.tv-legenda span { display: inline-block; margin: 0 2rem .3rem 0; font-size: 1.1rem; }
+.tv-legenda i { display: inline-block; width: .9rem; height: .9rem; border-radius: .25rem; margin-right: .5rem; vertical-align: -.05rem; }
+
+.tv-colunas { display: -webkit-flex; display: flex; -webkit-flex-wrap: wrap; flex-wrap: wrap; }
+.tv-bloco { width: 32%; margin-right: 2%; }
+.tv-bloco:nth-child(3n) { margin-right: 0; }
+
+.tv-mesnav { display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center;
+  -webkit-justify-content: space-between; justify-content: space-between; margin-bottom: 1.1rem; }
+.tv-inativo { opacity: .35; cursor: default; }
+.tv-cat { display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center; padding: .4rem 0; font-size: 1.1rem; }
+.tv-cat-nome { width: 26%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 1rem; }
+.tv-cat-barra { -webkit-flex: 1 1 0; flex: 1 1 0; height: .9rem; background: #232937; border-radius: .45rem; overflow: hidden; }
+.tv-cat-barra span { display: block; height: 100%; border-radius: .45rem; }
+.tv-cat-valor { width: 20%; text-align: right; font-weight: 600; white-space: nowrap; }
+.tv-cat-var { width: 11%; text-align: right; font-size: .95rem; }
+
+.tv-evento { display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center; padding: .7rem .6rem;
+  border-top: 1px solid #232937; font-size: 1.2rem; border-radius: .6rem; }
+.tv-evento.atrasado .tv-ev-data { color: #ff7a7a; }
+.tv-ev-data { width: 9rem; font-weight: 700; color: #ffd23f; }
+.tv-ev-texto { -webkit-flex: 1 1 0; flex: 1 1 0; min-width: 0; }
+.tv-ev-texto small { display: block; }
+.tv-ev-valor { width: 12rem; text-align: right; font-weight: 600; white-space: nowrap; }
+
+.tv-rodape { display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center;
+  -webkit-justify-content: space-between; justify-content: space-between; margin-top: .4rem; }
+.tv-rodape form { margin: 0; }
+.tv-dica { color: #6b7280; font-size: .9rem; }
+.tv-discreto { background: transparent; color: #6b7280; }
+
+/* «Ocultar valores» (visitas em casa) */
+body.privado .valor { color: transparent !important; text-shadow: 0 0 .7em rgba(238, 240, 244, .75); }
+body.privado .tv-grafico, body.privado .tv-barra, body.privado .tv-cat-barra { visibility: hidden; }
+
+/* emparelhar */
+.tv-emparelhar { display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center;
+  -webkit-justify-content: space-between; justify-content: space-between; min-height: 85vh; }
+.tv-emp-texto { max-width: 58%; }
+.tv-emparelhar h1 { font-size: 3rem; margin: 1.4rem 0 1rem; }
+.tv-emparelhar ol { font-size: 1.35rem; padding-left: 1.6rem; color: #c9ced8; }
+.tv-emparelhar li { margin-bottom: .7rem; }
+.tv-emparelhar b { color: #ffd23f; word-break: break-all; }
+.tv-codigo { font-family: "Bricolage Grotesque", sans-serif; font-weight: 800; font-size: 6.5rem; letter-spacing: .5rem;
+  color: #0b0d12; background: #ffd23f; display: inline-block; padding: .2rem 2rem; border-radius: 1.4rem; margin: 1rem 0 .6rem; }
+.tv-qr { background: #fff; padding: 1rem; border-radius: 1.2rem; width: 30%; }
+.tv-qr svg { display: block; width: 100%; height: auto; }

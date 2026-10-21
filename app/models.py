@@ -1207,3 +1207,25 @@ class TreinoSaude(Base):
     fc_media: Mapped[float | None] = mapped_column(Float)
     fc_maxima: Mapped[float | None] = mapped_column(Float)
     manual: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+
+
+class DispositivoTV(Base):
+    """Televisão emparelhada (vista /tv, só de consulta). Vê as entidades escolhidas ao aprovar, com as permissões do
+    utilizador que a aprovou; deixa de funcionar se o utilizador mudar a password (versao_sessao) ou perder o acesso.
+    Guarda-se só o hash do token do cookie."""
+    __tablename__ = "dispositivo_tv"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    utilizador_id: Mapped[int] = mapped_column(ForeignKey("utilizador.id", ondelete="CASCADE"), index=True)
+    nome: Mapped[str] = mapped_column(String(60))
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    entidades: Mapped[str] = mapped_column(String(200), default="")         # ids separados por vírgulas
+    versao_sessao: Mapped[int] = mapped_column(Integer)
+    criado_em: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    ultimo_acesso: Mapped[datetime | None] = mapped_column(DateTime)
+
+    utilizador: Mapped[Utilizador] = relationship()
+
+    @property
+    def ids_entidades(self) -> list[int]:
+        return [int(x) for x in self.entidades.split(",") if x.strip().isdigit()]

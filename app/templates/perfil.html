@@ -60,4 +60,28 @@
 {% endif %}
 {% if immich_link %}<p class="nota"><a href="{{ immich_link }}" target="_blank" rel="noopener">Abrir o Immich</a></p>{% endif %}
 {% endif %}
+
+{% if televisoes is defined %}
+<h2 id="tv">Televisões</h2>
+<p class="nota">Vista só de consulta para a TV (Samsung, Android TV / Vodafone Box), navegável com o comando. No browser da
+  TV abre o endereço do Gestor seguido de <code>/tv</code>, e aprova aqui o código que aparecer.</p>
+{% if televisoes %}
+<table class="tabela compacta">
+  <thead><tr><th>Nome</th>{% if utilizador.is_admin %}<th>De</th>{% endif %}<th>Mostra</th><th>Emparelhada</th><th>Último acesso</th><th></th></tr></thead>
+  <tbody>
+  {% for t in televisoes %}
+  <tr>
+    <td>{{ t.d.nome }}</td>{% if utilizador.is_admin %}<td>{{ t.dono }}</td>{% endif %}
+    <td>{{ t.entidades or '—' }}</td>
+    <td>{{ t.d.criado_em.strftime("%d/%m/%Y") }}</td>
+    <td>{{ t.d.ultimo_acesso.strftime("%d/%m/%Y %H:%M") if t.d.ultimo_acesso else 'nunca' }}</td>
+    <td><form method="post" action="/tv/dispositivos/{{ t.d.id }}/desligar" onsubmit="return confirm('Desligar esta TV? Vai pedir um código novo.')">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="perigo">Desligar</button></form></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}<p class="nota">Nenhuma TV emparelhada.</p>{% endif %}
+<p><a href="/tv/aprovar" class="botao">Emparelhar uma TV</a></p>
+{% endif %}
 {% endblock %}

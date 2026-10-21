@@ -1,0 +1,46 @@
+{% extends "tv/base.html" %}
+{% block titulo %}Resumo{% endblock %}
+{% block conteudo %}
+{% set d = dados %}
+<div class="tv-linha">
+  <section class="tv-cartao tv-destaque tv-col-2">
+    <div class="tv-rotulo">Património líquido</div>
+    <div class="tv-grande valor">{{ d.hoje.liquido|eur }}</div>
+    {% if d.parte is not none %}<div class="tv-nota">a tua parte: <span class="valor">{{ d.parte|eur }}</span></div>{% endif %}
+    <div class="tv-variacoes">
+      <span class="tv-var {{ 'pos' if d.variacao >= 0 else 'neg' }}"><span class="valor">{{ '+' if d.variacao > 0 }}{{ d.variacao|eur }}</span>
+        {% if d.variacao_pct is not none %}({{ d.variacao_pct|pct }}){% endif %} <small>este mês</small></span>
+      <span class="tv-var {{ 'pos' if d.variacao_ano >= 0 else 'neg' }}"><span class="valor">{{ '+' if d.variacao_ano > 0 }}{{ d.variacao_ano|eur }}</span>
+        <small>desde {{ d.inicio_serie }}</small></span>
+    </div>
+    {% if d.grafico.linha %}
+    <svg class="tv-grafico" viewBox="0 0 {{ d.grafico.largura }} {{ d.grafico.altura }}" preserveAspectRatio="none" aria-hidden="true">
+      <path d="{{ d.grafico.area }}" class="area"/>
+      <polyline points="{{ d.grafico.linha }}" class="linha"/>
+    </svg>
+    {% endif %}
+  </section>
+  <section class="tv-cartao tv-col-1">
+    <div class="tv-rotulo">Ativos</div>
+    <div class="tv-medio valor">{{ d.hoje.ativos|eur }}</div>
+    <div class="tv-rotulo tv-espaco">Passivos</div>
+    <div class="tv-medio valor neg">{{ d.hoje.passivos|eur }}</div>
+    {% for t in d.passivos.itens[:3] %}
+    <div class="tv-par"><span>{{ t.rotulo }}</span><span class="valor">{{ t.valor|eur }}</span></div>
+    {% endfor %}
+  </section>
+</div>
+{% if d.composicao %}
+<section class="tv-cartao">
+  <div class="tv-rotulo">Composição dos ativos</div>
+  <div class="tv-barra">
+    {% for g in d.composicao %}<span style="width:{{ '%.2f'|format(g.pct) }}%;background:{{ g.cor }}"></span>{% endfor %}
+  </div>
+  <div class="tv-legenda">
+    {% for g in d.composicao %}
+    <span><i style="background:{{ g.cor }}"></i>{{ g.titulo }} <b class="valor">{{ g.total|eur }}</b> <small>{{ '%.0f'|format(g.pct) }}%</small></span>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+{% endblock %}

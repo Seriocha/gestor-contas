@@ -129,9 +129,21 @@ def _immich_ctx(request: Request, u: Utilizador) -> dict:
             "immich_partilhado": not pessoal and bool(immich.chave_de(u, segredo)), "immich_link": immich.url_browser()}
 
 
+def _tv_ctx(request: Request, u: Utilizador) -> dict:
+    """Perfil › Televisões: as TVs emparelhadas (todas, para um administrador)."""
+    from .tv import dispositivos_de
+    with request.app.state.SessionLocal() as db:
+        tvs = dispositivos_de(db, u)
+        nomes = {x.id: x.nome for x in db.scalars(select(Entidade))}
+        donos = {x.id: x.nome for x in db.scalars(select(Utilizador))}
+        linhas = [{"d": d, "entidades": ", ".join(nomes[i] for i in d.ids_entidades if i in nomes),
+                   "dono": donos.get(d.utilizador_id, "")} for d in tvs]
+    return {"televisoes": linhas}
+
+
 @router.get("/perfil")
 def perfil_form(request: Request, u: Utilizador = Depends(utilizador_atual)):
-    return render(request, "perfil.html", **_paperless_ctx(request, u), **_immich_ctx(request, u))
+    return render(request, "perfil.html", **_paperless_ctx(request, u), **_immich_ctx(request, u), **_tv_ctx(request, u))
 
 
 @router.post("/perfil/immich")
@@ -216,10 +228,10 @@ async def perfil_paperless(request: Request, u: Utilizador = Depends(utilizador_
 async def perfil(request: Request, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
     form = await ler_form(request)
     if not verificar_password(u.password_hash, str(form.get("atual", ""))):
-        return render(request, "perfil.html", status_code=400, erro="A password atual está errada.", **_paperless_ctx(request, u), **_immich_ctx(request, u))
+        return render(request, "perfil.html", status_code=400, erro="A password atual está errada.", **_paperless_ctx(request, u), **_immich_ctx(request, u), **_tv_ctx(request, u))
     erro = validar_password_nova(str(form.get("password", "")), str(form.get("password2", "")))
     if erro:
-        return render(request, "perfil.html", status_code=400, erro=erro, **_paperless_ctx(request, u), **_immich_ctx(request, u))
+        return render(request, "perfil.html", status_code=400, erro=erro, **_paperless_ctx(request, u), **_immich_ctx(request, u), **_tv_ctx(request, u))
     u.password_hash = hash_password(str(form["password"]))
     u.versao_sessao += 1  # termina as sessões noutros dispositivos
     auditar(db, u, "password_alterada")

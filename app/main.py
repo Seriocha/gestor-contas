@@ -2,6 +2,7 @@ import asyncio
 import contextlib
 from datetime import date
 from pathlib import Path
+from urllib.parse import quote
 
 from alembic import command
 from alembic.config import Config
@@ -13,17 +14,18 @@ from sqlalchemy.orm import sessionmaker
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import backup, extratos, formatos, pasta_importacao, preferencias, tarefas
+from . import backup, extratos, formatos, pasta_importacao, preferencias, tarefas, tv
 from . import patrimonio as pt
 from .config import BASE_DIR, carregar_definicoes
 from .db import criar_engine, url_sqlite
 from .deps import NaoAutenticado, render
 from .routes import (abastecer, admin, auth, documentos, inicio, posicoes, categorias, contas, emprestimos, importar, movimentos, painel, pareaveis, previsoes,
                      patrimonio, regras, relatorios, saude, subscricoes, viagens)
+from .routes import tv as rotas_tv
 from .seed import semear
 
 APP_DIR = Path(__file__).resolve().parent
-VERSAO = "0.78.0"
+VERSAO = "0.79.0"
 
 
 def aplicar_migracoes(db_path: Path, backup_dir: Path | None = None) -> None:
@@ -71,6 +73,8 @@ def create_app(data_dir: Path | None = None, backups_automaticos: bool = True) -
     app.state.defs = defs
     app.state.SessionLocal = SessionLocal
     app.state.bloqueios = auth.Bloqueios()
+    app.state.bloqueios_tv = auth.Bloqueios()      # códigos de emparelhamento errados, por utilizador
+    app.state.emparelhamentos = tv.Emparelhamentos()
     app.state.prefs = prefs
 
     templates = Jinja2Templates(directory=str(APP_DIR / "templates"))
@@ -96,7 +100,7 @@ def create_app(data_dir: Path | None = None, backups_automaticos: bool = True) -
     for r in (auth.router, inicio.router, painel.router, movimentos.router, contas.router, importar.router, categorias.router,
               regras.router, relatorios.router, emprestimos.router, previsoes.router, pareaveis.router, viagens.router,
               subscricoes.router, abastecer.router, patrimonio.router, posicoes.router, admin.router, documentos.router,
-              saude.router):
+              saude.router, rotas_tv.router):
         app.include_router(r)
 
     @app.get("/healthz", include_in_schema=False)
@@ -112,7 +116,14 @@ def create_app(data_dir: Path | None = None, backups_automaticos: bool = True) -
 
     @app.exception_handler(NaoAutenticado)
     async def _nao_autenticado(request: Request, _exc):
-        return RedirectResponse(f"/login?next={request.url.path}", status_code=303)
+        destino = request.url.path + (f"?{request.url.query}" if request.url.query else "")
+        return RedirectResponse(f"/login?next={quote(destino, safe='/')}", status_code=303)
+
+    @app.exception_handler(rotas_tv.NaoEmparelhado)
+    async def _tv_nao_emparelhada(request: Request, _exc):
+        resp = RedirectResponse("/tv/emparelhar", status_code=303)
+        resp.delete_cookie(tv.COOKIE, path="/tv")
+        return resp
 
     @app.exception_handler(StarletteHTTPException)
     async def _erro_http(request: Request, exc: StarletteHTTPException):

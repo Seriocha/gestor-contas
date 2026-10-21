@@ -1,0 +1,16 @@
+{% extends "tv/base.html" %}
+{% block titulo %}Agenda{% endblock %}
+{% block conteudo %}
+<section class="tv-cartao">
+  <div class="tv-rotulo">Próximos 45 dias</div>
+  {% for i in dados %}
+  <div class="tv-evento{{ ' atrasado' if i.atrasado }}" data-nav tabindex="-1">
+    <span class="tv-ev-data">{% if i.atrasado %}em atraso{% elif i.data == hoje %}hoje{% elif (i.data - hoje).days == 1 %}amanhã{% else %}{{ i.data.strftime("%d/%m") }}{% endif %}</span>
+    <span class="tv-ev-texto">{{ i.titulo }}{% if i.detalhe %}<small>{{ i.detalhe }}</small>{% endif %}</span>
+    <span class="tv-ev-valor valor {{ 'pos' if i.valor and i.valor > 0 else '' }}">{% if i.valor %}{{ i.valor|eur }}{% endif %}</span>
+  </div>
+  {% else %}
+  <p class="tv-nota">Nada marcado para os próximos dias.</p>
+  {% endfor %}
+</section>
+{% endblock %}

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="pt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+{% block refrescar %}<meta http-equiv="refresh" content="600">{% endblock %}
+<title>{% block titulo %}Gestor{% endblock %} · TV</title>
+<link rel="stylesheet" href="/static/tv.css?v={{ versao }}">
+</head>
+<body class="tv">
+{% block corpo %}
+<header class="tv-topo">
+  <div class="tv-marca">Gestor<span>·</span><small>{{ ent.nome }}</small></div>
+  <nav class="tv-abas">
+    {% for chave, rotulo, url in [("resumo", "Resumo", "/tv"), ("contas", "Contas", "/tv/contas"), ("mes", "Este mês", "/tv/mes"), ("agenda", "Agenda", "/tv/agenda")] %}
+    <a href="{{ url }}?e={{ ent.id }}" class="tv-aba{{ ' ativa' if pagina == chave }}" data-nav{% if pagina == chave %} data-inicial{% endif %}>{{ rotulo }}</a>
+    {% endfor %}
+  </nav>
+  <div class="tv-relogio" id="relogio">{{ agora.strftime("%H:%M") }}</div>
+</header>
+{% if entidades|length > 1 %}
+<nav class="tv-entidades">
+  {% for x in entidades %}
+  <a href="?e={{ x.id }}{% if nav and nav.m %}&amp;m={{ nav.m }}{% endif %}" class="tv-chip{{ ' ativa' if x.id == ent.id }}" data-nav>{{ x.nome }}</a>
+  {% endfor %}
+</nav>
+{% endif %}
+<main class="tv-conteudo">
+{% block conteudo %}{% endblock %}
+</main>
+<footer class="tv-rodape">
+  <button type="button" class="tv-botao" id="privado" data-nav>Ocultar valores</button>
+  <span class="tv-dica">Setas para navegar · OK para abrir · atualiza sozinho a cada 10 min</span>
+  <form method="post" action="/tv/desligar" onsubmit="return confirm('Desligar esta TV? Vai ser preciso emparelhar outra vez.')">
+    <button class="tv-botao tv-discreto" data-nav>Desligar esta TV</button>
+  </form>
+</footer>
+{% endblock %}
+<script src="/static/tv.js?v={{ versao }}"></script>
+</body>
+</html>
