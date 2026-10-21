@@ -100,11 +100,20 @@
     </label>
     <fieldset>
       <legend>Etiquetas</legend>
-      <div class="opcoes-linha">
-      {% for e in etiquetas %}
-        <label class="opcao"><input type="checkbox" name="etiquetas" value="{{ e.id }}" {% if e in m.etiquetas %}checked{% endif %}> {{ e.nome }}</label>
-      {% endfor %}
+      {# agrupadas pelo prefixo «X: » (ex.: «Viagem: Japão» → grupo Viagem, pastilha «Japão») #}
+      {% set grupos = {} %}
+      {% for e in etiquetas %}{% set g = e.nome.split(': ', 1)[0] if ': ' in e.nome else '' %}{% set _ = grupos.setdefault(g, []).append(e) %}{% endfor %}
+      {% for g, lista in grupos | dictsort %}
+      <div class="grupo-chips">
+        {% if g %}<span class="grupo-chips-titulo">{{ g }}</span>{% endif %}
+        <div class="chips">
+        {% for e in lista %}
+          <label class="chip" title="{{ e.nome }}"><input type="checkbox" name="etiquetas" value="{{ e.id }}" {% if e in m.etiquetas %}checked{% endif %}>{{ e.nome.split(': ', 1)[1] if g else e.nome }}</label>
+        {% endfor %}
+        </div>
       </div>
+      {% else %}<p class="nota sem-margem">Ainda não há etiquetas.</p>
+      {% endfor %}
       <label>Nova etiqueta <input name="nova_etiqueta" placeholder="ex.: Férias Algarve 2026" maxlength="50"></label>
     </fieldset>
     <fieldset>

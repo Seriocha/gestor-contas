@@ -977,3 +977,15 @@ body.a-personalizar .grupo-cabecalho { flex-wrap: wrap; }
 .lista-debitos { margin-top: .5rem; }
 
 .consumo-casa { border: 1px solid var(--linha); border-radius: 14px; padding: .8rem 1rem; margin: .4rem 0 1rem; }
+
+/* Movimento › Qualificação: etiquetas em pastilhas compactas, agrupadas pelo prefixo («Viagem: …») */
+.grupo-chips { display: flex; flex-direction: column; gap: .35rem; }
+.grupo-chips-titulo { font-size: .72rem; font-weight: 600; color: var(--suave); text-transform: uppercase; letter-spacing: .05em; }
+.chips { display: flex; flex-wrap: wrap; gap: .4rem; }
+.formulario label.chip { flex: 0 1 auto; flex-direction: row; align-items: center; gap: .35rem; min-width: 0; max-width: 100%;
+  padding: .28rem .7rem; border: 1px solid var(--linha); border-radius: 999px; font-size: .82rem; font-weight: 500;
+  line-height: 1.25; cursor: pointer; user-select: none; }
+.formulario label.chip input { width: .85rem; height: .85rem; margin: 0; flex: none; accent-color: var(--destaque-texto); }
+.formulario label.chip:hover { border-color: var(--destaque); }
+.formulario label.chip:has(input:checked) { background: var(--destaque); border-color: var(--destaque); color: var(--destaque-texto); }
+.formulario label.chip:has(input:focus-visible) { outline: 2px solid var(--destaque); outline-offset: 2px; }
