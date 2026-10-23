@@ -13,12 +13,12 @@
   <p class="pp-resumo">{% for k, n in estados.items() %}<a href="/admin/paperless/revisao?estado={{ k }}" class="etiqueta">{{ n }}: {{ contagem_estados.get(k, 0) }}</a>{% endfor %}</p>
   <form method="post" action="/admin/paperless/regras/config" class="formulario" style="max-width: 40rem">
     <input type="hidden" name="csrf" value="{{ csrf_token }}">
-    <label class="caixa"><input type="checkbox" name="motor_ativo" {% if prefs.motor_ativo == '1' %}checked{% endif %} {% if not ciclo_possivel %}disabled{% endif %}>
+    <label class="opcao"><input type="checkbox" name="motor_ativo" {% if prefs.motor_ativo == '1' %}checked{% endif %} {% if not ciclo_possivel %}disabled{% endif %}>
       ciclo automático{% if not ciclo_possivel %} <span class="nota">(precisa do token partilhado GESTOR_PAPERLESS_TOKEN no paperless.env)</span>{% endif %}</label>
     <label>De quantos em quantos minutos <input name="intervalo" type="number" min="5" max="1440" value="{{ prefs.motor_intervalo_minutos }}" style="width: 7rem"></label>
     <label>Documentos adicionados desde <input name="desde" type="date" value="{{ prefs.motor_desde }}"><span class="nota">vazio = últimos 30 dias</span></label>
-    <label class="caixa"><input type="checkbox" name="motor_ia" {% if prefs.motor_ia == '1' %}checked{% endif %}> IA de apoio quando nenhuma regra serve{% if not ia_ok %} <span class="nota">(sem chave da API)</span>{% endif %}</label>
-    <label class="caixa"><input type="checkbox" name="motor_ligar" {% if prefs.motor_ligar == '1' %}checked{% endif %}> ligar aos movimentos bancários</label>
+    <label class="opcao"><input type="checkbox" name="motor_ia" {% if prefs.motor_ia == '1' %}checked{% endif %}> IA de apoio quando nenhuma regra serve{% if not ia_ok %} <span class="nota">(sem chave da API)</span>{% endif %}</label>
+    <label class="opcao"><input type="checkbox" name="motor_ligar" {% if prefs.motor_ligar == '1' %}checked{% endif %}> ligar aos movimentos bancários</label>
     <div class="acoes-form"><button>Guardar</button></div>
   </form>
   {% if token_ok %}

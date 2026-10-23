@@ -14,7 +14,7 @@
   <fieldset class="tv-entidades-form">
     <legend>O que a TV mostra</legend>
     {% for e, _ in visiveis %}
-    <label class="caixa"><input type="checkbox" name="entidade" value="{{ e.id }}" {{ 'checked' if e.id in marcadas }}> {{ e.nome }}</label>
+    <label class="opcao"><input type="checkbox" name="entidade" value="{{ e.id }}" {{ 'checked' if e.id in marcadas }}> {{ e.nome }}</label>
     {% endfor %}
   </fieldset>
   <button class="primario">Emparelhar</button>

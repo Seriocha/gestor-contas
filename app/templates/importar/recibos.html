@@ -67,7 +67,7 @@
       <label>Janela (dias) <input type="number" name="dias" min="1" max="31" value="{{ dias or 12 }}">
         <span class="nota">antes e depois do fim do mês</span></label>
     </div>
-    <label class="caixa"><input type="checkbox" name="forcar" value="sim" {% if forcar %}checked{% endif %}> Voltar a ler os que já têm valores</label>
+    <label class="opcao"><input type="checkbox" name="forcar" value="sim" {% if forcar %}checked{% endif %}> Voltar a ler os que já têm valores</label>
     <div class="acoes-form">
       <button name="acao" value="ensaio">Ensaio (não grava)</button>
       <button class="primario" name="acao" value="gravar">Gravar valores e ligar</button>

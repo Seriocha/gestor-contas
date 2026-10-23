@@ -8,7 +8,7 @@
     <select name="algoritmo">{% for k, n in algoritmos.items() %}<option value="{{ k }}" {% if c and c.matching_algorithm == k %}selected{% endif %}>{{ n }}</option>{% endfor %}</select></label>
   <label>Texto a procurar <input name="match" value="{{ c.match if c else '' }}" maxlength="256">
     <span class="nota">ex.: o NIF ou o nome como aparece nas faturas; «Automático» aprende com os documentos já atribuídos</span></label>
-  <label class="caixa"><input type="checkbox" name="insensivel" {% if not c or c.is_insensitive %}checked{% endif %}> ignorar maiúsculas</label>
+  <label class="opcao"><input type="checkbox" name="insensivel" {% if not c or c.is_insensitive %}checked{% endif %}> ignorar maiúsculas</label>
 {% endmacro %}
 {% block conteudo %}
 <h1>Administração</h1>

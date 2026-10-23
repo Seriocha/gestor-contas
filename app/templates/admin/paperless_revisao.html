@@ -19,12 +19,12 @@
       {% if estado == 'revisao' %}<button class="primario" name="acao" value="aprovar" onclick="return confirm('Aplicar as propostas marcadas no Paperless?')">Aprovar marcados</button>{% endif %}
       <button name="acao" value="reprocessar">Voltar a classificar</button>
       {% if estado != 'ignorado' %}<button name="acao" value="ignorar">Ignorar</button>{% endif %}
-      <label class="caixa"><input type="checkbox" onclick="for (const c of this.form.querySelectorAll('input[name=sel]')) c.checked = this.checked"> todos</label>
+      <label class="opcao"><input type="checkbox" onclick="for (const c of this.form.querySelectorAll('input[name=sel]')) c.checked = this.checked"> todos</label>
     </div>
     {% for c, p in itens %}
     <article class="pp-item">
       <header>
-        <label class="caixa"><input type="checkbox" name="sel" value="{{ c.id }}"></label>
+        <label class="opcao"><input type="checkbox" name="sel" value="{{ c.id }}"></label>
         <a href="{{ p.link if p else '#' }}" target="_blank" rel="noopener"><strong>{{ c.titulo or ('#' ~ c.paperless_id) }}</strong></a>
         <span class="nota">#{{ c.paperless_id }} · adicionado {{ c.adicionado.strftime('%d/%m/%Y') if c.adicionado else '?' }} · {{ c.processado_em.strftime('%d/%m %H:%M') }}{% if c.movimento_id %} · <a href="/movimentos/{{ c.movimento_id }}/detalhe">movimento ligado</a>{% endif %}</span>
       </header>

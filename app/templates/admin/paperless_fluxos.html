@@ -26,7 +26,7 @@
           <label>Correspondência
             <select name="algoritmo">{% for k, n in algoritmos.items() %}<option value="{{ k }}" {% if t.matching_algorithm == k %}selected{% endif %}>{{ n }}</option>{% endfor %}</select></label>
           <label>Texto no documento <input name="match" value="{{ t.match or '' }}" maxlength="256"></label>
-          <label class="caixa"><input type="checkbox" name="insensivel" {% if t.is_insensitive %}checked{% endif %}> ignorar maiúsculas</label>
+          <label class="opcao"><input type="checkbox" name="insensivel" {% if t.is_insensitive %}checked{% endif %}> ignorar maiúsculas</label>
           <button class="primario" name="acao" value="gatilho">Guardar gatilho</button>
         </form></details>{% endif %}</li>
     {% else %}<li class="nota">sem gatilhos</li>{% endfor %}

@@ -1030,3 +1030,6 @@ body.a-personalizar .grupo-cabecalho { flex-wrap: wrap; }
 .pp-numeros div { display: flex; flex-direction: column; }
 .pp-numeros strong { font-size: 1.8rem; font-family: "Bricolage Grotesque", sans-serif; font-weight: 800; }
 .pp-numeros span { color: var(--suave); font-size: .85rem; }
+.pp-recl { max-width: 980px; }
+.pp-grelha { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: .75rem 1rem; }
+.pp-grelha label { min-width: 0; }

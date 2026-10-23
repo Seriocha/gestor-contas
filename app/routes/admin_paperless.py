@@ -539,7 +539,7 @@ FILTROS_RECL = ("desde", "ate", "tipo", "correspondente", "regra", "limite")
 
 def _ctx_recl(request, db, admin, valores):
     ctx, token = _ctx_motor(request, db, admin)
-    ctx.update(v={"limite": "500", **valores}, regras=db.scalars(select(RegraDocumento).order_by(RegraDocumento.ordem)).all(),
+    ctx.update(v={**valores, "limite": valores.get("limite") or "500"}, regras=db.scalars(select(RegraDocumento).order_by(RegraDocumento.ordem)).all(),
                propostas=None, lidos=0, truncado=False, tipos=[], correspondentes=[])
     if token:
         _carregar(ctx, "tipos", lambda: sorted(pg.listar("document_types", token), key=lambda x: (x.get("name") or "").lower()))

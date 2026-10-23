@@ -18,7 +18,7 @@
       Os incertos e os sem valor ficam com a etiqueta «Valor por verificar».</p>
     <label>Tipos de documento <input name="tipos" value="{{ v.tipos }}"><span class="nota">separados por vírgulas</span></label>
     <label>Adicionados desde <input name="desde" type="date" value="{{ v.desde }}"></label>
-    <label class="caixa"><input type="checkbox" name="reprocessar" {% if v.reprocessar %}checked{% endif %}> recalcular também os que já têm valor</label>
+    <label class="opcao"><input type="checkbox" name="reprocessar" {% if v.reprocessar %}checked{% endif %}> recalcular também os que já têm valor</label>
     {% elif ferramenta == 'datas' %}
     <p class="nota">Corrige a data de criação pela data do próprio texto: primeiro a linha «Data:» (do documento, de emissão,
       da fatura), depois a primeira data plausível fora das linhas de vencimento, limite ou pagamento. Por omissão só as datas
@@ -26,7 +26,7 @@
     <label>Tipos de documento <input name="tipos_datas" value="{{ v.tipos_datas }}"><span class="nota">vazio = todos</span></label>
     <label>Adicionados desde <input name="desde" type="date" value="{{ v.desde }}"></label>
     <label>Ano mínimo <input name="ano_min" type="number" value="{{ v.ano_min }}" style="width: 7rem"></label>
-    <label class="caixa"><input type="checkbox" name="todos" {% if v.todos %}checked{% endif %}> propor também onde a data atual é válida mas diferente</label>
+    <label class="opcao"><input type="checkbox" name="todos" {% if v.todos %}checked{% endif %}> propor também onde a data atual é válida mas diferente</label>
     {% elif ferramenta == 'titulos' %}
     <p class="nota">Renomeia em lote documentos que já estão no Paperless (os fluxos não tratam os antigos).
       Marcadores: <code>{periodo}</code> (campo «Período» ou AAAA-MM), <code>{tipo}</code>, <code>{correspondente}</code>,

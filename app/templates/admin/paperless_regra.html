@@ -20,7 +20,7 @@
       <label><input name="texto" value="{{ v.texto }}" maxlength="500" required>
         <span class="nota">o mais estável é o NIF do emitente; acentos e maiúsculas não contam (exceto na expressão regular)</span></label>
       <label>Só documentos do tipo <input name="so_tipo" value="{{ v.so_tipo }}" maxlength="128" placeholder="qualquer"></label>
-      <label class="caixa"><input type="checkbox" name="so_sem_correspondente" {% if v.so_sem_correspondente %}checked{% endif %}> só documentos ainda sem correspondente</label>
+      <label class="opcao"><input type="checkbox" name="so_sem_correspondente" {% if v.so_sem_correspondente %}checked{% endif %}> só documentos ainda sem correspondente</label>
     </fieldset>
     <fieldset><legend>Faz</legend>
       <label>Correspondente <input name="correspondente" value="{{ v.correspondente }}" maxlength="128"><span class="nota">criado no Paperless se não existir</span></label>
@@ -30,7 +30,7 @@
         <span class="nota">Extrair do texto para campos personalizados:</span>
         {% set ext = (v.extrair or '').split(',') %}
         {% for k, t in atributos.items() %}
-        <label class="caixa"><input type="checkbox" name="extrair_k" value="{{ k }}" {% if k in ext %}checked{% endif %}> {{ t[0] }}{% if t[1] and t[1] != t[0] %} <span class="nota">→ «{{ t[1] }}»</span>{% elif not t[1] %} <span class="nota">→ data do documento</span>{% endif %}</label>
+        <label class="opcao"><input type="checkbox" name="extrair_k" value="{{ k }}" {% if k in ext %}checked{% endif %}> {{ t[0] }}{% if t[1] and t[1] != t[0] %} <span class="nota">→ «{{ t[1] }}»</span>{% elif not t[1] %} <span class="nota">→ data do documento</span>{% endif %}</label>
         {% endfor %}
       </div>
     </fieldset>
@@ -38,7 +38,7 @@
       <select name="confianca">{% for k, n in confiancas.items() %}<option value="{{ k }}" {% if v.confianca == k %}selected{% endif %}>{{ n }}</option>{% endfor %}</select>
       <span class="nota">mesmo «alta», um atributo em falta ou um conflito com o Paperless manda o documento para revisão</span></label>
     <label>Ordem <input name="ordem" type="number" value="{{ v.ordem }}" style="width: 7rem"><span class="nota">a 1.ª regra (menor ordem) que reconhece o documento ganha</span></label>
-    <label class="caixa"><input type="checkbox" name="ativa" {% if v.ativa %}checked{% endif %}> ativa</label>
+    <label class="opcao"><input type="checkbox" name="ativa" {% if v.ativa %}checked{% endif %}> ativa</label>
     <label>Notas <textarea name="nota" rows="2">{{ v.nota or '' }}</textarea></label>
     {% if regra %}<label>O que mudou <input name="nota_versao" maxlength="200" placeholder="ex.: a Vodafone mudou o layout da fatura"><span class="nota">fica no histórico da versão</span></label>{% endif %}
     <div class="acoes-form"><button class="primario">Guardar{{ ' (nova versão)' if regra }}</button></div>
@@ -52,7 +52,7 @@
   <form method="post" action="/admin/paperless/regras/{{ regra.id }}/acao" class="formulario">
     <input type="hidden" name="csrf" value="{{ csrf_token }}">
     <label>Documento <input name="doc" value="{{ teste_doc or '' }}" placeholder="12 ou …/documents/12/details"></label>
-    <label class="caixa"><input type="checkbox" name="substituir"> substituir o que já está preenchido</label>
+    <label class="opcao"><input type="checkbox" name="substituir"> substituir o que já está preenchido</label>
     <button name="acao" value="testar">Testar</button> <span class="nota">não altera nada (a regra é testada mesmo desligada)</span>
   </form>
   {% if teste %}
