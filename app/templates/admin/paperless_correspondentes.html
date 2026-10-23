@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block titulo %}Paperless · correspondentes{% endblock %}
+{% macro campos(c) %}
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  {% if c %}<input type="hidden" name="id" value="{{ c.id }}">{% endif %}
+  <label>Nome <input name="nome" value="{{ c.name if c else '' }}" maxlength="128" required></label>
+  <label>Correspondência
+    <select name="algoritmo">{% for k, n in algoritmos.items() %}<option value="{{ k }}" {% if c and c.matching_algorithm == k %}selected{% endif %}>{{ n }}</option>{% endfor %}</select></label>
+  <label>Texto a procurar <input name="match" value="{{ c.match if c else '' }}" maxlength="256">
+    <span class="nota">ex.: o NIF ou o nome como aparece nas faturas; «Automático» aprende com os documentos já atribuídos</span></label>
+  <label class="caixa"><input type="checkbox" name="insensivel" {% if not c or c.is_insensitive %}checked{% endif %}> ignorar maiúsculas</label>
+{% endmacro %}
+{% block conteudo %}
+<h1>Administração</h1>
+{% include "admin/_paperless_topo.html" %}
+{% if paperless_cfg and token_ok and lista is not none %}
+<section class="cartao">
+  <h2>Correspondentes <span class="nota">· {{ todos|length }}</span></h2>
+  <p class="nota">Quem envia os documentos. A correspondência faz o Paperless atribuir o correspondente sozinho a cada
+    documento novo (sem fluxo). Apagar deixa os documentos sem correspondente; fundir passa-os para outro e apaga este.</p>
+  <form method="get" class="filtros"><label>Procurar <input name="q" value="{{ q }}" placeholder="nome"></label><button>Filtrar</button></form>
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th>Nome</th><th class="num">Documentos</th><th>Correspondência</th><th>Último</th><th></th></tr></thead>
+    {% for c in lista %}
+    <tr id="corr-{{ c.id }}">
+      <td><strong>{{ c.name }}</strong></td>
+      <td class="num">{% if c.n %}<a href="{{ paperless_link }}/documents?correspondent__id__in={{ c.id }}" target="_blank" rel="noopener">{{ c.n }}</a>{% else %}0{% endif %}</td>
+      <td class="nota">{{ c.algoritmo }}{% if c.match %} · «{{ c.match }}»{% endif %}</td>
+      <td class="nota">{{ c.ultimo or '—' }}</td>
+      <td><details class="pp-editar"><summary>Editar</summary>
+        <form method="post" action="/admin/paperless/correspondentes" class="formulario">
+          {{ campos(c) }}
+          <div class="acoes-form">
+            <button class="primario" name="acao" value="guardar">Guardar</button>
+            <button class="perigo" name="acao" value="apagar" formnovalidate
+              onclick="return confirm('Apagar este correspondente?{{ ' Os seus ' ~ c.n ~ ' documentos ficam sem correspondente.' if c.n }}')">Apagar</button>
+          </div>
+        </form></details></td>
+    </tr>
+    {% else %}<tr><td colspan="5" class="vazio">Nenhum correspondente{{ ' com «' ~ q ~ '»' if q }}.</td></tr>{% endfor %}
+  </table></div>
+</section>
+
+<div class="grelha-2">
+<section class="cartao">
+  <h2>Novo correspondente</h2>
+  <form method="post" action="/admin/paperless/correspondentes" class="formulario">
+    {{ campos(none) }}
+    <button class="primario" name="acao" value="guardar">Criar</button>
+  </form>
+</section>
+<section class="cartao">
+  <h2>Fundir correspondentes</h2>
+  <p class="nota">Para nomes repetidos (ex.: «EDP» e «EDP Comercial»): os documentos do primeiro passam para o segundo e o
+    primeiro é apagado.</p>
+  <form method="post" action="/admin/paperless/correspondentes" class="formulario">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <label>Juntar <select name="origem" required><option value="">—</option>{% for c in todos %}<option value="{{ c.id }}">{{ c.name }} ({{ c.n }})</option>{% endfor %}</select></label>
+    <label>a <select name="destino" required><option value="">—</option>{% for c in todos %}<option value="{{ c.id }}">{{ c.name }} ({{ c.n }})</option>{% endfor %}</select></label>
+    <button class="primario" name="acao" value="fundir" onclick="return confirm('Passar os documentos e apagar o primeiro correspondente?')">Fundir</button>
+  </form>
+</section>
+</div>
+{% endif %}
+{% endblock %}

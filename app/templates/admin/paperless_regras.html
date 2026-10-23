@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block titulo %}Paperless · regras{% endblock %}
+{% block conteudo %}
+<h1>Administração</h1>
+{% include "admin/_paperless_topo.html" %}
+<section class="cartao">
+  <h2>Motor de classificação</h2>
+  <p class="nota">Lê o texto (OCR) dos documentos novos do Paperless e aplica a 1.ª regra que os reconhece: correspondente,
+    tipo, etiquetas e os atributos extraídos para campos personalizados (valor, datas, período, NIF, n.º/ATCUD,
+    referência MB). Com confiança alta aplica sozinho; o resto fica em <a href="/admin/paperless/revisao">Revisão</a>.
+    Os casos simples podem ficar no Paperless (correspondência automática dos <a href="/admin/paperless/correspondentes">correspondentes</a>
+    e <a href="/admin/paperless/fluxos">fluxos</a>): uma regra sem extração pode ser publicada lá como fluxo nativo.</p>
+  <p class="pp-resumo">{% for k, n in estados.items() %}<a href="/admin/paperless/revisao?estado={{ k }}" class="etiqueta">{{ n }}: {{ contagem_estados.get(k, 0) }}</a>{% endfor %}</p>
+  <form method="post" action="/admin/paperless/regras/config" class="formulario" style="max-width: 40rem">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <label class="caixa"><input type="checkbox" name="motor_ativo" {% if prefs.motor_ativo == '1' %}checked{% endif %} {% if not ciclo_possivel %}disabled{% endif %}>
+      ciclo automático{% if not ciclo_possivel %} <span class="nota">(precisa do token partilhado GESTOR_PAPERLESS_TOKEN no paperless.env)</span>{% endif %}</label>
+    <label>De quantos em quantos minutos <input name="intervalo" type="number" min="5" max="1440" value="{{ prefs.motor_intervalo_minutos }}" style="width: 7rem"></label>
+    <label>Documentos adicionados desde <input name="desde" type="date" value="{{ prefs.motor_desde }}"><span class="nota">vazio = últimos 30 dias</span></label>
+    <label class="caixa"><input type="checkbox" name="motor_ia" {% if prefs.motor_ia == '1' %}checked{% endif %}> IA de apoio quando nenhuma regra serve{% if not ia_ok %} <span class="nota">(sem chave da API)</span>{% endif %}</label>
+    <label class="caixa"><input type="checkbox" name="motor_ligar" {% if prefs.motor_ligar == '1' %}checked{% endif %}> ligar aos movimentos bancários</label>
+    <div class="acoes-form"><button>Guardar</button></div>
+  </form>
+  {% if token_ok %}
+  <form method="post" action="/admin/paperless/regras/correr" class="em-linha">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <button class="primario">Correr agora</button> <span class="nota">processa até 50 documentos novos com o token escolhido em cima</span>
+  </form>
+  {% endif %}
+</section>
+
+<section class="cartao">
+  <h2>Regras <span class="nota">· {{ regras|length }}</span> <a href="/admin/paperless/regras/nova" class="botao primario">Nova regra</a></h2>
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th class="num">Ordem</th><th>Regra</th><th>Quando o texto…</th><th>Faz</th><th>Confiança</th><th class="num">Docs</th><th></th></tr></thead>
+    {% for r in regras %}
+    <tr{% if not r.ativa %} class="pp-inativa"{% endif %}>
+      <td class="num">{{ r.ordem }}</td>
+      <td><a href="/admin/paperless/regras/{{ r.id }}"><strong>{{ r.nome }}</strong></a><br>
+        <span class="nota">v{{ r.versao }}{% if not r.ativa %} · desligada{% endif %}{% if r.origem != 'manual' %} · {{ r.origem }}{% endif %}</span></td>
+      <td class="nota">{{ algoritmos_motor[r.algoritmo] }}: «{{ r.texto|truncate(60) }}»{% if r.so_tipo %}<br>só tipo {{ r.so_tipo }}{% endif %}{% if r.so_sem_correspondente %}<br>só sem correspondente{% endif %}</td>
+      <td class="nota">{% if r.correspondente %}correspondente {{ r.correspondente }}<br>{% endif %}{% if r.tipo %}tipo {{ r.tipo }}<br>{% endif %}{% if r.etiquetas %}etiquetas {{ r.etiquetas }}<br>{% endif %}{% if r.extrair %}extrai {% for k in r.lista_extrair %}{{ atributos[k][0]|lower if k in atributos else k }}{{ ', ' if not loop.last }}{% endfor %}{% endif %}</td>
+      <td>{{ r.confianca }}</td>
+      <td class="num">{{ contagem.get(r.id, 0) }}</td>
+      <td>{% if r.paperless_fluxo_id %}<span class="etiqueta etiqueta-ok">no Paperless</span>{% endif %}</td>
+    </tr>
+    {% else %}<tr><td colspan="7" class="vazio">Ainda não há regras. Cria uma, ou corre o motor com a IA ligada e aceita as sugestões em Revisão / Auditoria.</td></tr>{% endfor %}
+  </table></div>
+</section>
+{% endblock %}

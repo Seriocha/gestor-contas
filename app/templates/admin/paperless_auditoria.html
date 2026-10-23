@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block titulo %}Paperless · auditoria{% endblock %}
+{% block conteudo %}
+<h1>Administração</h1>
+{% include "admin/_paperless_topo.html" %}
+{% set a = aud %}
+{% if a.paperless %}
+<section class="cartao">
+  <h2>No Paperless agora</h2>
+  <div class="pp-numeros">
+    <div><strong>{{ a.paperless.total if a.paperless.total is not none else '—' }}</strong><span>documentos</span></div>
+    <div><strong>{{ a.paperless.sem_correspondente if a.paperless.sem_correspondente is not none else '—' }}</strong><span>sem correspondente</span></div>
+    <div><strong>{{ a.paperless.sem_tipo if a.paperless.sem_tipo is not none else '—' }}</strong><span>sem tipo</span></div>
+    <div><strong>{{ a.paperless.inbox if a.paperless.inbox is not none else '—' }}</strong><span>na caixa de entrada</span></div>
+  </div>
+  <p class="nota sem-margem">Para tratar os antigos: <a href="/admin/paperless/reclassificar">Reclassificar</a> com «só sem correspondente».</p>
+</section>
+{% endif %}
+
+<section class="cartao">
+  <h2>Desempenho das regras</h2>
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th>Regra</th><th class="num">Docs</th><th class="num">Por rever</th><th class="num">Sem atributo</th><th>Último</th><th>Alertas</th></tr></thead>
+    {% for x in a.por_regra %}
+    <tr><td><a href="/admin/paperless/regras/{{ x.r.id }}">{{ x.r.nome }}</a> <span class="nota">v{{ x.r.versao }}{{ '' if x.r.ativa else ' · desligada' }}</span></td>
+      <td class="num">{{ x.n }}</td><td class="num">{{ x.rever }}</td><td class="num">{{ x.falta }}</td>
+      <td class="nota">{{ x.ultima.strftime('%d/%m/%Y') if x.ultima else '—' }}</td>
+      <td>{% for al in x.alertas %}<div class="nota pp-problema">⚠ {{ al }}</div>{% else %}<span class="etiqueta etiqueta-ok">ok</span>{% endfor %}</td></tr>
+    {% else %}<tr><td colspan="6" class="vazio">Sem regras.</td></tr>{% endfor %}
+  </table></div>
+</section>
+
+<section class="cartao">
+  <h2>Regras sugeridas <span class="nota">· documentos sem regra com o mesmo emitente</span></h2>
+  {% for s in a.sugestoes %}
+  <div class="pp-item">
+    <strong>{{ s.nome }}</strong> <span class="nota">· {{ s.n }} documento{{ 's' if s.n != 1 }} · {{ algoritmos_motor.get(s.algoritmo, s.algoritmo) }} «{{ s.texto }}»</span>
+    <div class="nota">ex.: {{ s.exemplos|join(' · ') }}</div>
+    <a class="botao" href="/admin/paperless/regras/nova?{{ {'nome': s.nome, 'texto': s.texto, 'algoritmo': s.algoritmo, 'correspondente': s.correspondente, 'tipo': s.tipo, 'extrair': s.extrair}|urlencode }}">Criar regra</a>
+  </div>
+  {% else %}<p class="vazio sem-margem">Sem sugestões (aparecem quando há documentos sem regra que partilham o NIF, ou propostas da IA).</p>{% endfor %}
+</section>
+
+<section class="cartao" id="registo">
+  <h2>Registo de alterações</h2>
+  <form method="get" class="filtros">
+    <label>Lote <input name="lote" value="{{ lote }}"></label>
+    <label>Documento <input name="documento" value="{{ documento }}" placeholder="n.º"></label>
+    <button>Filtrar</button>{% if lote or documento %} <a href="/admin/paperless/auditoria">limpar</a>{% endif %}
+  </form>
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th>Quando</th><th>Documento</th><th>Campo</th><th>Antes</th><th>Depois</th><th>Porquê</th><th>Lote</th></tr></thead>
+    {% for x in registo %}
+    <tr><td class="nota">{{ x.em.strftime('%d/%m/%Y %H:%M') }}</td>
+      <td><a href="{{ paperless_link }}/documents/{{ x.paperless_id }}/details" target="_blank" rel="noopener">#{{ x.paperless_id }}</a></td>
+      <td>{{ x.campo[6:] if x.campo.startswith('campo:') else x.campo }}</td>
+      <td class="pp-antes">{{ x.antes or '—' }}</td><td><strong>{{ x.depois }}</strong></td>
+      <td class="nota">{% if x.regra_id %}{{ nomes_regras.get(x.regra_id, 'regra #' ~ x.regra_id) }} v{{ x.versao_regra }}{% else %}{{ x.origem }}{% endif %}</td>
+      <td class="nota"><a href="?lote={{ x.lote }}">{{ x.lote }}</a></td></tr>
+    {% else %}<tr><td colspan="7" class="vazio">Sem alterações registadas.</td></tr>{% endfor %}
+  </table></div>
+</section>
+{% endblock %}

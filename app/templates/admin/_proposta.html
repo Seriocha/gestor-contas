@@ -1,0 +1,24 @@
+{# Uma proposta do motor de classificação: alterações (antes → depois), atributos encontrados e o motivo. #}
+{% macro rotulo_campo(campo) -%}
+{{ {'correspondente': 'Correspondente', 'tipo': 'Tipo', 'etiquetas': 'Etiquetas', 'data': 'Data do documento'}.get(campo, campo[6:] if campo.startswith('campo:') else campo) }}
+{%- endmacro %}
+
+{% macro alteracoes(p) %}
+{% if p.alteracoes %}
+<table class="tabela compacta pp-diff">
+  {% for a in p.alteracoes %}
+  <tr><td class="nota">{{ rotulo_campo(a.campo) }}</td><td class="pp-antes">{{ a.antes or '—' }}</td><td>→</td><td><strong>{{ a.depois }}</strong></td></tr>
+  {% endfor %}
+</table>
+{% else %}<span class="nota">sem alterações</span>{% endif %}
+{% endmacro %}
+
+{% macro resumo(p) %}
+<div class="pp-resumo">
+  {% if p.origem == 'regra' %}<span class="etiqueta">regra: {{ p.regra_nome }} v{{ p.versao }}</span>
+  {% elif p.origem == 'ia' %}<span class="etiqueta etiqueta-cor">IA</span>{% endif %}
+  <span class="etiqueta {{ {'alta': 'etiqueta-ok', 'media': 'etiqueta-cor', 'baixa': 'etiqueta-erro'}.get(p.confianca, '') }}">confiança {{ p.confianca }}</span>
+  {% for k, a in (p.atributos or {}).items() %}<span class="nota">{{ atributos[k][0] if k in atributos else k }}: <strong>{{ a.mostrar }}</strong>{% if a.confianca != 'alta' %} ({{ a.confianca }}){% endif %}</span>{% endfor %}
+</div>
+{% if p.motivo %}<div class="nota">{{ p.motivo }}</div>{% endif %}
+{% endmacro %}

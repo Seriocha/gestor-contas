@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block titulo %}Paperless · manutenção{% endblock %}
+{% macro sel_corr(nome, valor, vazio) %}
+<select name="{{ nome }}">{% if vazio %}<option value="">{{ vazio }}</option>{% endif %}
+  {% for c in correspondentes or [] %}<option value="{{ c.id }}" {% if valor == c.id|string %}selected{% endif %}>{{ c.name }}{% if c.document_count is defined %} ({{ c.document_count }}){% endif %}</option>{% endfor %}
+</select>
+{% endmacro %}
+{% block conteudo %}
+<h1>Administração</h1>
+{% include "admin/_paperless_topo.html" %}
+{% if paperless_cfg and token_ok %}
+<section class="cartao">
+  <nav class="separadores">{% for k, n in ferramentas.items() %}<a href="?ferramenta={{ k }}" {% if k == ferramenta %}class="ativo"{% endif %}>{{ n }}</a>{% endfor %}</nav>
+  <form method="post" action="/admin/paperless/manutencao" class="formulario" style="max-width: 46rem">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="ferramenta" value="{{ ferramenta }}">
+    {% if ferramenta == 'valores' %}
+    <p class="nota">Lê o texto (OCR) dos documentos e grava o total no campo «Valor» (monetário, pesquisável no Paperless).
+      Os incertos e os sem valor ficam com a etiqueta «Valor por verificar».</p>
+    <label>Tipos de documento <input name="tipos" value="{{ v.tipos }}"><span class="nota">separados por vírgulas</span></label>
+    <label>Adicionados desde <input name="desde" type="date" value="{{ v.desde }}"></label>
+    <label class="caixa"><input type="checkbox" name="reprocessar" {% if v.reprocessar %}checked{% endif %}> recalcular também os que já têm valor</label>
+    {% elif ferramenta == 'datas' %}
+    <p class="nota">Corrige a data de criação pela data do próprio texto: primeiro a linha «Data:» (do documento, de emissão,
+      da fatura), depois a primeira data plausível fora das linhas de vencimento, limite ou pagamento. Por omissão só as datas
+      inválidas (antes do ano mínimo ou no futuro).</p>
+    <label>Tipos de documento <input name="tipos_datas" value="{{ v.tipos_datas }}"><span class="nota">vazio = todos</span></label>
+    <label>Adicionados desde <input name="desde" type="date" value="{{ v.desde }}"></label>
+    <label>Ano mínimo <input name="ano_min" type="number" value="{{ v.ano_min }}" style="width: 7rem"></label>
+    <label class="caixa"><input type="checkbox" name="todos" {% if v.todos %}checked{% endif %}> propor também onde a data atual é válida mas diferente</label>
+    {% elif ferramenta == 'titulos' %}
+    <p class="nota">Renomeia em lote documentos que já estão no Paperless (os fluxos não tratam os antigos).
+      Marcadores: <code>{periodo}</code> (campo «Período» ou AAAA-MM), <code>{tipo}</code>, <code>{correspondente}</code>,
+      <code>{ano}</code>, <code>{mes}</code>.</p>
+    <label>Modelo <input name="modelo" value="{{ v.modelo }}" maxlength="200"></label>
+    <label>Tipos de documento <input name="tipos_datas" value="{{ v.tipos_datas }}"><span class="nota">vazio = todos</span></label>
+    <label>Correspondente {{ sel_corr('correspondente', v.correspondente, 'todos') }}</label>
+    <label>Adicionados desde <input name="desde" type="date" value="{{ v.desde }}"></label>
+    {% elif ferramenta == 'duplicados' %}
+    <p class="nota">O Paperless já recusa ficheiros iguais byte a byte; isto apanha o mesmo documento recebido duas vezes em
+      ficheiros diferentes (reenvios, PDF regenerado): texto idêntico, mesma data e mesmo valor, ou mesma data e texto muito
+      semelhante. Não apaga nada: marca os candidatos com «Possível duplicado» para rever no Paperless.</p>
+    <label>Correspondente {{ sel_corr('correspondente', v.correspondente, '—') }}</label>
+    <label>Semelhança mínima <input name="limiar" value="{{ v.limiar }}" style="width: 6rem"><span class="nota">0,90 = 90% das palavras em comum</span></label>
+    {% else %}
+    <p class="nota">Porque é que um documento ficou sem valor ou com a data errada: tipo, campos, tamanho do texto, as linhas
+      com «total», «pagar», «valor»… e o que as ferramentas encontrariam.</p>
+    <label>Documento <input name="doc" value="{{ v.doc }}" placeholder="12 ou o endereço …/documents/12/details"></label>
+    {% endif %}
+    {% if ferramenta in ('valores', 'datas', 'titulos') %}
+    <label>Máximo de documentos <input name="limite" type="number" value="{{ v.limite }}" min="1" max="5000" style="width: 7rem"></label>
+    {% endif %}
+    <div class="acoes-form"><button class="primario" name="acao" value="propor">{{ 'Ver' if ferramenta == 'diagnostico' else 'Procurar' }}</button></div>
+  </form>
+</section>
+
+{% if resultado %}
+<section class="cartao">
+  <h2>Propostas <span class="nota">· {{ resultado.propostas|length }} de {{ resultado.lidos }} documentos lidos ·
+    {{ resultado.ignorados }} já certos{% if resultado.truncado %} · há mais: aumenta o máximo ou filtra pela data{% endif %}</span></h2>
+  {% if resultado.propostas %}
+  <form method="post" action="/admin/paperless/manutencao">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="ferramenta" value="{{ ferramenta }}">
+    <div class="rolar"><table class="tabela compacta">
+      <thead><tr><th><input type="checkbox" checked onclick="for (const c of this.closest('table').querySelectorAll('input[name=sel]')) c.checked = this.checked"></th>
+        <th>Documento</th><th>Atual</th><th>Proposta</th><th>Detalhe</th></tr></thead>
+      {% for p in resultado.propostas %}
+      <tr{% if p.aviso %} class="pp-aviso"{% endif %}>
+        <td>{% if p.valor %}<input type="checkbox" name="sel" value="{{ p.id }}" checked><input type="hidden" name="v_{{ p.id }}" value="{{ p.valor }}">{% endif %}</td>
+        <td><a href="{{ p.link }}" target="_blank" rel="noopener">{{ p.titulo or ('#' ~ p.id) }}</a></td>
+        <td class="nota">{{ p.atual or '—' }}</td>
+        <td><strong>{{ p.novo }}</strong></td>
+        <td class="nota">{% if p.aviso %}⚠ {% endif %}{{ p.detalhe }}</td>
+      </tr>
+      {% endfor %}
+    </table></div>
+    <div class="acoes-form"><button class="primario" name="acao" value="aplicar" onclick="return confirm('Alterar no Paperless os documentos marcados?')">Aplicar aos marcados</button></div>
+  </form>
+  {% else %}<p class="vazio sem-margem">Nada a alterar.</p>{% endif %}
+</section>
+{% endif %}
+
+{% if grupos is not none %}
+<section class="cartao">
+  <h2>Prováveis duplicados <span class="nota">· {{ grupos|length }} grupo{{ 's' if grupos|length != 1 }} em {{ n_docs }} documentos</span></h2>
+  {% if grupos %}
+  <form method="post" action="/admin/paperless/manutencao">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="ferramenta" value="duplicados">
+    {% for g in grupos %}
+    <h3>Grupo {{ loop.index }} <span class="nota">· {{ g|length }} documentos</span></h3>
+    <div class="rolar"><table class="tabela compacta">
+      <thead><tr><th></th><th>Documento</th><th>Criado</th><th class="num">Valor</th><th>Ficheiro</th><th>Motivos</th></tr></thead>
+      {% for x in g %}
+      <tr>
+        <td>{% if x.manter %}<span class="etiqueta etiqueta-ok">manter</span>{% else %}<input type="checkbox" name="sel" value="{{ x.id }}" checked><input type="hidden" name="v_{{ x.id }}" value="1">{% endif %}</td>
+        <td><a href="{{ x.link }}" target="_blank" rel="noopener">{{ x.titulo or ('#' ~ x.id) }}</a></td>
+        <td class="nota">{{ x.criado }}</td><td class="num">{{ x.valor_txt }}</td>
+        <td class="nota">{{ x.ficheiro }}</td><td class="nota">{{ x.motivos|join('; ') }}</td>
+      </tr>
+      {% endfor %}
+    </table></div>
+    {% endfor %}
+    <div class="acoes-form"><button class="primario" name="acao" value="aplicar">Marcar «Possível duplicado» nos escolhidos</button></div>
+  </form>
+  {% else %}<p class="vazio sem-margem">Não encontrei prováveis duplicados.</p>{% endif %}
+</section>
+{% endif %}
+
+{% if diag %}
+<section class="cartao">
+  <h2><a href="{{ diag.link }}" target="_blank" rel="noopener">#{{ diag.id }} {{ diag.titulo }}</a></h2>
+  <dl class="pp-dl">
+    <dt>Tipo</dt><dd>{{ diag.tipo }}</dd>
+    <dt>Criado</dt><dd>{{ diag.criado }}</dd>
+    <dt>Campo «Valor»</dt><dd>{{ 'existe (#' ~ diag.campo_valor ~ ')' if diag.campo_valor else 'NÃO EXISTE' }}</dd>
+    <dt>Campos gravados</dt><dd>{% for n, val in diag.campos %}{{ n }} = {{ val }}{{ '; ' if not loop.last }}{% else %}nenhum{% endfor %}</dd>
+    <dt>Texto (OCR)</dt><dd class="{{ 'neg' if diag.n_texto < 50 }}">{{ diag.n_texto }} caracteres{% if diag.n_texto < 50 %} — quase sem texto: o OCR falhou ou é uma imagem{% endif %}</dd>
+    <dt>Valor encontrado</dt><dd>{% if diag.total %}<strong>{{ diag.total.valor|eur }}</strong> · confiança {{ diag.total.confianca }} · «{{ diag.total.regra }}»{% else %}nenhum{% endif %}</dd>
+    <dt>Data encontrada</dt><dd>{% if diag.data %}{{ diag.data[0].strftime('%d/%m/%Y') }} · {{ diag.data[1] }}{% else %}nenhuma{% endif %}</dd>
+  </dl>
+  <h3>Linhas com «total», «pagar», «valor», «montante» ou «débito»</h3>
+  {% if diag.linhas %}<pre class="pp-texto">{% for l in diag.linhas %}{{ l }}
+{% endfor %}</pre>{% else %}<p class="nota">(nenhuma)</p>{% endif %}
+  <h3>Início do texto</h3>
+  <pre class="pp-texto">{{ diag.inicio }}</pre>
+</section>
+{% endif %}
+{% endif %}
+{% endblock %}

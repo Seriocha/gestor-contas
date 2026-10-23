@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block titulo %}Paperless · email{% endblock %}
+{% block conteudo %}
+<h1>Administração</h1>
+{% include "admin/_paperless_topo.html" %}
+{% if paperless_cfg and token_ok and rev %}
+<section class="cartao">
+  <h2>Contas de email <span class="nota">· {{ rev.contas|length }}</span></h2>
+  <p class="nota">De onde o Paperless recolhe os anexos. As palavras-passe nunca são mostradas. Para criar uma conta usa o
+    circuito <a href="/admin/paperless?modelo=conta_email">Conta de email</a>.</p>
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th>Nome</th><th>Tipo</th><th>Servidor</th><th>Utilizador</th></tr></thead>
+    {% for c in rev.contas %}
+    <tr><td><strong>{{ c.name }}</strong></td><td>{{ c.tipo }}</td><td class="nota">{{ c.imap_server }}:{{ c.imap_port }} {{ c.seg }}</td><td>{{ c.username }}</td></tr>
+    {% else %}<tr><td colspan="4" class="vazio">Nenhuma conta.</td></tr>{% endfor %}
+  </table></div>
+</section>
+
+<section class="cartao">
+  <h2>Regras <span class="nota">· {{ rev.regras|length }}</span></h2>
+  {% set n_corrigir = rev.regras|selectattr('corrigivel')|list|length %}
+  {% if n_corrigir %}
+  <form method="post" action="/admin/paperless/email" class="em-linha">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <p>{{ n_corrigir }} regra{{ 's' if n_corrigir != 1 }} com o parâmetro vazio que dá o erro 400 ao gravar no Paperless.
+      <button class="primario" name="acao" value="corrigir_todas">Corrigir todas</button></p>
+  </form>
+  {% endif %}
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th>Regra</th><th>Conta · pasta</th><th>Filtro</th><th>Ação</th><th>Problemas</th><th></th></tr></thead>
+    {% for r in rev.regras %}
+    <tr>
+      <td><strong>{{ r.name }}</strong><br><span class="nota">ordem {{ r.order }}{% if not r.enabled %} · <span class="etiqueta etiqueta-erro">desligada</span>{% endif %}</span></td>
+      <td>{{ r.conta_nome }}<br><span class="nota">{{ r.folder }} · até {{ r.maximum_age }} dia{{ 's' if r.maximum_age != 1 }}</span></td>
+      <td class="nota">{% if r.filter_from %}de: {{ r.filter_from }}<br>{% endif %}{% if r.filter_subject %}assunto: {{ r.filter_subject }}<br>{% endif %}{% if r.filter_body %}corpo: {{ r.filter_body }}{% endif %}{% if not (r.filter_from or r.filter_subject or r.filter_body) %}(qualquer){% endif %}</td>
+      <td class="nota">{{ r.acao_txt }}{% if r.action_parameter %} «{{ r.action_parameter }}»{% endif %}<br>{{ r.escopo_txt }}</td>
+      <td>{% for p in r.problemas %}<div class="nota pp-problema">⚠ {{ p }}</div>{% else %}<span class="etiqueta etiqueta-ok">ok</span>{% endfor %}</td>
+      <td><form method="post" action="/admin/paperless/email" class="acoes-form">
+        <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="id" value="{{ r.id }}"><input type="hidden" name="nome" value="{{ r.name }}">
+        {% if r.corrigivel %}<button class="primario" name="acao" value="corrigir">Corrigir</button>{% endif %}
+        {% if r.enabled %}<button name="acao" value="desativar">Desligar</button>{% else %}<button name="acao" value="ativar">Ligar</button>{% endif %}
+      </form></td>
+    </tr>
+    {% else %}<tr><td colspan="6" class="vazio">Nenhuma regra.</td></tr>{% endfor %}
+  </table></div>
+</section>
+
+<section class="cartao">
+  <h2>Últimos emails processados</h2>
+  {% if rev.processados is none %}
+  <p class="nota sem-margem">Esta versão do Paperless não mostra os emails processados pela API (ver Administração › Tarefas no Paperless).</p>
+  {% else %}
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th>Quando</th><th>Regra</th><th>Estado</th><th>Assunto</th></tr></thead>
+    {% for p in rev.processados %}
+    <tr><td class="nota">{{ (p.processed or '')[:16]|replace('T', ' ') }}</td><td>{{ p.regra_nome }}</td>
+      <td><span class="etiqueta {{ 'etiqueta-erro' if p.status == 'FAILED' else 'etiqueta-ok' }}">{{ p.status }}</span></td>
+      <td>{{ p.subject }}{% if p.error %}<div class="nota pp-problema">{{ p.error }}</div>{% endif %}</td></tr>
+    {% else %}<tr><td colspan="4" class="vazio">Nenhum ainda.</td></tr>{% endfor %}
+  </table></div>
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}

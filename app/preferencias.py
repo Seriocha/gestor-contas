@@ -29,6 +29,14 @@ OMISSAO = {
     # «1»: as chaves da API do Paperless e do Immich de cada pessoa são configuradas pelo administrador
     # (Administração › Utilizadores); no Perfil só se vê o estado. «0»: cada pessoa guarda a sua no Perfil.
     "tokens_pelo_admin": "0",
+    # Motor de classificação dos documentos do Paperless (Administração › Paperless › Regras): ciclo automático,
+    # de quantos em quantos minutos, IA de apoio para os que nenhuma regra apanha, ligar aos movimentos e a partir
+    # de que data (adicionados ao Paperless) os documentos entram no ciclo.
+    "motor_ativo": "0",
+    "motor_intervalo_minutos": "30",
+    "motor_ia": "1",
+    "motor_ligar": "1",
+    "motor_desde": "",
 }
 
 

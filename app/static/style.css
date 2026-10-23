@@ -999,3 +999,34 @@ body.a-personalizar .grupo-cabecalho { flex-wrap: wrap; }
 .form-inline.criar-viagem .botao-data, .form-inline.datas-viagem .botao-data { right: .15rem; }
 .form-inline.datas-viagem { margin: 0 0 .8rem; }
 .acoes-periodo .form-inline.criar-viagem { flex: 0 1 auto; }
+
+/* Administração › Paperless (correspondentes, fluxos, email, manutenção) */
+.pp-token { margin-bottom: .75rem; align-items: center; }
+.pp-token label { flex: 0 1 18rem; }
+.pp-editar summary { cursor: pointer; color: var(--suave); font-size: .85rem; }
+.pp-editar[open] { margin-top: .4rem; }
+.pp-editar .formulario { margin-top: .5rem; min-width: 18rem; }
+.pp-lista { margin: .2rem 0 .8rem; padding-left: 1.2rem; }
+.pp-lista li { margin-bottom: .25rem; }
+.pp-problema { color: var(--erro-texto); }
+.pp-aviso td { background: color-mix(in srgb, var(--destaque) 12%, transparent); }
+.pp-dl { display: grid; grid-template-columns: max-content 1fr; gap: .3rem 1rem; margin: 0 0 1rem; }
+.pp-dl dt { color: var(--suave); }
+.pp-dl dd { margin: 0; }
+.pp-texto { white-space: pre-wrap; font-size: .8rem; background: var(--fundo); padding: .75rem; border-radius: 10px; max-height: 22rem; overflow: auto; }
+.formulario.em-linha { display: flex; flex-wrap: wrap; gap: .75rem; align-items: flex-end; }
+.formulario.em-linha label { flex: 1 1 12rem; }
+.pp-resumo { display: flex; flex-wrap: wrap; gap: .35rem .75rem; align-items: center; margin: .35rem 0; }
+.pp-diff { margin: .35rem 0 .5rem; }
+.pp-diff td { padding-top: .2rem; padding-bottom: .2rem; }
+.pp-antes { color: var(--suave); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--suave) 50%, transparent); }
+.pp-item { border-top: 1px solid var(--linha); padding: .8rem 0; }
+.pp-item header { display: flex; flex-wrap: wrap; gap: .5rem; align-items: baseline; }
+.pp-inativa td { opacity: .55; }
+.pp-atributos { display: flex; flex-wrap: wrap; gap: .25rem 1rem; }
+.pp-atributos > .nota { flex-basis: 100%; }
+.pp-linha-doc { padding: .3rem 0; font-size: .9rem; }
+.pp-numeros { display: flex; flex-wrap: wrap; gap: 1rem 2rem; margin-bottom: .75rem; }
+.pp-numeros div { display: flex; flex-direction: column; }
+.pp-numeros strong { font-size: 1.8rem; font-family: "Bricolage Grotesque", sans-serif; font-weight: 800; }
+.pp-numeros span { color: var(--suave); font-size: .85rem; }

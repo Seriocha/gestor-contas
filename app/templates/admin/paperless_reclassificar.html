@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% import "admin/_proposta.html" as pr with context %}
+{% block titulo %}Paperless · reclassificar{% endblock %}
+{% macro opcoes(lista, valor, vazio) %}<option value="">{{ vazio }}</option>{% for x in lista or [] %}<option value="{{ x.id }}" {% if valor == x.id|string %}selected{% endif %}>{{ x.name or x.nome }}</option>{% endfor %}{% endmacro %}
+{% block conteudo %}
+<h1>Administração</h1>
+{% include "admin/_paperless_topo.html" %}
+{% if paperless_cfg and token_ok %}
+<section class="cartao">
+  <h2>Reclassificação em massa</h2>
+  <p class="nota">Volta a passar as regras de agora por um lote de documentos. «Simular» mostra o que mudaria (antes → depois,
+    regra e confiança) sem alterar nada; depois aplicas só os marcados e cada campo fica no registo da
+    <a href="/admin/paperless/auditoria">Auditoria</a> com o n.º do lote.</p>
+  <form method="post" action="/admin/paperless/reclassificar" class="formulario em-linha">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <label>Adicionados desde <input name="desde" type="date" value="{{ v.desde }}"></label>
+    <label>até <input name="ate" type="date" value="{{ v.ate }}"></label>
+    <label>Tipo <select name="tipo">{{ opcoes(tipos, v.tipo, 'todos') }}</select></label>
+    <label>Correspondente <select name="correspondente">{{ opcoes(correspondentes, v.correspondente, 'todos') }}</select></label>
+    <label>Só a regra <select name="regra"><option value="">todas as ativas</option>{% for r in regras %}<option value="{{ r.id }}" {% if v.regra == r.id|string %}selected{% endif %}>{{ r.nome }}{{ '' if r.ativa else ' (desligada)' }}</option>{% endfor %}</select></label>
+    <label>Máximo <input name="limite" type="number" min="1" max="5000" value="{{ v.limite }}" style="width: 7rem"></label>
+    <label class="caixa"><input type="checkbox" name="sem_correspondente" {% if v.sem_correspondente %}checked{% endif %}> só sem correspondente</label>
+    <label class="caixa"><input type="checkbox" name="substituir" {% if v.substituir %}checked{% endif %}> substituir o que já está preenchido</label>
+    <div class="acoes-form"><button class="primario" name="acao" value="simular">Simular</button></div>
+  </form>
+</section>
+
+{% if propostas is not none %}
+<section class="cartao">
+  <h2>Simulação <span class="nota">· {{ propostas|length }} documentos com alterações ou problemas, de {{ lidos }} lidos{% if truncado %} · há mais: aumenta o máximo ou filtra{% endif %}</span></h2>
+  {% if propostas %}
+  <form method="post" action="/admin/paperless/reclassificar">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="acao" value="aplicar">
+    {% for k in ('desde', 'ate', 'tipo', 'correspondente', 'regra', 'limite') %}<input type="hidden" name="{{ k }}" value="{{ v[k] }}">{% endfor %}
+    {% if v.substituir %}<input type="hidden" name="substituir" value="on">{% endif %}
+    <label class="caixa"><input type="checkbox" checked onclick="for (const c of this.form.querySelectorAll('input[name=sel]')) c.checked = this.checked"> todos</label>
+    {% for p in propostas %}
+    <article class="pp-item">
+      <header>
+        {% if p.alteracoes %}<label class="caixa"><input type="checkbox" name="sel" value="{{ p.id }}" {% if p.confianca != 'baixa' %}checked{% endif %}></label>{% endif %}
+        <a href="{{ p.link }}" target="_blank" rel="noopener"><strong>{{ p.titulo or ('#' ~ p.id) }}</strong></a>
+        <span class="nota">#{{ p.id }} · adicionado {{ p.adicionado }}</span>
+      </header>
+      {{ pr.resumo(p) }}{{ pr.alteracoes(p) }}
+    </article>
+    {% endfor %}
+    <div class="acoes-form"><button class="primario" onclick="return confirm('Aplicar no Paperless aos documentos marcados?')">Aplicar aos marcados</button></div>
+  </form>
+  {% else %}<p class="vazio sem-margem">Nenhum documento mudaria.</p>{% endif %}
+</section>
+{% endif %}
+{% endif %}
+{% endblock %}

@@ -2,7 +2,7 @@
 {% block titulo %}Paperless · circuitos{% endblock %}
 {% block conteudo %}
 <h1>Administração</h1>
-{% include "admin/_menu.html" %}
+{% include "admin/_paperless_topo.html" %}
 {% if not paperless_cfg %}
 <section class="cartao"><p class="vazio sem-margem">O Paperless não está configurado (paperless.env na NAS).</p></section>
 {% else %}

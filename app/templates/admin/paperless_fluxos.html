@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block titulo %}Paperless · fluxos de trabalho{% endblock %}
+{% block conteudo %}
+<h1>Administração</h1>
+{% include "admin/_paperless_topo.html" %}
+{% if paperless_cfg and token_ok and fluxos is not none %}
+<section class="cartao">
+  <h2>Fluxos de trabalho <span class="nota">· {{ fluxos|length }}</span></h2>
+  <p class="nota">O que o Paperless faz sozinho a cada documento (atribuir correspondente, tipo, etiquetas, caminho, dono…).
+    Correm por ordem crescente; um fluxo desligado fica guardado mas não corre. Para criar fluxos novos usa os
+    <a href="/admin/paperless">Circuitos</a>.</p>
+</section>
+{% for f in fluxos %}
+<section class="cartao" id="fluxo-{{ f.id }}">
+  <h3 class="sem-margem">{{ f.nome }}
+    <span class="etiqueta {{ 'etiqueta-ok' if f.ativo else 'etiqueta-erro' }}">{{ 'ativo' if f.ativo else 'desligado' }}</span>
+    <span class="nota">· ordem {{ f.ordem }}</span></h3>
+  <p class="nota sem-margem">Quando</p>
+  <ul class="pp-lista">
+    {% for t in f.gatilhos %}
+    <li>{{ t.resumo }}
+      {% if t.id %}<details class="pp-editar"><summary>editar</summary>
+        <form method="post" action="/admin/paperless/fluxos" class="formulario">
+          <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="id" value="{{ f.id }}">
+          <input type="hidden" name="nome" value="{{ f.nome }}"><input type="hidden" name="gatilho" value="{{ t.id }}">
+          <label>Correspondência
+            <select name="algoritmo">{% for k, n in algoritmos.items() %}<option value="{{ k }}" {% if t.matching_algorithm == k %}selected{% endif %}>{{ n }}</option>{% endfor %}</select></label>
+          <label>Texto no documento <input name="match" value="{{ t.match or '' }}" maxlength="256"></label>
+          <label class="caixa"><input type="checkbox" name="insensivel" {% if t.is_insensitive %}checked{% endif %}> ignorar maiúsculas</label>
+          <button class="primario" name="acao" value="gatilho">Guardar gatilho</button>
+        </form></details>{% endif %}</li>
+    {% else %}<li class="nota">sem gatilhos</li>{% endfor %}
+  </ul>
+  <p class="nota sem-margem">Faz</p>
+  <ul class="pp-lista">{% for a in f.acoes %}<li>{{ a.resumo }}</li>{% else %}<li class="nota">sem ações</li>{% endfor %}</ul>
+  <form method="post" action="/admin/paperless/fluxos" class="formulario em-linha">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="id" value="{{ f.id }}"><input type="hidden" name="nome" value="{{ f.nome }}">
+    <label>Nome <input name="novo_nome" value="{{ f.nome }}" maxlength="256"></label>
+    <label>Ordem <input name="ordem" type="number" value="{{ f.ordem }}" style="width: 6rem"></label>
+    <div class="acoes-form">
+      <button name="acao" value="guardar">Guardar</button>
+      {% if f.ativo %}<button name="acao" value="desativar">Desligar</button>{% else %}<button class="primario" name="acao" value="ativar">Ligar</button>{% endif %}
+      <button class="perigo" name="acao" value="apagar" onclick="return confirm('Apagar este fluxo de trabalho no Paperless?')">Apagar</button>
+    </div>
+  </form>
+</section>
+{% else %}
+<section class="cartao"><p class="vazio sem-margem">Nenhum fluxo de trabalho.</p></section>
+{% endfor %}
+{% endif %}
+{% endblock %}

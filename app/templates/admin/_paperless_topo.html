@@ -1,0 +1,28 @@
+{# Topo das páginas Administração › Paperless: separadores e (exceto nos circuitos, que escolhem por formulário) o token. #}
+{% include "admin/_menu.html" %}
+{% set c = request.url.path %}
+<nav class="separadores" aria-label="Paperless">
+  {% for href, rotulo in [('/admin/paperless/regras', 'Regras'), ('/admin/paperless/revisao', 'Revisão'),
+                          ('/admin/paperless/reclassificar', 'Reclassificar'), ('/admin/paperless/auditoria', 'Auditoria'),
+                          ('/admin/paperless', 'Circuitos'), ('/admin/paperless/correspondentes', 'Correspondentes'),
+                          ('/admin/paperless/fluxos', 'Fluxos de trabalho'), ('/admin/paperless/email', 'Email'),
+                          ('/admin/paperless/manutencao', 'Manutenção')] %}
+  <a href="{{ href }}" {% if c == href or (href == '/admin/paperless/regras' and c.startswith('/admin/paperless/regras')) %}class="ativo" aria-current="page"{% endif %}>{{ rotulo }}{% if href.endswith('/revisao') and n_rever is defined and n_rever %} <span class="contador">{{ n_rever }}</span>{% endif %}</a>
+  {% endfor %}
+</nav>
+{% if token_ok is defined and paperless_cfg %}
+<form method="get" action="/admin/paperless/token" class="filtros pp-token">
+  <input type="hidden" name="volta" value="{{ c }}">
+  <label>Com o token de
+    <select name="uid" onchange="this.form.submit()">
+      {% for u, tem in utilizadores %}<option value="{{ u.id }}" {% if u.id == uid %}selected{% endif %} {% if not tem %}disabled{% endif %}>{{ u.nome }}{{ '' if tem else ' (sem token)' }}</option>{% endfor %}
+    </select></label>
+  <noscript><button>Usar</button></noscript>
+  {% if paperless_link %}<a href="{{ paperless_link }}" target="_blank" rel="noopener" class="nota">Abrir o Paperless ↗</a>{% endif %}
+</form>
+{% if not token_ok %}<div class="aviso aviso-erro">Este utilizador não tem token do Paperless (Perfil, ou Utilizadores › Ligações).</div>{% endif %}
+{% endif %}
+{% if token_ok is defined %}
+{% if not paperless_cfg %}<section class="cartao"><p class="vazio sem-margem">O Paperless não está configurado (paperless.env na NAS).</p></section>{% endif %}
+{% for e in erros or [] %}<div class="aviso aviso-erro">{{ e }}</div>{% endfor %}
+{% endif %}

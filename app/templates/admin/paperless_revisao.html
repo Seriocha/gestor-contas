@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% import "admin/_proposta.html" as pr with context %}
+{% block titulo %}Paperless · revisão{% endblock %}
+{% block conteudo %}
+<h1>Administração</h1>
+{% include "admin/_paperless_topo.html" %}
+<section class="cartao">
+  <nav class="separadores">{% for k, n in estados.items() %}<a href="?estado={{ k }}" {% if k == estado %}class="ativo"{% endif %}>{{ n }} <span class="nota">{{ contagem_estados.get(k, 0) }}</span></a>{% endfor %}</nav>
+  <p class="nota">{% if estado == 'revisao' %}Propostas que o motor não aplicou sozinho: confiança média, atributos em falta, conflito com o
+    que o Paperless já atribuiu, ou propostas da IA. Aprovar escreve no Paperless (e liga ao movimento, se ligado).
+    {% elif estado == 'sem_regra' %}Documentos que nenhuma regra reconhece (e sem proposta da IA). Cria regras para os
+    que se repetem — a <a href="/admin/paperless/auditoria">Auditoria</a> agrupa-os pelo NIF.
+    {% elif estado == 'aplicado' %}Documentos classificados (os mais recentes).{% elif estado == 'erro' %}Falhas a ler ou a escrever no Paperless.
+    {% else %}Documentos que decidiste não classificar.{% endif %}</p>
+  {% if itens %}
+  <form method="post" action="/admin/paperless/revisao">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="estado" value="{{ estado }}">
+    <div class="acoes-form">
+      {% if estado == 'revisao' %}<button class="primario" name="acao" value="aprovar" onclick="return confirm('Aplicar as propostas marcadas no Paperless?')">Aprovar marcados</button>{% endif %}
+      <button name="acao" value="reprocessar">Voltar a classificar</button>
+      {% if estado != 'ignorado' %}<button name="acao" value="ignorar">Ignorar</button>{% endif %}
+      <label class="caixa"><input type="checkbox" onclick="for (const c of this.form.querySelectorAll('input[name=sel]')) c.checked = this.checked"> todos</label>
+    </div>
+    {% for c, p in itens %}
+    <article class="pp-item">
+      <header>
+        <label class="caixa"><input type="checkbox" name="sel" value="{{ c.id }}"></label>
+        <a href="{{ p.link if p else '#' }}" target="_blank" rel="noopener"><strong>{{ c.titulo or ('#' ~ c.paperless_id) }}</strong></a>
+        <span class="nota">#{{ c.paperless_id }} · adicionado {{ c.adicionado.strftime('%d/%m/%Y') if c.adicionado else '?' }} · {{ c.processado_em.strftime('%d/%m %H:%M') }}{% if c.movimento_id %} · <a href="/movimentos/{{ c.movimento_id }}/detalhe">movimento ligado</a>{% endif %}</span>
+      </header>
+      {% if p %}{{ pr.resumo(p) }}{{ pr.alteracoes(p) }}{% elif c.motivo %}<div class="nota">{{ c.motivo }}</div>{% endif %}
+      <div class="acoes-form">
+        {% if estado == 'revisao' and p and p.alteracoes %}<button class="primario" name="acao" value="aprovar:{{ c.id }}">Aprovar</button>{% endif %}
+        {% if p and p.regra_sugerida %}<button name="acao" value="criar_regra:{{ c.id }}">Criar a regra sugerida</button>{% endif %}
+      </div>
+    </article>
+    {% endfor %}
+  </form>
+  {% else %}<p class="vazio sem-margem">Nada aqui.</p>{% endif %}
+</section>
+{% endblock %}

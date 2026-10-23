@@ -1229,3 +1229,90 @@ class DispositivoTV(Base):
     @property
     def ids_entidades(self) -> list[int]:
         return [int(x) for x in self.entidades.split(",") if x.strip().isdigit()]
+
+
+class RegraDocumento(Base):
+    """Regra do motor de classificação dos documentos do Paperless (app/motor_docs.py). Condição sobre o texto (OCR) e,
+    opcionalmente, sobre o tipo/correspondente atual; ações: correspondente, tipo, etiquetas e atributos a extrair para
+    campos personalizados. Cada gravação sobe a versão e guarda uma cópia em RegraDocumentoVersao.
+    Uma regra sem extração pode ser publicada no Paperless como fluxo nativo (paperless_fluxo_id)."""
+    __tablename__ = "regra_documento"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    nome: Mapped[str] = mapped_column(String(120), unique=True)
+    ativa: Mapped[bool] = mapped_column(Boolean, default=True)
+    ordem: Mapped[int] = mapped_column(Integer, default=100)
+    algoritmo: Mapped[str] = mapped_column(String(10), default="todas")      # qualquer | todas | exato | regex
+    texto: Mapped[str] = mapped_column(String(500), default="")
+    so_tipo: Mapped[str | None] = mapped_column(String(128))                # só documentos deste tipo (nome)
+    so_sem_correspondente: Mapped[bool] = mapped_column(Boolean, default=False)
+    correspondente: Mapped[str | None] = mapped_column(String(128))
+    tipo: Mapped[str | None] = mapped_column(String(128))
+    etiquetas: Mapped[str] = mapped_column(String(500), default="")        # nomes separados por vírgulas
+    extrair: Mapped[str] = mapped_column(String(200), default="")          # chaves de motor_docs.ATRIBUTOS
+    confianca: Mapped[str] = mapped_column(String(10), default="alta")      # alta = aplica sozinha | media = revisão
+    nota: Mapped[str | None] = mapped_column(Text)
+    origem: Mapped[str] = mapped_column(String(10), default="manual")       # manual | ia | sugestao
+    versao: Mapped[int] = mapped_column(Integer, default=1)
+    paperless_fluxo_id: Mapped[int | None] = mapped_column(Integer)
+    criado_em: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    alterado_em: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+    @property
+    def lista_etiquetas(self) -> list[str]:
+        return [x.strip() for x in (self.etiquetas or "").split(",") if x.strip()]
+
+    @property
+    def lista_extrair(self) -> list[str]:
+        return [x.strip() for x in (self.extrair or "").split(",") if x.strip()]
+
+
+class RegraDocumentoVersao(Base):
+    """Histórico das regras: cópia (JSON) de cada versão, quem a gravou e porquê."""
+    __tablename__ = "regra_documento_versao"
+    __table_args__ = (UniqueConstraint("regra_id", "versao"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    regra_id: Mapped[int] = mapped_column(ForeignKey("regra_documento.id", ondelete="CASCADE"), index=True)
+    versao: Mapped[int] = mapped_column(Integer)
+    dados: Mapped[str] = mapped_column(Text)
+    utilizador_id: Mapped[int | None] = mapped_column(ForeignKey("utilizador.id", ondelete="SET NULL"))
+    nota: Mapped[str | None] = mapped_column(String(200))
+    em: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+
+class ClassificacaoDocumento(Base):
+    """Último resultado do motor para um documento do Paperless: fila de revisão e base da auditoria de regras.
+    estado: aplicado | revisao | sem_regra | ignorado | erro."""
+    __tablename__ = "classificacao_documento"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    paperless_id: Mapped[int] = mapped_column(Integer, unique=True)
+    titulo: Mapped[str] = mapped_column(String(200), default="")
+    adicionado: Mapped[date | None] = mapped_column(Date)
+    estado: Mapped[str] = mapped_column(String(12), index=True)
+    origem: Mapped[str | None] = mapped_column(String(10))                  # regra | ia
+    regra_id: Mapped[int | None] = mapped_column(ForeignKey("regra_documento.id", ondelete="SET NULL"), index=True)
+    versao_regra: Mapped[int | None] = mapped_column(Integer)
+    confianca: Mapped[str | None] = mapped_column(String(10))
+    proposta: Mapped[str | None] = mapped_column(Text)                      # JSON: alterações propostas e atributos
+    motivo: Mapped[str | None] = mapped_column(Text)
+    movimento_id: Mapped[int | None] = mapped_column(ForeignKey("movimento.id", ondelete="SET NULL"))
+    processado_em: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+
+class AlteracaoDocumento(Base):
+    """Registo de auditoria: cada campo alterado num documento do Paperless pelo motor (antes → depois, regra e versão)."""
+    __tablename__ = "alteracao_documento"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    paperless_id: Mapped[int] = mapped_column(Integer, index=True)
+    lote: Mapped[str] = mapped_column(String(40), index=True)
+    campo: Mapped[str] = mapped_column(String(60))
+    antes: Mapped[str | None] = mapped_column(Text)
+    depois: Mapped[str | None] = mapped_column(Text)
+    origem: Mapped[str] = mapped_column(String(10))                          # regra | ia | manual
+    regra_id: Mapped[int | None] = mapped_column(ForeignKey("regra_documento.id", ondelete="SET NULL"))
+    versao_regra: Mapped[int | None] = mapped_column(Integer)
+    utilizador_id: Mapped[int | None] = mapped_column(ForeignKey("utilizador.id", ondelete="SET NULL"))
+    em: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, index=True)

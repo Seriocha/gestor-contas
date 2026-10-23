@@ -13,6 +13,7 @@ Modelos (equivalentes aos scripts):
   recibo_vencimento  ← Adicionar_Recibo_Vencimento.ps1
   fatura_fornecedor  ← Adicionar_Caso_Paperless.ps1
   conta_email        ← Configurar_Paperless_Mail.ps1 (a palavra-passe de aplicação vai ao Paperless e não fica na app)
+  lar                ← Configurar_Paperless_Lar.ps1 + Configurar_Paperless_Fluxo.ps1 (inclui as vistas guardadas)
 """
 from dataclasses import dataclass, field
 
@@ -37,7 +38,7 @@ class Passo:
 
 ROTULOS = {"document_types": "Tipo de documento", "correspondents": "Correspondente", "tags": "Etiqueta",
            "custom_fields": "Campo personalizado", "storage_paths": "Caminho de armazenamento", "workflows": "Fluxo de entrada",
-           "mail_accounts": "Conta de email", "mail_rules": "Regra de email"}
+           "mail_accounts": "Conta de email", "mail_rules": "Regra de email", "saved_views": "Vista guardada"}
 
 
 @dataclass
@@ -77,6 +78,16 @@ MODELOS = {
         "enviada ao Paperless no momento e não fica guardada na app.",
         [("nome", "Nome da conta", "Gmail Lar", ""), ("utilizador", "Utilizador (email)", "", ""),
          ("servidor", "Servidor IMAP", "imap.gmail.com", ""), ("porta", "Porta", "993", "")]),
+    "lar": Modelo(
+        "lar", "Lar (faturas e recibos)",
+        "Faturas, avisos e recibos de um lar: tipos (Aviso-resumo, Fatura, Comprovativo bancário, Recibo), o lar como "
+        "correspondente, etiquetas (a pessoa, Lar, Mensalidade e Medicação pelo texto, Por pagar, Pago, Completo), campos "
+        "Período, Valor e Data de pagamento, caminho, o fluxo «Entrada Lar» (correspondente, pessoa + Lar + Por pagar, "
+        "caminho) e as vistas guardadas «Por pagar» e «<pessoa> - Lar» no painel e na barra lateral.",
+        [("lar", "Lar (correspondente)", "Santa Casa STC", ""),
+         ("filtro", "Texto no documento", "Santa Casa", "o fluxo reconhece o documento por este texto (mais exato: o NIF do lar)"),
+         ("pessoa", "Pessoa (etiqueta)", "Mãe", ""),
+         ("pasta", "Pasta no arquivo", "Família/Mãe/Lar", "o caminho fica <pasta>/{{ created_year }}/{{ title }}")]),
 }
 
 PERIODO, VALOR, LIQUIDO, CARTAO, DEBITO = "Período", "Valor", "Líquido", "Cartão refeição", "Débito direto"
@@ -91,7 +102,7 @@ def _procurar(endpoint: str, nome: str, token: str) -> dict | None:
     endpoints ignoram o filtro «name__iexact» e devolvem tudo (os fluxos e as contas/regras de email) — tomar o 1.º
     resultado fazia passar «Entrada Lar» por «Entrada Vencimento»."""
     alvo = nome.strip().lower()
-    params = {"page_size": 1000} if endpoint in ("mail_accounts", "mail_rules", "workflows") else \
+    params = {"page_size": 1000} if endpoint in ("mail_accounts", "mail_rules", "workflows", "saved_views") else \
         {"name__iexact": nome, "page_size": 100}
     r = paperless._pedido(f"/api/{endpoint}/", params, token=token)
     return next((x for x in r.get("results", []) if (x.get("name") or "").strip().lower() == alvo), None)
@@ -168,6 +179,30 @@ def _passos(modelo: str, p: dict, dono_id: int | None, ids: dict) -> list[Passo]
                 "action": 3, "assign_title_from": 2, "assign_correspondent_from": 1, "attachment_type": 1,
                 "consumption_scope": 1, "order": 10, "_conta": conta}))
         return passos
+    if modelo == "lar":
+        lar = (p.get("lar") or "Lar").strip()
+        pessoa = (p.get("pessoa") or "Mãe").strip()
+        pasta = (p.get("pasta") or f"Família/{pessoa}/Lar").strip().strip("/")
+        caminho = f"{pessoa} - Lar"
+        etiquetas = [(pessoa, nenhum), ("Lar", nenhum), ("Mensalidade", {"matching_algorithm": LITERAL, "match": "mensalidade"}),
+                     ("Medicação", {"matching_algorithm": LITERAL, "match": "medicação"}),
+                     ("Por pagar", nenhum), ("Pago", nenhum), ("Completo", nenhum)]
+
+        def vista(nome, tag):
+            regra = [{"rule_type": 6, "value": str(ids[("tags", tag)])}] if ids.get(("tags", tag)) else []
+            return Passo("saved_views", nome, {"show_on_dashboard": True, "show_in_sidebar": True, "sort_field": "created",
+                                               "sort_reverse": True, "filter_rules": regra})
+        return ([Passo("document_types", t, dict(nenhum)) for t in ("Aviso-resumo", "Fatura", "Comprovativo bancário", "Recibo")]
+                + [Passo("correspondents", lar, dict(nenhum))]
+                + [Passo("tags", n, dict(c)) for n, c in etiquetas]
+                + [Passo("custom_fields", PERIODO, {"data_type": "string"}), Passo("custom_fields", VALOR, {"data_type": "monetary"}),
+                   Passo("custom_fields", "Data de pagamento", {"data_type": "date"}),
+                   Passo("storage_paths", caminho, {**nenhum, "path": f"{pasta}/{{{{ created_year }}}}/{{{{ title }}}}"}),
+                   Passo("workflows", "Entrada Lar", _fluxo(0, LITERAL, p.get("filtro") or lar, {
+                       "assign_correspondent": ids.get(("correspondents", lar)),
+                       "assign_tags": [ids.get(("tags", pessoa)), ids.get(("tags", "Lar")), ids.get(("tags", "Por pagar"))],
+                       "assign_storage_path": ids.get(("storage_paths", caminho))})),
+                   vista("Por pagar", "Por pagar"), vista(caminho, pessoa)])
     if modelo == "conta_email":
         return [Passo("mail_accounts", (p.get("nome") or "Gmail Lar").strip(), {
             "imap_server": (p.get("servidor") or "imap.gmail.com").strip(),
@@ -189,6 +224,8 @@ def validar(modelo: str, p: dict) -> list[str]:
         erros.append("Indica o nome do fornecedor.")
     if modelo == "recibo_vencimento" and not (p.get("empregador") or "").strip():
         erros.append("Indica o empregador.")
+    if modelo == "lar" and not (p.get("lar") or "").strip():
+        erros.append("Indica o nome do lar.")
     if modelo == "conta_email" and not (p.get("utilizador") or "").strip():
         erros.append("Indica o utilizador (email) da conta.")
     return erros
@@ -243,6 +280,10 @@ def aplicar(modelo: str, params: dict, token: str, senha_email: str | None = Non
                 plano.passos.append(passo)
                 continue
             corpo["password"] = senha_email
+        if passo.endpoint == "saved_views" and not corpo.get("filter_rules"):
+            passo.estado, passo.detalhe = "erro", "falta a etiqueta do filtro"
+            plano.passos.append(passo)
+            continue
         if passo.endpoint == "workflows":
             for a in corpo["actions"]:
                 for k in list(a):
@@ -274,6 +315,6 @@ def link(passo: Passo) -> str | None:
         return None
     caminhos = {"document_types": "documenttypes", "correspondents": "correspondents", "tags": "tags",
                 "custom_fields": "customfields", "storage_paths": "storagepaths", "workflows": "workflows", "mail_rules": "mail",
-                "mail_accounts": "mail"}
+                "mail_accounts": "mail", "saved_views": "savedviews"}
     return f"{paperless.url_browser()}/{caminhos.get(passo.endpoint, '')}" if passo.endpoint in caminhos else None
 

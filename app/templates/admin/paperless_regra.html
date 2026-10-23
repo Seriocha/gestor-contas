@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% import "admin/_proposta.html" as pr with context %}
+{% block titulo %}Paperless · {{ regra.nome if regra else 'nova regra' }}{% endblock %}
+{% block conteudo %}
+<h1>Administração</h1>
+{% include "admin/_paperless_topo.html" %}
+<p><a href="/admin/paperless/regras">← Regras</a></p>
+{% for e in erros_form %}<div class="aviso aviso-erro">{{ e }}</div>{% endfor %}
+<div class="grelha-2">
+<section class="cartao">
+  <h2>{{ regra.nome if regra else 'Nova regra' }}{% if regra %} <span class="nota">· versão {{ regra.versao }}</span>{% endif %}</h2>
+  <form method="post" action="/admin/paperless/regras/guardar" class="formulario">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    {% if regra %}<input type="hidden" name="id" value="{{ regra.id }}">{% endif %}
+    <input type="hidden" name="origem" value="{{ v.origem }}">
+    <label>Nome <input name="nome" value="{{ v.nome }}" maxlength="120" required></label>
+    <fieldset><legend>Quando</legend>
+      <label>O texto do documento tem
+        <select name="algoritmo">{% for k, n in algoritmos_motor.items() %}<option value="{{ k }}" {% if v.algoritmo == k %}selected{% endif %}>{{ n }}</option>{% endfor %}</select></label>
+      <label><input name="texto" value="{{ v.texto }}" maxlength="500" required>
+        <span class="nota">o mais estável é o NIF do emitente; acentos e maiúsculas não contam (exceto na expressão regular)</span></label>
+      <label>Só documentos do tipo <input name="so_tipo" value="{{ v.so_tipo }}" maxlength="128" placeholder="qualquer"></label>
+      <label class="caixa"><input type="checkbox" name="so_sem_correspondente" {% if v.so_sem_correspondente %}checked{% endif %}> só documentos ainda sem correspondente</label>
+    </fieldset>
+    <fieldset><legend>Faz</legend>
+      <label>Correspondente <input name="correspondente" value="{{ v.correspondente }}" maxlength="128"><span class="nota">criado no Paperless se não existir</span></label>
+      <label>Tipo de documento <input name="tipo" value="{{ v.tipo }}" maxlength="128"></label>
+      <label>Etiquetas <input name="etiquetas" value="{{ v.etiquetas }}" maxlength="500"><span class="nota">separadas por vírgulas; juntam-se às que o documento já tem</span></label>
+      <div class="pp-atributos">
+        <span class="nota">Extrair do texto para campos personalizados:</span>
+        {% set ext = (v.extrair or '').split(',') %}
+        {% for k, t in atributos.items() %}
+        <label class="caixa"><input type="checkbox" name="extrair_k" value="{{ k }}" {% if k in ext %}checked{% endif %}> {{ t[0] }}{% if t[1] and t[1] != t[0] %} <span class="nota">→ «{{ t[1] }}»</span>{% elif not t[1] %} <span class="nota">→ data do documento</span>{% endif %}</label>
+        {% endfor %}
+      </div>
+    </fieldset>
+    <label>Confiança
+      <select name="confianca">{% for k, n in confiancas.items() %}<option value="{{ k }}" {% if v.confianca == k %}selected{% endif %}>{{ n }}</option>{% endfor %}</select>
+      <span class="nota">mesmo «alta», um atributo em falta ou um conflito com o Paperless manda o documento para revisão</span></label>
+    <label>Ordem <input name="ordem" type="number" value="{{ v.ordem }}" style="width: 7rem"><span class="nota">a 1.ª regra (menor ordem) que reconhece o documento ganha</span></label>
+    <label class="caixa"><input type="checkbox" name="ativa" {% if v.ativa %}checked{% endif %}> ativa</label>
+    <label>Notas <textarea name="nota" rows="2">{{ v.nota or '' }}</textarea></label>
+    {% if regra %}<label>O que mudou <input name="nota_versao" maxlength="200" placeholder="ex.: a Vodafone mudou o layout da fatura"><span class="nota">fica no histórico da versão</span></label>{% endif %}
+    <div class="acoes-form"><button class="primario">Guardar{{ ' (nova versão)' if regra }}</button></div>
+  </form>
+</section>
+
+{% if regra %}
+<div>
+<section class="cartao">
+  <h2>Testar com um documento</h2>
+  <form method="post" action="/admin/paperless/regras/{{ regra.id }}/acao" class="formulario">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <label>Documento <input name="doc" value="{{ teste_doc or '' }}" placeholder="12 ou …/documents/12/details"></label>
+    <label class="caixa"><input type="checkbox" name="substituir"> substituir o que já está preenchido</label>
+    <button name="acao" value="testar">Testar</button> <span class="nota">não altera nada (a regra é testada mesmo desligada)</span>
+  </form>
+  {% if teste %}
+  <div class="pp-teste">
+    {% if teste.origem %}{{ pr.resumo(teste) }}{{ pr.alteracoes(teste) }}
+    {% else %}<p class="aviso aviso-erro">A condição não apanha este documento.</p>{% endif %}
+    <p><a href="{{ teste.link }}" target="_blank" rel="noopener">Abrir o documento no Paperless ↗</a></p>
+  </div>
+  {% endif %}
+</section>
+
+<section class="cartao">
+  <h2>No Paperless</h2>
+  {% if regra.paperless_fluxo_id %}
+  <p>Publicada como o fluxo nativo <strong>«Gestor · {{ regra.nome }}»</strong> (#{{ regra.paperless_fluxo_id }}): o Paperless
+    aplica-a sozinho a cada documento novo. Ao guardar a regra, o fluxo é atualizado.</p>
+  <form method="post" action="/admin/paperless/regras/{{ regra.id }}/acao"><input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <button name="acao" value="despublicar">Tirar do Paperless</button></form>
+  {% elif motivo_publicar %}
+  <p class="nota sem-margem">Fica só no Gestor: {{ motivo_publicar }}.</p>
+  {% else %}
+  <p class="nota">É uma regra simples: pode correr no próprio Paperless como fluxo nativo (o Gestor continua a guardá-la e a versioná-la).</p>
+  <form method="post" action="/admin/paperless/regras/{{ regra.id }}/acao"><input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <button class="primario" name="acao" value="publicar">Publicar no Paperless</button></form>
+  {% endif %}
+</section>
+
+<section class="cartao">
+  <h2>Histórico</h2>
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th>Versão</th><th>Quando</th><th>Nota</th><th></th></tr></thead>
+    {% for ver in versoes %}
+    <tr><td>v{{ ver.versao }}</td><td class="nota">{{ ver.em.strftime('%d/%m/%Y %H:%M') }}</td><td class="nota">{{ ver.nota or '' }}</td>
+      <td>{% if ver.versao != regra.versao %}<form method="post" action="/admin/paperless/regras/{{ regra.id }}/acao">
+        <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="versao" value="{{ ver.versao }}">
+        <button name="acao" value="restaurar" onclick="return confirm('Repor esta versão (fica como versão nova)?')">Repor</button></form>{% else %}<span class="etiqueta etiqueta-ok">atual</span>{% endif %}</td></tr>
+    {% endfor %}
+  </table></div>
+</section>
+
+<section class="cartao">
+  <h2>Últimos documentos</h2>
+  {% for c in ultimos %}
+  <div class="pp-linha-doc"><span class="etiqueta">{{ estados.get(c.estado, c.estado) }}</span> {{ c.titulo }} <span class="nota">· {{ c.processado_em.strftime('%d/%m %H:%M') }}{% if c.motivo %} · {{ c.motivo }}{% endif %}</span></div>
+  {% else %}<p class="vazio sem-margem">Ainda não apanhou nenhum documento.</p>{% endfor %}
+  <form method="post" action="/admin/paperless/regras/{{ regra.id }}/acao" style="margin-top: 1rem">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <button class="perigo" name="acao" value="apagar" onclick="return confirm('Apagar esta regra (e o fluxo no Paperless, se publicada)?')">Apagar regra</button>
+  </form>
+</section>
+</div>
+{% endif %}
+</div>
+{% endblock %}
