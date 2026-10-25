@@ -1316,3 +1316,23 @@ class AlteracaoDocumento(Base):
     versao_regra: Mapped[int | None] = mapped_column(Integer)
     utilizador_id: Mapped[int | None] = mapped_column(ForeignKey("utilizador.id", ondelete="SET NULL"))
     em: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, index=True)
+
+
+class DispositivoSaude(Base):
+    """Telemóvel emparelhado que envia os dados do Health Connect (app Android «Gestor Saúde») para um perfil de saúde.
+    Só pode enviar dados para esse perfil (/api/saude/enviar); guarda-se o hash do token. Deixa de funcionar se quem o
+    aprovou mudar a password (versao_sessao) ou perder o «editar» na entidade do perfil."""
+    __tablename__ = "dispositivo_saude"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    perfil_id: Mapped[int] = mapped_column(ForeignKey("perfil_saude.id", ondelete="CASCADE"), index=True)
+    utilizador_id: Mapped[int] = mapped_column(ForeignKey("utilizador.id", ondelete="CASCADE"))
+    nome: Mapped[str] = mapped_column(String(60))
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    versao_sessao: Mapped[int] = mapped_column(Integer)
+    criado_em: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    ultimo_envio: Mapped[datetime | None] = mapped_column(DateTime)
+    ultimo_resumo: Mapped[str | None] = mapped_column(String(200))
+
+    perfil: Mapped[PerfilSaude] = relationship()
+    utilizador: Mapped[Utilizador] = relationship()

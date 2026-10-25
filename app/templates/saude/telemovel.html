@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block titulo %}Saúde · telemóvel{% endblock %}
+{% block conteudo %}
+<h1>Saúde · telemóvel</h1>
+<p><a href="/saude">← Saúde</a></p>
+<section class="cartao">
+  <h2>Health Connect no telemóvel</h2>
+  <p class="nota">A app Android <strong>Gestor Saúde</strong> lê do Health Connect os passos, distância, pisos, peso, gordura,
+    sono com fases, frequência cardíaca em repouso, variabilidade, oxigénio, respiração, VO2 máx. e os treinos, e envia-os
+    para um perfil de saúde — uma vez por dia, quando o telemóvel está no Wi-Fi de casa (ou com «Enviar agora»).
+    Reenviar o mesmo dia atualiza o valor; nada se duplica com o que veio do Google Takeout.</p>
+  <ol class="nota">
+    <li>Na app, escreve o endereço do Gestor: <code>{{ endereco }}</code> e toca em «Emparelhar».</li>
+    <li>Aparece um código de 6 dígitos: escreve-o aqui e escolhe o perfil.</li>
+    <li>Na app, dá as permissões do Health Connect e toca em «Enviar agora» (a primeira vez, escolhe quantos dias).</li>
+  </ol>
+</section>
+
+{% if erro %}<div class="aviso aviso-erro">{{ erro }}</div>{% endif %}
+{% if perfis %}
+<section class="cartao">
+  <h2>Emparelhar um telemóvel</h2>
+  <form method="post" action="/saude/telemovel/aprovar" class="formulario estreito">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <label>Código que aparece na app
+      <input name="codigo" value="{{ codigo }}" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]{6,7}" maxlength="7" required {% if not codigo %}autofocus{% endif %}></label>
+    <label>Perfil que recebe os dados
+      <select name="perfil_id" required>{% for p in perfis %}<option value="{{ p.id }}" {% if p.id == perfil_id %}selected{% endif %}>{{ p.nome }}</option>{% endfor %}</select></label>
+    <label>Nome deste telemóvel <input name="nome" value="{{ nome }}" maxlength="60" required></label>
+    <button class="primario">Emparelhar</button>
+  </form>
+</section>
+{% else %}
+<section class="cartao"><p class="vazio sem-margem">Não tens perfis de saúde onde possas importar: cria um perfil em <a href="/saude">Saúde</a>
+  (precisas de «editar» na entidade).</p></section>
+{% endif %}
+
+<section class="cartao">
+  <h2>Telemóveis emparelhados</h2>
+  {% if telemoveis %}
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th>Telemóvel</th><th>Perfil</th><th>Emparelhado</th><th>Último envio</th><th></th></tr></thead>
+    {% for t in telemoveis %}
+    <tr><td><strong>{{ t.nome }}</strong><br><span class="nota">aprovado por {{ t.utilizador.nome }}</span></td>
+      <td>{{ t.perfil.nome }}</td>
+      <td class="nota">{{ t.criado_em.strftime('%d/%m/%Y') }}</td>
+      <td class="nota">{% if t.ultimo_envio %}{{ t.ultimo_envio.strftime('%d/%m/%Y %H:%M') }}<br>{{ t.ultimo_resumo }}{% else %}ainda não enviou{% endif %}</td>
+      <td><form method="post" action="/saude/telemovel/{{ t.id }}/desligar" onsubmit="return confirm('Desligar este telemóvel? A app deixa de conseguir enviar.')">
+        <input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="perigo">Desligar</button></form></td></tr>
+    {% endfor %}
+  </table></div>
+  {% else %}<p class="vazio sem-margem">Nenhum telemóvel emparelhado.</p>{% endif %}
+</section>
+{% endblock %}
