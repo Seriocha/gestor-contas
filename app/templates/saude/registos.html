@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block titulo %}Saúde · registos de {{ perfil.nome }}{% endblock %}
+{% macro n(v, casas=0) -%}{{ '—' if v is none else ('{:,.%df}' % casas).format(v).replace(',', ' ').replace('.', ',').replace(' ', '.') }}{%- endmacro %}
+{% macro horas(minutos) -%}{% if minutos is none %}—{% else %}{{ (minutos // 60) | int }} h {{ '%02d' % ((minutos % 60) | round | int) }}{% endif %}{%- endmacro %}
+{% macro url(pagina=1) -%}
+/saude/perfis/{{ perfil.id }}/registos?{{ dict(f, pagina=pagina, **kwargs)|urlencode }}
+{%- endmacro %}
+{% block conteudo %}
+<div class="titulo-acoes"><h1>Saúde · {{ perfil.nome }}</h1></div>
+<p><a href="/saude?entidade={{ perfil.entidade_id }}&perfil={{ perfil.id }}">← Gráficos</a></p>
+
+<section class="cartao">
+  <nav class="separadores">
+    <a href="{{ url(vista='medidas') }}" {% if f.vista == 'medidas' %}class="ativo"{% endif %}>Valores por dia</a>
+    <a href="{{ url(vista='treinos', tipo='') }}" {% if f.vista == 'treinos' %}class="ativo"{% endif %}>Treinos</a>
+  </nav>
+  <form method="get" class="filtros">
+    <input type="hidden" name="vista" value="{{ f.vista }}">
+    {% if f.vista == 'medidas' %}
+    <label>Tipo <select name="tipo"><option value="">Todos</option>{% for k, (rot, uni, _) in tipos.items() %}<option value="{{ k }}" {% if f.tipo == k %}selected{% endif %}>{{ rot }}</option>{% endfor %}</select></label>
+    {% endif %}
+    <label>Origem <select name="origem">{% for k, rot in origens.items() %}<option value="{{ k }}" {% if f.origem == k %}selected{% endif %}>{{ rot }}</option>{% endfor %}</select></label>
+    <label>De <input name="de" type="date" value="{{ f.de }}"></label>
+    <label>Até <input name="ate" type="date" value="{{ f.ate }}"></label>
+    <button>Filtrar</button>
+  </form>
+
+  <p class="nota">{{ n(total) }} registo{{ 's' if total != 1 }}{% if paginas > 1 %} · página {{ pagina }} de {{ paginas }}{% endif %}</p>
+  {% if itens %}
+  <div class="rolar"><table class="tabela compacta">
+    {% if f.vista == 'medidas' %}
+    <thead><tr><th>Dia</th><th>Tipo</th><th class="num">Valor</th><th>Origem</th></tr></thead>
+    {% for m in itens %}
+    {% set t = tipos.get(m.tipo, (m.tipo, '', 1)) %}
+    <tr><td class="sem-quebra">{{ m.data | data }}</td><td>{{ t[0] }}</td>
+      <td class="num">{% if m.tipo.startswith('sono') %}{{ horas(m.valor) }}{% else %}{{ n(m.valor, t[2]) }}{% if t[1] %} {{ t[1] }}{% endif %}{% endif %}</td>
+      <td class="nota">{{ m.fonte or '—' }}</td></tr>
+    {% endfor %}
+    {% else %}
+    <thead><tr><th>Início</th><th>Atividade</th><th class="num">Duração</th><th class="num">Distância</th><th class="num">Passos</th><th class="num">Calorias</th><th class="num">FC média / máx.</th><th>Origem</th></tr></thead>
+    {% for t in itens %}
+    <tr><td class="sem-quebra">{{ t.inicio.strftime('%d/%m/%Y %H:%M') }}</td><td>{{ t.atividade }}{% if t.manual %} <span class="nota">(manual)</span>{% endif %}</td>
+      <td class="num">{{ horas(t.duracao_min) if t.duracao_min else '—' }}</td>
+      <td class="num">{{ n(t.distancia_km, 2) ~ ' km' if t.distancia_km else '—' }}</td>
+      <td class="num">{{ n(t.passos) if t.passos else '—' }}</td><td class="num">{{ n(t.calorias) if t.calorias else '—' }}</td>
+      <td class="num">{{ n(t.fc_media) if t.fc_media else '—' }}{% if t.fc_maxima %} / {{ n(t.fc_maxima) }}{% endif %}</td>
+      <td class="nota">{{ 'Telemóvel' if t.externo_id.startswith('hc:') else 'Takeout' }}</td></tr>
+    {% endfor %}
+    {% endif %}
+  </table></div>
+  {% if paginas > 1 %}
+  <nav class="paginacao">
+    {% if pagina > 1 %}<a href="{{ url(1) }}">« primeira</a><a href="{{ url(pagina - 1) }}">‹ anterior</a>{% endif %}
+    <span>página {{ pagina }} de {{ paginas }}</span>
+    {% if pagina < paginas %}<a href="{{ url(pagina + 1) }}">seguinte ›</a><a href="{{ url(paginas) }}">última »</a>{% endif %}
+  </nav>
+  {% endif %}
+  {% else %}<p class="vazio sem-margem">Sem registos com estes filtros.</p>{% endif %}
+</section>
+
+{% if utilizador.is_admin %}
+<section class="cartao" id="apagar">
+  <h2>Apagar dados de {{ perfil.nome }} <span class="nota">· só administradores</span></h2>
+  <p class="nota">Apaga os valores e treinos <strong>só no Gestor</strong>: não mexe no Health Connect do telemóvel, na Samsung
+    Health, na Google Fit nem no Google Takeout. Útil depois de um teste ou para importar tudo de novo. Atenção: um telemóvel
+    emparelhado volta a enviar os últimos 7 dias no envio seguinte — desliga-o antes em
+    <a href="/saude/telemovel">Saúde › Telemóvel</a> se não os quiseres de volta.</p>
+  <p class="nota">Neste perfil:
+    {% for k, rot in origens.items() if k %}{{ rot }}: {{ n(contagens[k][0]) }} valores, {{ n(contagens[k][1]) }} treinos{{ ' · ' if not loop.last }}{% endfor %}</p>
+  <form method="post" action="/saude/perfis/{{ perfil.id }}/apagar-dados" class="formulario estreito"
+        onsubmit="return confirm('Apagar estes dados de saúde no Gestor? Não se pode desfazer (só com um backup).')">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <label>O quê <select name="origem">{% for k, rot in origens.items() %}<option value="{{ k }}">{{ 'Tudo (todas as origens)' if not k else 'Só ' ~ rot }}</option>{% endfor %}</select></label>
+    <label>De <input name="de" type="date"><span class="nota">vazio = desde o início</span></label>
+    <label>Até <input name="ate" type="date"><span class="nota">vazio = até hoje</span></label>
+    <label>Para confirmar, escreve o nome do perfil <input name="confirmar" autocomplete="off" placeholder="{{ perfil.nome }}" required></label>
+    <button class="perigo">Apagar no Gestor</button>
+  </form>
+</section>
+{% endif %}
+{% endblock %}

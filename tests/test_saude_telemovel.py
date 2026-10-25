@@ -5,7 +5,7 @@ from datetime import date
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app import saude_telemovel as st
 from app.models import Auditoria, DispositivoSaude, MedidaSaude, Permissao, PerfilSaude, TreinoSaude, Utilizador
@@ -117,3 +117,73 @@ def test_desligar(admin, app, perfil):  # noqa: F811
     r = admin.get("/saude/telemovel")
     admin.post(f"/saude/telemovel/{did}/desligar", data={"csrf": _csrf(r)})
     assert tel.get("/api/saude/estado", headers=cab).status_code == 401
+
+
+# ------------------------------------------------------------------ todos os registos (paginados) e apagar no Gestor
+def _povoar(app, pid, n_tel=60, n_take=10):
+    from datetime import datetime, timedelta
+    with app.state.SessionLocal() as db:
+        for i in range(n_tel):
+            db.add(MedidaSaude(perfil_id=pid, data=date(2026, 8, 1) + timedelta(days=i), tipo="passos", valor=1000 + i,
+                               fonte="Health Connect"))
+        for i in range(n_take):
+            db.add(MedidaSaude(perfil_id=pid, data=date(2025, 1, 1) + timedelta(days=i), tipo="peso_kg", valor=90 + i / 10,
+                               fonte="Fitdays Health Connect"))
+        db.add(TreinoSaude(perfil_id=pid, externo_id="hc:abc", inicio=datetime(2026, 9, 1, 8), atividade="Corrida"))
+        db.add(TreinoSaude(perfil_id=pid, externo_id="999", inicio=datetime(2025, 3, 1, 8), atividade="Caminhada"))
+        db.commit()
+
+
+def test_registos_paginados_e_filtros(admin, app, perfil):  # noqa: F811
+    _povoar(app, perfil)
+    r = admin.get(f"/saude/perfis/{perfil}/registos")
+    assert "70 registos · página 1 de 2" in r.text and "seguinte" in r.text
+    r = admin.get(f"/saude/perfis/{perfil}/registos?pagina=2")
+    assert "página 2 de 2" in r.text and "anterior" in r.text
+    r = admin.get(f"/saude/perfis/{perfil}/registos?origem=takeout")
+    assert "10 registos" in r.text and "Fitdays" in r.text
+    r = admin.get(f"/saude/perfis/{perfil}/registos?tipo=passos&de=2026-09-01&ate=2026-09-10")
+    assert "10 registos" in r.text
+    r = admin.get(f"/saude/perfis/{perfil}/registos?vista=treinos&origem=telemovel")
+    assert "1 registo" in r.text and "Corrida" in r.text and "Caminhada" not in r.text
+    assert "todos os registos" in admin.get("/saude").text
+
+
+def test_apagar_dados_so_no_gestor(admin, app, perfil):  # noqa: F811
+    _povoar(app, perfil)
+    r = admin.get(f"/saude/perfis/{perfil}/registos")
+    assert "Apagar dados de Sérgio" in r.text
+    # sem a confirmação certa não apaga
+    r = admin.post(f"/saude/perfis/{perfil}/apagar-dados", data={"csrf": _csrf(r), "origem": "telemovel", "confirmar": "x"},
+                   follow_redirects=True)
+    assert "escreve o nome do perfil" in r.text
+    # só o que veio do telemóvel, num intervalo
+    admin.post(f"/saude/perfis/{perfil}/apagar-dados", data={"csrf": _csrf(r), "origem": "telemovel", "de": "2026-08-01",
+                                                             "ate": "2026-08-10", "confirmar": "sérgio"})
+    with app.state.SessionLocal() as db:
+        assert db.scalar(select(func.count()).select_from(MedidaSaude)) == 60
+        assert db.scalar(select(func.count()).select_from(TreinoSaude)) == 2
+        assert "telemóvel" in db.scalar(select(Auditoria.detalhe).where(Auditoria.acao == "saude_apagar"))
+    # tudo
+    r = admin.get(f"/saude/perfis/{perfil}/registos")
+    r = admin.post(f"/saude/perfis/{perfil}/apagar-dados", data={"csrf": _csrf(r), "origem": "", "confirmar": "Sérgio"},
+                   follow_redirects=True)
+    assert "Apagados do Gestor 60 valores e 2 treinos" in r.text
+    with app.state.SessionLocal() as db:
+        assert db.scalar(select(func.count()).select_from(MedidaSaude)) == 0
+        assert db.get(PerfilSaude, perfil).importado_em is None
+
+
+def test_apagar_dados_so_administradores(admin, app, perfil):  # noqa: F811
+    _povoar(app, perfil)
+    with app.state.SessionLocal() as db:
+        ana = Utilizador(nome="Ana", login="ana", password_hash=hash_password(PW))
+        db.add(ana)
+        db.flush()
+        db.add(Permissao(utilizador_id=ana.id, entidade_id=_ids_entidades(app)["Família"], papel="editar"))
+        db.commit()
+    c2 = TestClient(app)
+    _post(c2, "/login", login="ana", password=PW)
+    r = c2.get(f"/saude/perfis/{perfil}/registos")
+    assert r.status_code == 200 and "Apagar dados" not in r.text
+    assert c2.post(f"/saude/perfis/{perfil}/apagar-dados", data={"csrf": _csrf(r), "confirmar": "Sérgio"}).status_code == 403

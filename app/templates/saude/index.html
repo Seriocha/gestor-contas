@@ -26,7 +26,8 @@
 <div class="titulo-acoes">
   <h2 class="sem-margem">{{ atual.nome }}
     <span class="nota">{% if r and not r.vazio %}· dados de {{ r.primeiro | data }} a {{ r.ultimo | data }}{% endif %}
-      {% if atual.importado_em %}· importado a {{ atual.importado_em.strftime('%d/%m/%Y') }}{% endif %}</span></h2>
+      {% if atual.importado_em %}· importado a {{ atual.importado_em.strftime('%d/%m/%Y') }}{% endif %}
+      · <a href="/saude/perfis/{{ atual.id }}/registos">todos os registos</a></span></h2>
   {% if r and not r.vazio %}
   <nav class="separadores sem-margem">
     {% for kp, (rot, _) in periodos.items() %}<a href="/saude?entidade={{ entidade.id }}&perfil={{ atual.id }}&periodo={{ kp }}" {% if kp == periodo %}class="ativo"{% endif %}>{{ rot }}</a>{% endfor %}
@@ -67,7 +68,8 @@
 
 {% if r.treinos %}
 <section class="cartao">
-  <h2>Treinos <span class="nota">· {{ r.n_treinos }}{{ ', os 25 mais recentes' if r.n_treinos > 25 }}</span></h2>
+  <h2>Treinos <span class="nota">· {{ r.n_treinos }}{{ ', os 25 mais recentes' if r.n_treinos > 25 }} ·
+    <a href="/saude/perfis/{{ atual.id }}/registos?vista=treinos">ver todos</a></span></h2>
   <div class="rolar"><table class="tabela compacta">
     <thead><tr><th>Data</th><th>Atividade</th><th class="num">Duração</th><th class="num">Distância</th><th class="num">Passos</th><th class="num">Calorias</th><th class="num">FC média</th></tr></thead>
     {% for t in r.treinos %}
