@@ -126,11 +126,20 @@ async def correspondentes_acao(request: Request, admin: Utilizador = Depends(exi
 
 # ------------------------------------------------------------------ fluxos
 @router.get("/fluxos")
-def fluxos(request: Request, admin: Utilizador = Depends(exigir_admin), db: Session = Depends(get_db)):
+def fluxos(request: Request, ver: str = "todos", q: str = "", admin: Utilizador = Depends(exigir_admin),
+           db: Session = Depends(get_db)):
     ctx, token = _token(request, db, admin)
     if token:
         _carregar(ctx, "fluxos", lambda: pg.fluxos(token))
-    return render(request, "admin/paperless_fluxos.html", gatilhos=pg.GATILHOS, **ctx)
+    todos = ctx.get("fluxos") or []
+    ver = ver if ver in ("todos", "ligados", "desligados", "avisos") else "todos"
+    mostrar = [f for f in todos if (ver == "todos" or (ver == "ligados" and f.ativo) or (ver == "desligados" and not f.ativo)
+                                    or (ver == "avisos" and f.avisos))
+               and (not q or q.lower() in f.nome.lower())]
+    contagem = {"todos": len(todos), "ligados": sum(f.ativo for f in todos), "desligados": sum(not f.ativo for f in todos),
+                "avisos": sum(bool(f.avisos) for f in todos), "gestor": sum(f.do_gestor for f in todos)}
+    return render(request, "admin/paperless_fluxos.html", gatilhos=pg.GATILHOS, mostrar=mostrar, ver=ver, q=q,
+                  contagem=contagem, **ctx)
 
 
 @router.post("/fluxos")
@@ -143,7 +152,9 @@ async def fluxos_acao(request: Request, admin: Utilizador = Depends(exigir_admin
             raise paperless.ErroPaperless("O utilizador escolhido não tem token do Paperless.")
         if acao in ("ativar", "desativar"):
             pg.alterar_fluxo(token, fid, ativo=acao == "ativar")
-            flash(request, f"Fluxo «{nome}» {'ativado' if acao == 'ativar' else 'desativado'}.")
+            flash(request, f"Fluxo «{nome}» {'ligado' if acao == 'ativar' else 'desligado'}.")
+        elif acao in ("subir", "descer"):
+            pg.mover_fluxo(token, fid, -1 if acao == "subir" else 1)
         elif acao == "guardar":
             novo_nome = str(form.get("novo_nome", "")).strip()[:256] or None
             pg.alterar_fluxo(token, fid, ordem=_int(form.get("ordem")), nome=novo_nome)
@@ -161,7 +172,8 @@ async def fluxos_acao(request: Request, admin: Utilizador = Depends(exigir_admin
         db.commit()
     except paperless.ErroPaperless as e:
         flash(request, str(e), "erro")
-    return RedirectResponse(f"/admin/paperless/fluxos#fluxo-{fid}", status_code=303)
+    volta = str(form.get("volta", "")) if str(form.get("volta", "")).startswith("/admin/paperless/fluxos") else "/admin/paperless/fluxos"
+    return RedirectResponse(f"{volta}#fluxo-{fid}", status_code=303)
 
 
 # ------------------------------------------------------------------ email

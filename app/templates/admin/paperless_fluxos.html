@@ -4,48 +4,127 @@
 <h1>Administração</h1>
 {% include "admin/_paperless_topo.html" %}
 {% if paperless_cfg and token_ok and fluxos is not none %}
+{% set volta = request.url.path ~ ('?' ~ request.url.query if request.url.query else '') %}
 <section class="cartao">
-  <h2>Fluxos de trabalho <span class="nota">· {{ fluxos|length }}</span></h2>
-  <p class="nota">O que o Paperless faz sozinho a cada documento (atribuir correspondente, tipo, etiquetas, caminho, dono…).
-    Correm por ordem crescente; um fluxo desligado fica guardado mas não corre. Para criar fluxos novos usa os
-    <a href="/admin/paperless">Circuitos</a>.</p>
+  <h2>Fluxos de trabalho <span class="nota">· {{ contagem.todos }} · {{ contagem.ligados }} ligados{% if contagem.gestor %} · {{ contagem.gestor }} publicados pelo Gestor{% endif %}</span></h2>
+  <p class="nota">O que o Paperless faz sozinho a cada documento (correspondente, tipo, etiquetas, caminho, dono…). Correm por
+    ordem crescente — se dois atribuírem a mesma coisa, fica a do último. Um fluxo desligado fica guardado mas não corre.
+    Fluxos novos: <a href="/admin/paperless">Circuitos</a> ou uma <a href="/admin/paperless/regras">regra</a> publicada.</p>
+  <div class="fl-filtros">
+    <nav class="separadores sem-margem">
+      {% for k, rot in [('todos', 'Todos'), ('ligados', 'Ligados'), ('desligados', 'Desligados'), ('avisos', 'Com avisos')] %}
+      <a href="?ver={{ k }}{{ '&q=' ~ q|urlencode if q }}" {% if ver == k %}class="ativo"{% endif %}>{{ rot }} <span class="nota">{{ contagem[k] }}</span></a>
+      {% endfor %}
+    </nav>
+    <form method="get" class="fl-procura"><input type="hidden" name="ver" value="{{ ver }}">
+      <input name="q" value="{{ q }}" placeholder="procurar pelo nome" aria-label="Procurar fluxo"><button class="pequeno">Procurar</button>
+      {% if q %}<a href="?ver={{ ver }}" class="nota">limpar</a>{% endif %}</form>
+  </div>
 </section>
-{% for f in fluxos %}
-<section class="cartao" id="fluxo-{{ f.id }}">
-  <h3 class="sem-margem">{{ f.nome }}
-    <span class="etiqueta {{ 'etiqueta-ok' if f.ativo else 'etiqueta-erro' }}">{{ 'ativo' if f.ativo else 'desligado' }}</span>
-    <span class="nota">· ordem {{ f.ordem }}</span></h3>
-  <p class="nota sem-margem">Quando</p>
+
+{% if contagem.avisos and ver != 'avisos' %}
+<section class="cartao">
+  <h2>Avisos <span class="nota">· {{ contagem.avisos }} fluxo{{ 's' if contagem.avisos != 1 }}</span></h2>
   <ul class="pp-lista">
-    {% for t in f.gatilhos %}
-    <li>{{ t.resumo }}
-      {% if t.id %}<details class="pp-editar"><summary>editar</summary>
-        <form method="post" action="/admin/paperless/fluxos" class="formulario">
-          <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="id" value="{{ f.id }}">
-          <input type="hidden" name="nome" value="{{ f.nome }}"><input type="hidden" name="gatilho" value="{{ t.id }}">
-          <label>Correspondência
-            <select name="algoritmo">{% for k, n in algoritmos.items() %}<option value="{{ k }}" {% if t.matching_algorithm == k %}selected{% endif %}>{{ n }}</option>{% endfor %}</select></label>
-          <label>Texto no documento <input name="match" value="{{ t.match or '' }}" maxlength="256"></label>
-          <label class="opcao"><input type="checkbox" name="insensivel" {% if t.is_insensitive %}checked{% endif %}> ignorar maiúsculas</label>
-          <button class="primario" name="acao" value="gatilho">Guardar gatilho</button>
-        </form></details>{% endif %}</li>
-    {% else %}<li class="nota">sem gatilhos</li>{% endfor %}
+    {% for f in fluxos if f.avisos %}
+    <li><a href="#fluxo-{{ f.id }}">{{ f.nome }}</a>{% if not f.ativo %} <span class="nota">(desligado)</span>{% endif %}:
+      <span class="pp-problema">{{ f.avisos|join(' · ') }}</span></li>
+    {% endfor %}
   </ul>
-  <p class="nota sem-margem">Faz</p>
-  <ul class="pp-lista">{% for a in f.acoes %}<li>{{ a.resumo }}</li>{% else %}<li class="nota">sem ações</li>{% endfor %}</ul>
-  <form method="post" action="/admin/paperless/fluxos" class="formulario em-linha">
-    <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="id" value="{{ f.id }}"><input type="hidden" name="nome" value="{{ f.nome }}">
-    <label>Nome <input name="novo_nome" value="{{ f.nome }}" maxlength="256"></label>
-    <label>Ordem <input name="ordem" type="number" value="{{ f.ordem }}" style="width: 6rem"></label>
-    <div class="acoes-form">
-      <button name="acao" value="guardar">Guardar</button>
-      {% if f.ativo %}<button name="acao" value="desativar">Desligar</button>{% else %}<button class="primario" name="acao" value="ativar">Ligar</button>{% endif %}
-      <button class="perigo" name="acao" value="apagar" onclick="return confirm('Apagar este fluxo de trabalho no Paperless?')">Apagar</button>
-    </div>
-  </form>
 </section>
-{% else %}
-<section class="cartao"><p class="vazio sem-margem">Nenhum fluxo de trabalho.</p></section>
-{% endfor %}
+{% endif %}
+
+<section class="cartao">
+  {% if mostrar %}
+  <div class="rolar"><table class="tabela compacta fl-tabela">
+    <thead><tr><th class="num">Ordem</th><th>Fluxo</th><th>Quando</th><th>Faz</th><th>Estado</th><th></th></tr></thead>
+    {% for f in mostrar %}
+    <tr id="fluxo-{{ f.id }}" class="{{ '' if f.ativo else 'fl-desligado' }}">
+      <td class="num sem-quebra">
+        <form method="post" action="/admin/paperless/fluxos" class="fl-ordem">
+          <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="id" value="{{ f.id }}">
+          <input type="hidden" name="nome" value="{{ f.nome }}"><input type="hidden" name="volta" value="{{ volta }}">
+          <button class="pequeno" name="acao" value="subir" title="Correr antes" {% if loop.first and ver == 'todos' and not q %}disabled{% endif %}>↑</button>
+          <span>{{ f.ordem }}</span>
+          <button class="pequeno" name="acao" value="descer" title="Correr depois" {% if loop.last and ver == 'todos' and not q %}disabled{% endif %}>↓</button>
+        </form></td>
+      <td><strong>{{ f.nome }}</strong>
+        {% if f.do_gestor %}<span class="etiqueta etiqueta-cor" title="publicado a partir de uma regra do Gestor">Gestor</span>{% endif %}
+        {% if f.avisos %}<span class="etiqueta etiqueta-erro" title="{{ f.avisos|join(' · ') }}">⚠ {{ f.avisos|length }}</span>{% endif %}</td>
+      <td class="nota">{% for t in f.gatilhos %}<div>{{ t.tipo_txt }}: {% if t.tudo %}<span class="pp-problema">qualquer documento</span>{% else %}{{ t.curto }}{% endif %}</div>{% else %}<span class="pp-problema">sem gatilho</span>{% endfor %}</td>
+      <td>{% for r, v, falta in f.partes %}<span class="fl-chip{{ ' fl-falta' if falta }}"><small>{{ r }}</small> {{ v }}</span>{% else %}<span class="nota">—</span>{% endfor %}</td>
+      <td>
+        <form method="post" action="/admin/paperless/fluxos">
+          <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="id" value="{{ f.id }}">
+          <input type="hidden" name="nome" value="{{ f.nome }}"><input type="hidden" name="volta" value="{{ volta }}">
+          {% if f.ativo %}<button class="pequeno fl-ligado" name="acao" value="desativar" title="Desligar">ligado</button>
+          {% else %}<button class="pequeno" name="acao" value="ativar" title="Ligar">desligado</button>{% endif %}
+        </form></td>
+      <td><button type="button" class="pequeno" data-abre="editar-{{ f.id }}" aria-expanded="false">Editar</button></td>
+    </tr>
+    <tr id="editar-{{ f.id }}" class="fl-edicao" hidden>
+      <td colspan="6">
+        <div class="fl-painel">
+          {% if f.avisos %}<ul class="pp-lista">{% for a in f.avisos %}<li class="pp-problema">⚠ {{ a }}</li>{% endfor %}</ul>{% endif %}
+          <div class="grelha-2">
+            <div>
+              <h4>Quando</h4>
+              {% for t in f.gatilhos %}
+              <p class="nota sem-margem">{{ t.resumo }}</p>
+              {% if t.id %}
+              <form method="post" action="/admin/paperless/fluxos" class="formulario">
+                <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="id" value="{{ f.id }}">
+                <input type="hidden" name="nome" value="{{ f.nome }}"><input type="hidden" name="gatilho" value="{{ t.id }}">
+                <input type="hidden" name="volta" value="{{ volta }}">
+                <div class="pp-grelha">
+                  <label>Correspondência
+                    <select name="algoritmo">{% for k, n in algoritmos.items() %}<option value="{{ k }}" {% if t.matching_algorithm == k %}selected{% endif %}>{{ n }}</option>{% endfor %}</select></label>
+                  <label>Texto no documento <input name="match" value="{{ t.match or '' }}" maxlength="256"></label>
+                </div>
+                <label class="opcao"><input type="checkbox" name="insensivel" {% if t.is_insensitive %}checked{% endif %}> ignorar maiúsculas</label>
+                <div><button class="pequeno primario" name="acao" value="gatilho">Guardar gatilho</button></div>
+              </form>
+              {% endif %}
+              {% else %}<p class="nota">Sem gatilhos.</p>{% endfor %}
+            </div>
+            <div>
+              <h4>Faz</h4>
+              {% for a in f.acoes %}<p class="nota sem-margem">{{ a.resumo }}</p>{% else %}<p class="nota">Sem ações.</p>{% endfor %}
+              <p class="nota">As ações (o que atribui) mudam-se no Paperless{% if paperless_link %}: <a href="{{ paperless_link }}/workflows" target="_blank" rel="noopener">abrir os fluxos ↗</a>{% endif %}.</p>
+              <h4>Nome e ordem</h4>
+              <form method="post" action="/admin/paperless/fluxos" class="formulario">
+                <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="id" value="{{ f.id }}">
+                <input type="hidden" name="nome" value="{{ f.nome }}"><input type="hidden" name="volta" value="{{ volta }}">
+                <div class="pp-grelha">
+                  <label>Nome <input name="novo_nome" value="{{ f.nome }}" maxlength="256"></label>
+                  <label>Ordem <input name="ordem" type="number" value="{{ f.ordem }}"></label>
+                </div>
+                <div class="acoes-form">
+                  <button class="pequeno" name="acao" value="guardar">Guardar</button>
+                  <button class="pequeno perigo" name="acao" value="apagar" onclick="return confirm('Apagar este fluxo de trabalho no Paperless?')">Apagar fluxo</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      </td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% else %}
+  <p class="vazio sem-margem">{{ 'Nenhum fluxo com estes filtros.' if contagem.todos else 'Nenhum fluxo de trabalho.' }}</p>
+  {% endif %}
+</section>
+<script>
+  // «Editar»: abre/fecha o painel do fluxo; abre sozinho o do fluxo do endereço (#fluxo-12)
+  document.querySelectorAll('[data-abre]').forEach(b => b.addEventListener('click', () => {
+    const p = document.getElementById(b.dataset.abre);
+    p.hidden = !p.hidden;
+    b.setAttribute('aria-expanded', String(!p.hidden));
+    b.textContent = p.hidden ? 'Editar' : 'Fechar';
+  }));
+  const m = location.hash.match(/^#fluxo-(\d+)$/);
+  if (m) { const b = document.querySelector(`[data-abre="editar-${m[1]}"]`); if (b) b.click(); }
+</script>
 {% endif %}
 {% endblock %}

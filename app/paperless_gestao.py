@@ -79,8 +79,23 @@ class Fluxo:
     nome: str
     ordem: int
     ativo: bool
-    gatilhos: list = field(default_factory=list)     # [dict] com «resumo»
-    acoes: list = field(default_factory=list)        # [dict] com «resumo»
+    gatilhos: list = field(default_factory=list)     # [dict] com «resumo» e «curto»
+    acoes: list = field(default_factory=list)        # [dict] com «resumo» e «partes» [(rótulo, valor, em falta)]
+    avisos: list = field(default_factory=list)
+
+    @property
+    def do_gestor(self) -> bool:
+        """Publicado a partir de uma regra do motor de classificação (Administração › Paperless › Regras)."""
+        return self.nome.startswith("Gestor · ")
+
+    @property
+    def partes(self) -> list:
+        return [x for a in self.acoes for x in a["partes"]]
+
+
+def _nome(mapa: dict, oid) -> tuple[str, bool]:
+    """(nome, em falta): um id que já não existe no Paperless aparece como «#id» e é um aviso."""
+    return (mapa[oid], False) if oid in mapa else (f"#{oid}", True)
 
 
 def fluxos(token: str) -> list[Fluxo]:
@@ -88,7 +103,7 @@ def fluxos(token: str) -> list[Fluxo]:
     try:
         utilizadores = {u["id"]: u.get("username") or "" for u in listar("users", token)}
     except paperless.ErroPaperless:      # o token pode não ter permissão para ver os utilizadores
-        utilizadores = {}
+        utilizadores = None
     out = []
     for w in sorted(listar("workflows", token), key=lambda w: (w.get("order") or 0, w.get("name") or "")):
         f = Fluxo(w["id"], w.get("name") or "", w.get("order") or 0, bool(w.get("enabled")))
@@ -103,29 +118,94 @@ def fluxos(token: str) -> list[Fluxo]:
             if t.get("filter_path"):
                 partes.append(f"caminho «{t['filter_path']}»")
             if t.get("filter_has_tags"):
-                partes.append("com etiquetas " + ", ".join(n["tags"].get(i, str(i)) for i in t["filter_has_tags"]))
-            f.gatilhos.append({**t, "resumo": " · ".join(partes)})
+                partes.append("com etiquetas " + ", ".join(_nome(n["tags"], i)[0] for i in t["filter_has_tags"]))
+            filtro = (f"«{t.get('match')}»" if t.get("matching_algorithm") and t.get("match") else
+                      f"ficheiro «{t['filter_filename']}»" if t.get("filter_filename") else
+                      f"caminho «{t['filter_path']}»" if t.get("filter_path") else
+                      "com etiquetas" if t.get("filter_has_tags") else "qualquer documento")
+            f.gatilhos.append({**t, "resumo": " · ".join(partes), "curto": filtro,
+                               "tipo_txt": GATILHOS.get(t.get("type"), f"tipo {t.get('type')}"),
+                               "tudo": filtro == "qualquer documento" and t.get("type") in (1, 2, 3)})
         for a in w.get("actions") or []:
             partes = []
+
+            def junta(rotulo, ep, ids):
+                ids = ids if isinstance(ids, list) else [ids]
+                for i in ids:
+                    nome, falta = _nome(n[ep], i)
+                    partes.append((rotulo, nome, falta))
             if a.get("assign_title"):
-                partes.append(f"título «{a['assign_title']}»")
+                partes.append(("título", a["assign_title"], False))
             if a.get("assign_correspondent"):
-                partes.append("correspondente " + n["correspondents"].get(a["assign_correspondent"], str(a["assign_correspondent"])))
+                junta("correspondente", "correspondents", a["assign_correspondent"])
             if a.get("assign_document_type"):
-                partes.append("tipo " + n["document_types"].get(a["assign_document_type"], str(a["assign_document_type"])))
+                junta("tipo", "document_types", a["assign_document_type"])
             if a.get("assign_tags"):
-                partes.append("etiquetas " + ", ".join(n["tags"].get(i, str(i)) for i in a["assign_tags"]))
+                junta("etiqueta", "tags", a["assign_tags"])
             if a.get("assign_storage_path"):
-                partes.append("caminho " + n["storage_paths"].get(a["assign_storage_path"], str(a["assign_storage_path"])))
+                junta("caminho", "storage_paths", a["assign_storage_path"])
             if a.get("assign_custom_fields"):
-                partes.append("campos " + ", ".join(n["custom_fields"].get(i, str(i)) for i in a["assign_custom_fields"]))
+                junta("campo", "custom_fields", a["assign_custom_fields"])
             if a.get("assign_owner"):
-                partes.append("dono " + utilizadores.get(a["assign_owner"], f"#{a['assign_owner']}"))
+                dono = (utilizadores or {}).get(a["assign_owner"])
+                partes.append(("dono", dono or f"#{a['assign_owner']}", utilizadores is not None and dono is None))
             if a.get("remove_tags"):
-                partes.append("tira etiquetas " + ", ".join(n["tags"].get(i, str(i)) for i in a["remove_tags"]))
-            f.acoes.append({**a, "resumo": f"{TIPOS_ACAO.get(a.get('type'), '?')}: " + ("; ".join(partes) or "—")})
+                junta("tira etiqueta", "tags", a["remove_tags"])
+            resumo = "; ".join(f"{r} {v}" for r, v, _ in partes) or "—"
+            f.acoes.append({**a, "partes": partes, "tipo_txt": TIPOS_ACAO.get(a.get("type"), "?"),
+                            "resumo": f"{TIPOS_ACAO.get(a.get('type'), '?')}: {resumo}"})
         out.append(f)
+    _avisos(out)
     return out
+
+
+def _avisos(lista: list[Fluxo]) -> None:
+    """Problemas prováveis em cada fluxo (só os ligados contam para sobreposições e ordem repetida)."""
+    textos: dict[str, list[Fluxo]] = {}
+    ordens: dict[int, list[Fluxo]] = {}
+    for f in lista:
+        if not f.gatilhos:
+            f.avisos.append("sem gatilho: nunca corre")
+        if not f.acoes:
+            f.avisos.append("sem ações: não faz nada")
+        if any(t["tudo"] for t in f.gatilhos):
+            f.avisos.append("o gatilho não tem filtro: apanha todos os documentos")
+        for r, v, falta in f.partes:
+            if falta:
+                f.avisos.append(f"{r} {v} já não existe no Paperless")
+        if f.ativo:
+            for t in f.gatilhos:
+                if t.get("matching_algorithm") and (t.get("match") or "").strip():
+                    textos.setdefault((t.get("match") or "").strip().lower(), []).append(f)
+            ordens.setdefault(f.ordem, []).append(f)
+    for texto, fs in textos.items():
+        if len({f.id for f in fs}) > 1:
+            outros = sorted({f.nome for f in fs})
+            for f in fs:
+                f.avisos.append(f"o mesmo texto «{texto}» noutro fluxo ligado ({', '.join(x for x in outros if x != f.nome)}): "
+                                "o que corre depois sobrepõe-se")
+    for ordem, fs in ordens.items():
+        if len(fs) > 1:
+            for f in fs:
+                f.avisos.append(f"ordem {ordem} repetida noutro fluxo ligado: a ordem entre eles não é garantida")
+
+
+def mover_fluxo(token: str, fid: int, direcao: int) -> None:
+    """Sobe (−1) ou desce (+1) um fluxo: renumera todos de 10 em 10 pela ordem atual e troca-o com o vizinho."""
+    lista = sorted(listar("workflows", token), key=lambda w: (w.get("order") or 0, w.get("name") or ""))
+    ids = [w["id"] for w in lista]
+    if fid not in ids:
+        raise paperless.ErroPaperless("Fluxo não encontrado.")
+    i = ids.index(fid)
+    j = i + direcao
+    if not 0 <= j < len(ids):
+        return
+    ids[i], ids[j] = ids[j], ids[i]
+    atuais = {w["id"]: w.get("order") or 0 for w in lista}
+    for k, wid in enumerate(ids):
+        nova = (k + 1) * 10
+        if atuais[wid] != nova:
+            alterar("workflows", wid, {"order": nova}, token)
 
 
 def alterar_fluxo(token: str, fid: int, *, ativo: bool | None = None, ordem: int | None = None, nome: str | None = None) -> None:

@@ -190,7 +190,8 @@ def test_correspondentes_editar_criar_fundir_apagar(admin, falso):
 def test_fluxos_listar_e_alterar(admin, falso):
     r = admin.get("/admin/paperless/fluxos")
     assert "Entrada EDP" in r.text and "Documento adicionado" in r.text and "origem: pasta, email" in r.text
-    assert "correspondente EDP Comercial" in r.text and "etiquetas Casa" in r.text and "dono sergio" in r.text
+    assert "correspondente EDP Comercial" in r.text and "etiqueta Casa" in r.text and "dono sergio" in r.text
+    assert "<small>correspondente</small> EDP Comercial" in r.text and "1 ligados" in r.text
     _acao(admin, "fluxos", acao="desativar", id="40", nome="Entrada EDP")
     assert falso["dados"]["workflows"][0]["enabled"] is False
     _acao(admin, "fluxos", acao="guardar", id="40", nome="Entrada EDP", novo_nome="Entrada EDP SU", ordem="2")
@@ -278,3 +279,26 @@ def test_sem_token(admin, monkeypatch, falso):
     monkeypatch.delenv("GESTOR_PAPERLESS_TOKEN")
     r = admin.get("/admin/paperless/correspondentes")
     assert "não tem token do Paperless" in r.text
+
+
+def test_fluxos_avisos_filtros_e_ordem(admin, falso):
+    d = falso["dados"]
+    d["workflows"] += [
+        {"id": 43, "name": "Gestor · EDP outra", "order": 5, "enabled": True,
+         "triggers": [{"id": 44, "type": 2, "matching_algorithm": 3, "match": "edp", "is_insensitive": True}],
+         "actions": [{"id": 45, "type": 1, "assign_tags": [999]}]},
+        {"id": 46, "name": "Apanha tudo", "order": 20, "enabled": False,
+         "triggers": [{"id": 47, "type": 2, "matching_algorithm": 0, "match": ""}], "actions": []}]
+    fl = {f.id: f for f in pg.fluxos("tk")}
+    assert any("mesmo texto «edp»" in a for a in fl[40].avisos) and any("ordem 5 repetida" in a for a in fl[43].avisos)
+    assert any("#999 já não existe" in a for a in fl[43].avisos) and fl[43].do_gestor
+    assert {"sem ações: não faz nada", "o gatilho não tem filtro: apanha todos os documentos"} <= set(fl[46].avisos)
+    r = admin.get("/admin/paperless/fluxos?ver=desligados")
+    tabela = r.text.split("<table")[-1]
+    assert "Apanha tudo" in tabela and "Entrada EDP" not in tabela
+    r = admin.get("/admin/paperless/fluxos?ver=todos&q=gestor")
+    assert "Gestor · EDP outra" in r.text and "qualquer documento" not in r.text.split("<table")[-1]
+    # descer o 1.º: renumera de 10 em 10 e troca com o vizinho
+    _acao(admin, "fluxos", acao="descer", id="40", nome="Entrada EDP")
+    ordem = {w["id"]: w["order"] for w in d["workflows"]}
+    assert ordem[43] < ordem[40] < ordem[46] and len(set(ordem.values())) == 3

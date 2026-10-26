@@ -1045,3 +1045,20 @@ body.a-personalizar .grupo-cabecalho { flex-wrap: wrap; }
 .lar-mes th:nth-child(4) { width: 5%; } .lar-mes th:nth-child(5) { width: 9%; } .lar-mes th:nth-child(6) { width: 11%; }
 .lar-mes th:nth-child(7) { width: 7%; } .lar-mes th:nth-child(8) { width: 17%; } .lar-mes th:nth-child(9) { width: 16%; }
 .lar-mes td { white-space: normal; }
+
+/* Administração › Paperless › Fluxos */
+.fl-filtros { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; justify-content: space-between; }
+.fl-procura { display: flex; gap: .5rem; align-items: center; }
+.fl-procura input { min-height: 32px; padding: .3rem .6rem; width: 14rem; }
+.fl-tabela td { vertical-align: top; }
+.fl-ordem { display: inline-flex; gap: .3rem; align-items: center; }
+.fl-ordem button { min-width: 32px; padding: .2rem .4rem; }
+.fl-desligado td:not(:nth-child(5)):not(:nth-child(6)) { opacity: .5; }
+.fl-chip { display: inline-flex; gap: .3rem; align-items: baseline; padding: .15rem .55rem; margin: 0 .3rem .3rem 0; border-radius: 999px;
+  background: var(--fundo); border: 1px solid var(--linha); font-size: .82rem; }
+.fl-chip small { color: var(--suave); }
+.fl-falta { border-color: var(--erro-texto); color: var(--erro-texto); }
+.fl-ligado { background: color-mix(in srgb, #1baf7a 18%, transparent); border-color: #1baf7a; }
+.fl-edicao > td { background: var(--fundo); }
+.fl-painel { padding: .5rem .25rem; }
+.fl-painel h4 { margin: .5rem 0 .3rem; }
