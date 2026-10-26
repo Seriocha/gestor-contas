@@ -14,7 +14,7 @@ from sqlalchemy.orm import sessionmaker
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import backup, extratos, formatos, motor_docs, pasta_importacao, preferencias, tarefas, tv
+from . import backup, desempenho, extratos, formatos, motor_docs, pasta_importacao, preferencias, tarefas, tv
 from . import patrimonio as pt
 from .config import BASE_DIR, carregar_definicoes
 from .db import criar_engine, url_sqlite
@@ -25,7 +25,7 @@ from .routes import admin_paperless, lar, saude_api, tv as rotas_tv
 from .seed import semear
 
 APP_DIR = Path(__file__).resolve().parent
-VERSAO = "0.87.0"
+VERSAO = "0.88.0"
 
 
 def aplicar_migracoes(db_path: Path, backup_dir: Path | None = None) -> None:
@@ -87,6 +87,8 @@ def create_app(data_dir: Path | None = None, backups_automaticos: bool = True) -
     templates.env.globals["tarefas_janela"] = lambda: tarefas.na_janela(app.state.prefs, date.today())
     templates.env.globals["mostrar_parte"] = lambda: preferencias.ligada(app.state.prefs, "mostrar_minha_parte")
     templates.env.filters["iban"] = lambda v: v if preferencias.ligada(app.state.prefs, "mostrar_iban_completo")         else formatos.mascarar_iban(v)
+    templates.env.filters["selecionada"] = formatos.opcao_selecionada
+    templates.env.globals["opcoes_categorias_html"] = formatos.opcoes_categorias
     templates.env.filters["pct"] = lambda v: "—" if v is None else f"{v:+.1f}%".replace(".", ",")
     app.state.templates = templates
 
@@ -98,6 +100,7 @@ def create_app(data_dir: Path | None = None, backups_automaticos: bool = True) -
         same_site="strict",
         https_only=defs.cookie_secure,
     )
+    desempenho.instalar(app, engine)          # tempos por rota e queries lentas (Administração › Desempenho)
     app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="static")
 
     for r in (auth.router, inicio.router, painel.router, movimentos.router, contas.router, importar.router, categorias.router,

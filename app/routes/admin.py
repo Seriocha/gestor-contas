@@ -656,6 +656,42 @@ async def pacote_agora(request: Request, admin: Utilizador = Depends(exigir_admi
     return RedirectResponse("/admin/backups#pacote", status_code=303)
 
 
+@router.get("/desempenho")
+async def desempenho_pagina(request: Request, admin: Utilizador = Depends(exigir_admin)):
+    """Painel de desempenho: tempos das páginas e queries lentas desde o arranque, e diagnóstico da base de dados."""
+    import asyncio
+    from .. import desempenho
+    diag = await asyncio.to_thread(desempenho.diagnosticar, request.app.state.defs.db_path)
+    return render(request, "admin/desempenho.html", m=request.app.state.metricas.resumo(), d=diag,
+                  limite_sql=desempenho.LIMITE_SQL_MS)
+
+
+@router.post("/desempenho")
+async def desempenho_acao(request: Request, admin: Utilizador = Depends(exigir_admin), db: Session = Depends(get_db)):
+    import asyncio
+    from .. import desempenho
+    form = await ler_form(request)
+    acao = str(form.get("acao", ""))
+    defs = request.app.state.defs
+    if acao == "recomecar":
+        request.app.state.metricas.recomecar()
+        flash(request, "Medição recomeçada.")
+        return RedirectResponse("/admin/desempenho", status_code=303)
+    if acao not in ("analyze", "checkpoint", "indices", "vacuum"):
+        raise HTTPException(status_code=400, detail="Ação desconhecida.")
+    try:
+        if acao == "vacuum":                # reescreve o ficheiro todo: primeiro uma cópia verificada
+            await asyncio.to_thread(fazer_backup, defs)
+        msg = await asyncio.to_thread(desempenho.executar, acao, defs.db_path, db.get_bind())
+    except Exception as e:                  # base ocupada, disco cheio…
+        flash(request, f"A ação não foi feita: {e}", "erro")
+        return RedirectResponse("/admin/desempenho", status_code=303)
+    auditar(db, admin, "base_" + acao, msg[:200])
+    db.commit()
+    flash(request, msg + (" Backup feito antes." if acao == "vacuum" else ""))
+    return RedirectResponse("/admin/desempenho", status_code=303)
+
+
 @router.post("/verificar-base")
 async def verificar_base(request: Request, admin: Utilizador = Depends(exigir_admin), db: Session = Depends(get_db)):
     import asyncio

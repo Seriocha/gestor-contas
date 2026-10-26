@@ -9,6 +9,7 @@ da descrição normalizada, sem os prefixos do banco (COMPRA, DD, TRF, P/ …):
 como padrão («contém») de uma regra.
 """
 import re
+from functools import lru_cache
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import date
@@ -25,6 +26,7 @@ COMISSAO = re.compile(r"COMISS|IMPOSTO DO SELO|\bIMP\.? SELO")
 PESSOAL = re.compile(r"MB ?WAY|\bTRF\b|TRANSFER|\bP/\s*[A-Z]+ [A-Z]+ [A-Z]+$")
 
 
+@lru_cache(maxsize=65536)     # chamado para cada movimento em várias análises; as descrições repetem-se muito
 def padrao_de(descricao: str) -> str:
     texto = re.sub(r"\s+", " ", (descricao or "").upper()).strip()
     melhor, atual = [], []
@@ -107,12 +109,20 @@ def agrupar(sem_categoria: list[Movimento], categorizados: list[Movimento]) -> l
     # sobre a compra: ficam fora do histórico usado para sugerir.
     padroes_hist = {id(m): padrao_de(m.descricao_norm or m.descricao_original) for ms in historico.values() for m in ms
                     if not COMISSAO.search((m.descricao_norm or m.descricao_original or "").upper())}
+    # por sentido: (padrão, texto, categoria) de cada movimento do histórico, e o mesmo padrão → categorias
+    linhas_hist = {s: [(padroes_hist[id(m)], (m.descricao_norm or m.descricao_original or "").upper(), m.categoria_id)
+                       for m in ms if id(m) in padroes_hist] for s, ms in historico.items()}
+    por_padrao = {s: defaultdict(list) for s in linhas_hist}
+    for s, ls in linhas_hist.items():
+        for p, _, cat in ls:
+            por_padrao[s][p].append(cat)
     for g in grupos:
         # Padrão curto (ex.: «COOP»): só o mesmo padrão exato — «contém» apanharia descrições de outras coisas.
         rx = compilar(g.padrao, "contem") if len(g.padrao) >= 8 else None
-        usadas = Counter(m.categoria_id for m in historico[g.sentido] if id(m) in padroes_hist and (
-            padroes_hist[id(m)] == g.padrao
-            or (rx and rx.search((m.descricao_norm or m.descricao_original or "").upper()))))
+        if rx:
+            usadas = Counter(cat for p, t, cat in linhas_hist.get(g.sentido, ()) if p == g.padrao or rx.search(t))
+        else:
+            usadas = Counter(por_padrao.get(g.sentido, {}).get(g.padrao, ()))
         if usadas:
             g.sugestao_id, g.origem = usadas.most_common(1)[0][0], "histórico"
     return grupos

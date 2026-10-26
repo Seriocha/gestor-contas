@@ -8,6 +8,7 @@ As regras correm por prioridade e a 1.ª que corresponder ganha. Simulando-as so
 - **agregáveis**: mesmas condições e mesmas ações com padrões diferentes — juntam-se numa só («A|B|C»). Só se propõe
   quando a simulação mostra que o resultado não muda em nenhum movimento.
 """
+from collections import Counter
 from dataclasses import dataclass, field
 
 from sqlalchemy.orm import Session
@@ -38,33 +39,69 @@ class _Compilada:
         self.rx = compilar(r.padrao, r.modo)
         self.ent_bem = r.bem.entidade_id if r.bem_id and r.bem else None
 
-    def corresponde(self, m: Movimento, texto: str) -> bool:
+        self.com_condicoes = bool(r.conta_id or r.bem_id or r.sentido or r.montante_min is not None
+                                  or r.montante_max is not None)
+
+    def passa(self, conta_id: int, entidade_id, montante: int) -> bool:
+        """As condições além do padrão (conta, entidade do bem, sentido, valor)."""
         r = self.r
-        if r.conta_id and r.conta_id != m.conta_id:
+        if r.conta_id and r.conta_id != conta_id:
             return False
-        if r.bem_id and (self.ent_bem is None or m.conta.entidade_id != self.ent_bem):
+        if r.bem_id and (self.ent_bem is None or entidade_id != self.ent_bem):
             return False
-        if r.sentido == "SAIDA" and m.montante >= 0 or r.sentido == "ENTRADA" and m.montante <= 0:
+        if r.sentido == "SAIDA" and montante >= 0 or r.sentido == "ENTRADA" and montante <= 0:
             return False
-        valor = abs(m.montante)
+        valor = abs(montante)
         if r.montante_min is not None and valor < r.montante_min or r.montante_max is not None and valor > r.montante_max:
             return False
-        return bool(self.rx.search(texto))
+        return True
+
+    def corresponde(self, m: Movimento, texto: str) -> bool:
+        ent = _entidade(m) if self.r.bem_id else None
+        return self.passa(m.conta_id, ent, m.montante) and bool(self.rx.search(texto))
+
+
+def _entidade(m) -> int:
+    """Entidade do movimento: Movimento (pela conta) ou linha leve com a coluna entidade_id."""
+    return m.entidade_id if hasattr(m, "entidade_id") else m.conta.entidade_id
 
 
 def _texto(m: Movimento) -> str:
     return (m.descricao_norm or m.descricao_original or "").upper()
 
 
+def _apanha(comp: list, movs: list[Movimento], textos: list[str]) -> dict:
+    """regra.id → índices dos movimentos a que corresponde. O padrão corre uma vez por descrição distinta (há muitas
+    repetidas) e as condições só para as regras que as têm — em vez de regra × movimento chamadas."""
+    por_texto: dict[str, list[int]] = {}
+    for i, t in enumerate(textos):
+        por_texto.setdefault(t, []).append(i)
+    precisa_ent = any(c.r.bem_id for c in comp)
+    dados = [(m.conta_id, _entidade(m) if precisa_ent else None, m.montante) for m in movs]
+    out = {}
+    for c in comp:
+        idx = [i for t, ii in por_texto.items() if c.rx.search(t) for i in ii]
+        if c.com_condicoes:
+            idx = [i for i in idx if c.passa(*dados[i])]
+        out[c.r.id] = set(idx)
+    return out
+
+
+def _vencedores(comp: list, apanha: dict, n: int) -> list:
+    """Para cada movimento, a 1.ª regra (por prioridade) que lhe corresponde, ou None."""
+    vencedor = [None] * n
+    for c in comp:
+        for i in apanha[c.r.id]:
+            if vencedor[i] is None:
+                vencedor[i] = c.r
+    return vencedor
+
+
 def resultados(regras: list[Regra], movs: list[Movimento]) -> list:
     """Para cada movimento, as ações da 1.ª regra que corresponde (None se nenhuma)."""
     comp = [_Compilada(r) for r in regras]
-    out = []
-    for m in movs:
-        t = _texto(m)
-        c = next((c for c in comp if c.corresponde(m, t)), None)
-        out.append(acoes(c.r) if c else None)
-    return out
+    vencedor = _vencedores(comp, _apanha(comp, movs, [_texto(m) for m in movs]), len(movs))
+    return [acoes(v) if v else None for v in vencedor]
 
 
 @dataclass
@@ -109,19 +146,15 @@ def agregar_padrao(regras: list[Regra]) -> str:
 
 
 def analisar(regras: list[Regra], movs: list[Movimento]) -> Analise:
-    """regras: as ativas, por prioridade (e id); movs: os movimentos onde simular (o universo das descrições)."""
+    """regras: as ativas, por prioridade (e id); movs: os movimentos onde simular (o universo das descrições) —
+    objetos Movimento ou linhas com id, conta_id, entidade_id, montante, descricao_norm e descricao_original."""
     a = Analise(n_regras=len(regras), n_movimentos=len(movs))
     comp = [_Compilada(r) for r in regras]
     textos = [_texto(m) for m in movs]
-    apanha = {c.r.id: set() for c in comp}             # regra → índices dos movimentos a que corresponde
-    for i, (m, t) in enumerate(zip(movs, textos)):
-        for c in comp:
-            if c.corresponde(m, t):
-                apanha[c.r.id].add(i)
-    vencedor = {}
-    for i in range(len(movs)):
-        vencedor[i] = next((c.r for c in comp if i in apanha[c.r.id]), None)
-    a.ganhos = {r.id: sum(1 for v in vencedor.values() if v is r) for r in regras}
+    apanha = _apanha(comp, movs, textos)               # regra → índices dos movimentos a que corresponde
+    vencedor = _vencedores(comp, apanha, len(movs))
+    contagem = Counter(id(v) for v in vencedor if v is not None)
+    a.ganhos = {r.id: contagem.get(id(r), 0) for r in regras}
 
     # duplicadas: mesmo padrão e condições que uma anterior
     vistas = {}

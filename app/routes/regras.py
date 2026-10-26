@@ -3,8 +3,8 @@ import re
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
-from sqlalchemy import or_, select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy import func, or_, select
+from sqlalchemy.orm import Session, lazyload, selectinload
 
 from ..deps import IntOpcional, auditar, entidades_visiveis, exigir_editor, flash, get_db, render
 from ..formatos import montante_para_input, parse_montante
@@ -57,24 +57,31 @@ def lista(request: Request, u: Utilizador = Depends(exigir_editor), db: Session 
                                               selectinload(Regra.conta), selectinload(Regra.etiqueta),
                                               selectinload(Regra.bem))
                         .order_by(Regra.prioridade, Regra.id)).all()
-    movs = _movimentos_editaveis(db, u, so_nao_manuais=False)
+    # contagens na base (carregar os movimentos todos para os contar levava segundos)
+    nas_entidades = (select(func.count()).select_from(Movimento).join(Conta)
+                     .where(Conta.entidade_id.in_(_entidades_editaveis(db, u))))
     usos = {r.id: 0 for r in regras}
-    for m in movs:
-        if m.regra_id in usos:
-            usos[m.regra_id] += 1
-    sem = sum(1 for m in movs if m.categoria_id is None and not m.transferencia and not m.excluido)
+    for n, rid in db.execute(nas_entidades.add_columns(Movimento.regra_id).where(Movimento.regra_id.is_not(None))
+                             .group_by(Movimento.regra_id)).all():
+        if rid in usos:
+            usos[rid] = n
+    sem = db.scalar(nas_entidades.where(Movimento.categoria_id.is_(None), ~Movimento.transferencia,
+                                        ~Movimento.excluido)) or 0
     return render(request, "regras/lista.html", regras=regras, usos=usos, sem_categoria=sem,
                   modos=MODOS_REGRA, sentidos=SENTIDOS)
 
 
 def _grupos(db: Session, u: Utilizador) -> list:
     # Só o que está dentro da cobertura dos dados (desde o início da análise de cada entidade).
-    movs = (select(Movimento).join(Conta).join(Entidade, Entidade.id == Conta.entidade_id)
-            .where(Conta.entidade_id.in_(_entidades_editaveis(db, u)), ~Movimento.transferencia, ~Movimento.excluido,
-                   or_(Entidade.data_inicio.is_(None), Movimento.data_mov >= Entidade.data_inicio))
-            .options(selectinload(Movimento.conta)))
-    sem = db.scalars(movs.where(Movimento.categoria_id.is_(None))).all()
-    com = db.scalars(movs.where(Movimento.categoria_id.is_not(None))).all()
+    def consulta(*cols):
+        return (select(*cols).join(Conta, Conta.id == Movimento.conta_id).join(Entidade, Entidade.id == Conta.entidade_id)
+                .where(Conta.entidade_id.in_(_entidades_editaveis(db, u)), ~Movimento.transferencia, ~Movimento.excluido,
+                       or_(Entidade.data_inicio.is_(None), Movimento.data_mov >= Entidade.data_inicio)))
+    sem = db.scalars(consulta(Movimento).where(Movimento.categoria_id.is_(None))
+                     .options(selectinload(Movimento.conta), lazyload(Movimento.bem))).all()
+    # o histórico (os categorizados, a maioria) só serve para sugerir: chegam as colunas, sem objetos completos
+    com = db.execute(consulta(Movimento.id, Movimento.montante, Movimento.descricao_norm, Movimento.descricao_original,
+                              Movimento.categoria_id).where(Movimento.categoria_id.is_not(None))).all()
     grupos = agrupar(sem, com)
     ia.aplicar_cache(db, grupos)
     return grupos
@@ -234,9 +241,11 @@ def analise(request: Request, u: Utilizador = Depends(exigir_editor), db: Sessio
     from .. import analise_regras
     from ..qualificacao import regras_ativas
     regras = regras_ativas(db)
-    movs = (select(Movimento).join(Conta).where(Conta.entidade_id.in_(_entidades_editaveis(db, u)))
-            .options(selectinload(Movimento.conta)))
-    return render(request, "regras/analise.html", a=analise_regras.analisar(regras, db.scalars(movs).all()),
+    # só as colunas que a simulação usa (carregar milhares de objetos Movimento levava segundos)
+    movs = (select(Movimento.id, Movimento.conta_id, Conta.entidade_id, Movimento.montante, Movimento.descricao_norm,
+                   Movimento.descricao_original).join(Conta, Conta.id == Movimento.conta_id)
+            .where(Conta.entidade_id.in_(_entidades_editaveis(db, u))))
+    return render(request, "regras/analise.html", a=analise_regras.analisar(regras, db.execute(movs).all()),
                   modos=MODOS_REGRA, sentidos=SENTIDOS)
 
 

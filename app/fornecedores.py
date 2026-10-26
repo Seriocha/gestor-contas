@@ -19,8 +19,8 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import date
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy import or_, select
+from sqlalchemy.orm import Session, lazyload, selectinload
 
 from .models import Bem, Categoria, Conta, ContratoServico, Movimento
 from .relatorios import ids_categoria, somar_meses
@@ -294,7 +294,12 @@ def recolher(db: Session, entidade_id: int, cat: Categoria | None, extras: list[
     cat_ids = set(ids_categoria(db, cat.id)) if cat else set()
     q = (select(Movimento).join(Conta).where(Conta.entidade_id == entidade_id, Movimento.montante < 0,
                                              ~Movimento.excluido, ~Movimento.transferencia)
-         .options(selectinload(Movimento.conta), selectinload(Movimento.categoria)).order_by(Movimento.data_mov))
+         .options(selectinload(Movimento.conta), selectinload(Movimento.categoria), lazyload(Movimento.bem))
+         .order_by(Movimento.data_mov))
+    if all(e.isascii() for e in extras):
+        # pré-filtro na base (o LIKE do SQLite ignora maiúsculas só em ASCII; com acentos filtra-se tudo em Python)
+        q = q.where(or_(Movimento.categoria_id.in_(cat_ids),
+                        *[Movimento.descricao_original.icontains(e, autoescape=True) for e in extras]))
     rx_extras = [re.compile(re.escape(e.upper())) for e in extras]
     itens, sem_categoria = [], []
     for m in db.scalars(q):

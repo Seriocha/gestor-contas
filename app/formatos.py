@@ -81,3 +81,22 @@ def mascarar_iban(texto: str | None) -> str | None:
     if "•" in t or len(t) <= 8:
         return (texto or "").strip()
     return f"{t[:4]} •••• {t[-4:]}"
+
+
+def opcoes_categorias(categorias) -> "Markup":
+    """As <option> da árvore de categorias (para um <select>), montadas uma vez por página."""
+    from markupsafe import Markup, escape
+    partes = ['<option value="">— sem categoria —</option>']
+    for raiz in categorias:
+        partes.append(f'<option value="{raiz.id}">{escape(raiz.nome)}</option>')
+        partes += [f'<option value="{c.id}">&nbsp;&nbsp;{escape(raiz.nome)} › {escape(c.nome)}</option>'
+                   for c in raiz.filhas]
+    return Markup("".join(partes))
+
+
+def opcao_selecionada(opcoes, valor) -> "Markup":
+    """As mesmas opções com a do valor marcada (selected)."""
+    from markupsafe import Markup
+    if valor is None:
+        return opcoes
+    return Markup(str(opcoes).replace(f'<option value="{valor}">', f'<option value="{valor}" selected>', 1))

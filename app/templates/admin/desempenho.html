@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block titulo %}Desempenho{% endblock %}
+{% block conteudo %}
+<h1>Administração</h1>
+{% include "admin/_menu.html" %}
+{% macro tam(b) %}{{ '—' if b is none else (('%.1f MB' % (b / 1024 ** 2)).replace('.', ',') if b >= 1024 ** 2 else '%d KB' % (b // 1024)) }}{% endmacro %}
+{% macro ms(v) %}{{ '%.0f ms' % v if v < 1000 else ('%.1f s' % (v / 1000)).replace('.', ',') }}{% endmacro %}
+
+<section class="kpi-grelha">
+  <div class="cartao kpi"><span class="nota">Pedidos medidos</span><strong>{{ m.n }}</strong>
+    <span class="nota">desde {{ m.desde.strftime('%d/%m %H:%M') }}</span></div>
+  <div class="cartao kpi"><span class="nota">Tempo médio por página</span><strong>{{ ms(m.media_ms) }}</strong>
+    <span class="nota">p95 {{ ms(m.p95_ms) }}</span></div>
+  <div class="cartao kpi"><span class="nota">Páginas com ≥ 1 s</span><strong class="{{ 'neg' if m.lentas_1s else '' }}">{{ m.lentas_1s }}</strong>
+    <span class="nota">{% if m.pior %}mais lenta: {{ m.pior.caminho }}{% else %}—{% endif %}</span></div>
+  <div class="cartao kpi"><span class="nota">Base de dados</span><strong>{{ tam(d.bytes_db) }}</strong>
+    <span class="nota">{% if d.bytes_wal %}+ {{ tam(d.bytes_wal) }} WAL · {% endif %}{{ '%.0f' % (d.fragmentacao * 100) }}% livre</span></div>
+  <div class="cartao kpi"><span class="nota">Queries lentas (≥ {{ limite_sql }} ms)</span><strong class="{{ 'neg' if m.lentas else '' }}">{{ m.lentas | length }}</strong>
+    <span class="nota">SQLite {{ d.versao_sqlite }} · {{ d.journal | upper }}</span></div>
+</section>
+
+<section class="cartao">
+  <div class="cartao-cabecalho">
+    <h2>Sugestões para a base de dados</h2>
+  </div>
+  <div class="rolar"><table class="tabela compacta">
+    <tbody>
+    {% for s in d.sugestoes %}
+    <tr>
+      <td><span class="etiqueta {{ 'etiqueta-erro' if s.nivel == 'erro' else ('etiqueta-ok' if s.nivel == 'ok' else '') }}">{{ {'erro': 'importante', 'alerta': 'recomendado', 'ok': 'informação'}[s.nivel] }}</span></td>
+      <td><strong>{{ s.titulo }}</strong><br><span class="nota">{{ s.detalhe }}</span></td>
+      <td class="num">{% if s.acao %}
+        <form method="post" action="/admin/desempenho" {% if s.acao == 'vacuum' %}onsubmit="return confirm('Fazer backup e compactar a base agora? A app fica parada alguns segundos.')"{% endif %}>
+          <input type="hidden" name="csrf" value="{{ csrf_token }}">
+          <button name="acao" value="{{ s.acao }}" class="{{ 'primario' if s.nivel == 'erro' else '' }}">{{ s.rotulo }}</button>
+        </form>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  <form method="post" action="/admin/desempenho" class="acoes-form">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <button name="acao" value="analyze">Atualizar estatísticas</button>
+    <button name="acao" value="checkpoint">Checkpoint do WAL</button>
+    <button name="acao" value="vacuum" onclick="return confirm('Fazer backup e compactar a base agora? A app fica parada alguns segundos.')">Compactar (VACUUM)</button>
+    <a href="/admin/backups">Verificar a integridade ›</a>
+  </form>
+</section>
+
+<section class="cartao">
+  <div class="cartao-cabecalho">
+    <h2>Páginas <span class="nota">· por tempo total gasto</span></h2>
+    <form method="post" action="/admin/desempenho">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
+      <button name="acao" value="recomecar">Recomeçar a medição</button>
+    </form>
+  </div>
+  {% if m.rotas %}
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th>Rota</th><th class="num">Pedidos</th><th class="num">Média</th><th class="num">p95</th><th class="num">Máximo</th><th class="num">Queries/pedido</th><th class="num">Erros</th></tr></thead>
+    <tbody>
+    {% for r in m.rotas[:40] %}
+    <tr>
+      <td><code>{{ r.caminho }}</code></td>
+      <td class="num">{{ r.n }}</td>
+      <td class="num {{ 'neg' if r.media_ms >= 1000 else '' }}">{{ ms(r.media_ms) }}</td>
+      <td class="num {{ 'neg' if r.p95_ms >= 1000 else '' }}">{{ ms(r.p95_ms) }}</td>
+      <td class="num">{{ ms(r.max_ms) }}</td>
+      <td class="num {{ 'neg' if r.media_queries >= 100 else '' }}">{{ '%.0f' % r.media_queries }}</td>
+      <td class="num">{{ r.erros or '' }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  <p class="nota sem-margem">Medido no servidor (sem a rede nem o desenho no browser). Fica em memória e recomeça quando a app reinicia.
+    Mais de 100 queries por pedido costuma indicar dados lidos um a um em vez de numa só consulta.</p>
+  {% else %}<p class="vazio sem-margem">Ainda não há pedidos medidos. Navega pela app e volta aqui.</p>{% endif %}
+</section>
+
+{% if m.lentas %}
+<section class="cartao">
+  <h2>Queries lentas <span class="nota">· ≥ {{ limite_sql }} ms</span></h2>
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th>Query</th><th>Onde</th><th class="num">Vezes</th><th class="num">Máximo</th><th class="num">Média</th></tr></thead>
+    <tbody>
+    {% for q in m.lentas[:20] %}
+    <tr><td><code class="sql">{{ q.sql[:300] }}{{ '…' if q.sql | length > 300 }}</code></td><td class="nota">{{ q.rota }}</td>
+      <td class="num">{{ q.n }}</td><td class="num">{{ ms(q.max_ms) }}</td><td class="num">{{ ms(q.total_ms / q.n) }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</section>
+{% endif %}
+
+<section class="cartao">
+  <h2>Tabelas <span class="nota">· {{ d.tabelas | length }}</span></h2>
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th>Tabela</th><th class="num">Linhas</th>{% if d.tabelas and d.tabelas[0][2] is not none %}<th class="num">Tamanho (com índices)</th>{% endif %}<th class="num">Índices</th></tr></thead>
+    <tbody>
+    {% for nome, linhas, bytes_t, n_idx in d.tabelas if linhas %}
+    <tr><td><code>{{ nome }}</code></td><td class="num">{{ '{:,}'.format(linhas).replace(',', '.') }}</td>
+      {% if bytes_t is not none %}<td class="num">{{ tam(bytes_t) }}</td>{% endif %}<td class="num">{{ n_idx }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  <p class="nota sem-margem">Tabelas vazias não aparecem. Páginas de {{ d.pagina }} bytes · {{ d.paginas }} páginas, {{ d.livres }} livres ·
+    estatísticas do planeador: {{ 'sim' if d.estatisticas else 'não' }}.</p>
+</section>
+{% endblock %}

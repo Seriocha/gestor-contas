@@ -17,6 +17,7 @@ from datetime import date, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
+from .db import versao_dados
 from .models import TIPOS_PASSIVO, Categoria, Conta, Entidade, Movimento
 
 PASSIVOS = TIPOS_PASSIVO
@@ -307,6 +308,9 @@ def comparacao_anos(movs: list[Movimento], anos: tuple) -> dict:
 
 # ---------------------------------------------------------------- saldos e património
 
+_CACHE_HISTORICO: dict = {}     # (base, conta) → (assinatura, movimentos, datas, com_saldo, acumulados)
+
+
 class HistoricoConta:
     """Saldo de uma conta em qualquer data, a partir dos movimentos.
 
@@ -316,6 +320,15 @@ class HistoricoConta:
 
     def __init__(self, db: Session, conta: Conta):
         self.conta = conta
+        # O Início, o painel e os relatórios pedem o histórico das mesmas contas várias vezes por página: guarda-se
+        # em memória enquanto não houver escritas nos movimentos/contas (db.versao_dados) e o saldo inicial for o mesmo.
+        url = db.get_bind().url
+        chave = (str(url), conta.id)
+        assinatura = (versao_dados(url), conta.saldo_inicial, conta.data_saldo_inicial)
+        guardado = _CACHE_HISTORICO.get(chave)
+        if guardado and guardado[0] == assinatura:
+            _, self.movs, self.datas, self.com_saldo, self.acumulados = guardado
+            return
         self.movs = db.execute(
             select(Movimento.data_mov, Movimento.montante, Movimento.saldo_apos)
             .where(Movimento.conta_id == conta.id)
@@ -327,6 +340,9 @@ class HistoricoConta:
             if not conta.data_saldo_inicial or m.data_mov > conta.data_saldo_inicial:
                 acumulado += m.montante
             self.acumulados.append(acumulado)
+        if len(_CACHE_HISTORICO) > 500:
+            _CACHE_HISTORICO.clear()
+        _CACHE_HISTORICO[chave] = (assinatura, self.movs, self.datas, self.com_saldo, self.acumulados)
 
     def saldo_em(self, d: date) -> int | None:
         """None quando a conta ainda não existia nessa data (sem dados)."""

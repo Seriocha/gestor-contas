@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, lazyload, selectinload
 
 from .models import Conta, Movimento, SugestaoIA, Viagem, ViagemDescartada
 from .sugestoes import padrao_de
@@ -130,7 +130,8 @@ def _comerciante(m: Movimento) -> str:
 
 def _movimentos(db: Session, entidade_id: int, ini: date | None = None) -> list[Movimento]:
     q = (select(Movimento).join(Conta).where(Conta.entidade_id == entidade_id, Movimento.montante < 0, ~Movimento.excluido)
-         .options(selectinload(Movimento.conta)).order_by(Movimento.data_mov, Movimento.ordem, Movimento.id))
+         .options(selectinload(Movimento.conta), lazyload(Movimento.bem))
+         .order_by(Movimento.data_mov, Movimento.ordem, Movimento.id))
     if ini:
         q = q.where(Movimento.data_mov >= ini)
     return db.scalars(q).all()

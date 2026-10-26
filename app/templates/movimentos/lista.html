@@ -313,6 +313,7 @@
         {{ th('data', 'Data') }}{% if not conta %}{{ th('conta', 'Conta') }}{% endif %}{{ th('descricao', 'Descrição') }}{{ th('categoria', 'Categoria') }}{{ th('montante', 'Montante', 'num') }}{% if conta %}<th class="num">Saldo</th>{% endif %}
       </tr></thead>
       <tbody>
+      {% set opcoes_categorias = opcoes_categorias_html(categorias) if pode_editar else "" %}
       {% for m in movimentos %}
       {% set par = pares.get(m.id) %}
       <tr id="mov-{{ m.id }}" class="{{ 'arquivada' if m.excluido else '' }}{{ ' com-par' if par }}{{ ' fora-analise' if corte and m.data_mov < corte }}"{% if par %} style="--cor-par: {{ par.cor }}" data-par="{{ par.par_id }}"{% endif %}>
@@ -342,11 +343,7 @@
         <td class="c-cat">
           {% if pode_editar %}
           <select class="sel-categoria" data-mov="{{ m.id }}" aria-label="Categoria">
-            <option value="">— sem categoria —</option>
-            {% for raiz in categorias %}
-              <option value="{{ raiz.id }}" {% if m.categoria_id == raiz.id %}selected{% endif %}>{{ raiz.nome }}</option>
-              {% for c in raiz.filhas %}<option value="{{ c.id }}" {% if m.categoria_id == c.id %}selected{% endif %}>&nbsp;&nbsp;{{ raiz.nome }} › {{ c.nome }}</option>{% endfor %}
-            {% endfor %}
+            {{ opcoes_categorias | selecionada(m.categoria_id) }}
           </select>
           {% if m.qualificado_por == 'regra' %}<span class="nota origem" title="Qualificado por uma regra">auto</span>
           {% elif m.qualificado_por == 'manual' %}<span class="nota origem" title="Qualificado à mão: as regras não lhe mexem">à mão</span>{% endif %}
