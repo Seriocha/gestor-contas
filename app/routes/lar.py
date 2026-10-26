@@ -69,7 +69,7 @@ def _documentos(token: str, cid: int, renovar: bool) -> list[tuple[int, str]]:
 def pagina(request: Request, renovar: int = 0, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
     prefs = request.app.state.prefs
     token = token_paperless(request, u)
-    ctx = {"paperless_cfg": paperless.configurado(), "token_ok": bool(token), "erros": [], "c": None, "prefs": prefs,
+    ctx = {"hoje": date.today(), "paperless_cfg": paperless.configurado(), "token_ok": bool(token), "erros": [], "c": None, "prefs": prefs,
            "entidades": [e for e, _ in entidades_visiveis(db, u)], "correspondentes": [],
            "link": paperless.url_browser() if paperless.configurado() else ""}
     ent = _entidade(db, u, prefs)

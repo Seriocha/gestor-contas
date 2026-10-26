@@ -25,7 +25,7 @@ from .routes import admin_paperless, lar, saude_api, tv as rotas_tv
 from .seed import semear
 
 APP_DIR = Path(__file__).resolve().parent
-VERSAO = "0.84.3"
+VERSAO = "0.85.0"
 
 
 def aplicar_migracoes(db_path: Path, backup_dir: Path | None = None) -> None:

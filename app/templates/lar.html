@@ -37,38 +37,41 @@
 </section>
 
 <section class="cartao">
-  <h2>Medicamentos <span class="nota">· farmácia ↔ notas de lançamento «Reembolso de Medicamentos»</span></h2>
-  <p class="nota">Cada nota de lançamento deve ser a soma das faturas da farmácia da quinzena (1 a 15, 16 ao fim do mês).
-    Se não for, procura-se na quinzena anterior e depois a combinação de faturas ainda não cobradas que dá o valor.</p>
+  <h2>Farmácia <span class="nota">· faturas da farmácia ↔ lançamentos da Santa Casa</span></h2>
+  <p class="nota">Para cada fatura da farmácia procura-se, pelo valor, o lançamento da Santa Casa (nota de lançamento ou
+    fatura que não é a mensalidade, também os que só aparecem nas cartas) do mesmo mês ou do seguinte: o que tem o mesmo
+    valor ou os que, somados, dão o valor. Depois, para os lançamentos que sobram, as faturas que juntas dão o seu valor.</p>
+  {% set com_fatura = c.farmacia|selectattr('faturas')|list %}
+  {% set sem_fatura = c.farmacia|rejectattr('faturas')|list %}
   <div class="rolar"><table class="tabela compacta">
-    <thead><tr><th>Nota de lançamento</th><th class="num">Cobrado</th><th>Faturas da farmácia</th><th class="num">Soma</th><th>Resultado</th><th>Validação</th></tr></thead>
-    {% set antigas = c.medicamentos|selectattr('metodo', 'equalto', 'sem faturas no Paperless')|list %}
-    {% for l in c.medicamentos|reverse if l.metodo != 'sem faturas no Paperless' %}
+    <thead><tr><th>Fatura da farmácia</th><th class="num">Valor</th><th>Produtos</th><th>Lançamentos da Santa Casa</th><th>Resultado</th></tr></thead>
+    {% for l in com_fatura %}
     <tr>
-      <td class="sem-quebra">{{ doc(l.nld.pid, 'NLD ' ~ l.nld.numero) }}<br><span class="nota">{{ l.nld.data | data }}</span></td>
-      <td class="num">{{ l.nld.medicamentos | eur }}</td>
-      <td class="nota">{% for f in l.faturas %}{{ doc(f.pid, f.numero) }} · {{ f.data | data }} · {{ f.total | eur }}{% if not loop.last %}<br>{% endif %}{% else %}—{% endfor %}</td>
-      <td class="num">{{ l.soma | eur if l.faturas else '—' }}</td>
+      <td class="nota sem-quebra">{% for f in l.faturas %}{{ doc(f.pid, f.numero) }}<br>{{ f.data | data }}{% if not loop.last %}<br>{% endif %}{% endfor %}</td>
+      <td class="num">{% for f in l.faturas %}{{ f.total | eur }}{% if not loop.last %}<br><br>{% endif %}{% endfor %}</td>
+      <td class="nota">{% for f in l.faturas %}{{ f.itens|map('first')|join(' · ') or '—' }}{% if not loop.last %}<br><br>{% endif %}{% endfor %}</td>
+      <td class="nota">{% for e in l.lancamentos %}<div class="sem-quebra">{{ doc(e.pid, e.chave) }} · {{ e.data | data }} · <strong>{{ e.valor | eur }}</strong> {{ validacao(e.validacao, e.validado) }}</div>{% else %}—{% endfor %}</td>
       <td>{% if l.ok %}<span class="etiqueta etiqueta-ok">certo</span> <span class="nota">{{ l.metodo }}</span>
+        {% elif l.metodo == 'sem lançamento' %}<span class="etiqueta etiqueta-cor">sem lançamento</span>
+          <br><span class="nota">{{ 'esperado até' if l.prazo >= hoje else 'o prazo acabou a' }} {{ l.prazo | data }}</span>
         {% else %}<span class="etiqueta etiqueta-erro">diferença {{ l.diferenca | eur }}</span>{% endif %}</td>
-      <td>{{ validacao(l.validacao) }}</td>
     </tr>
-    {% else %}<tr><td colspan="6" class="vazio">Sem notas de lançamento de medicamentos para comparar{{ ' (ainda não há faturas da farmácia no Paperless desses períodos)' if antigas }}.</td></tr>{% endfor %}
+    {% else %}<tr><td colspan="5" class="vazio">Sem faturas da farmácia no Paperless neste intervalo.</td></tr>{% endfor %}
   </table></div>
-  {% if antigas %}<p class="nota">{{ antigas|length }} nota{{ 's' if antigas|length != 1 }} de lançamento de medicamentos de antes da
-    1.ª fatura da farmácia no Paperless ({{ antigas[0].nld.data | data }} a {{ antigas[-1].nld.data | data }}) não
-    {{ 'são comparadas' if antigas|length != 1 else 'é comparada' }}.</p>{% endif %}
-  {% if c.por_cobrar %}
-  <h3>Faturas da farmácia ainda sem nota de lançamento</h3>
+  {% if sem_fatura %}
+  <h3>Lançamentos da Santa Casa sem fatura da farmácia <span class="nota">· {{ sem_fatura|length }}</span></h3>
+  <p class="nota">Notas de lançamento (ou faturas pequenas) que nenhuma fatura da farmácia explica pelo valor: falta a fatura no
+    Paperless, ou o lançamento é de outra coisa (vê o PDF).</p>
   <div class="rolar"><table class="tabela compacta">
-    <thead><tr><th>Fatura</th><th>Data</th><th class="num">Utente</th><th>Produtos</th></tr></thead>
-    {% for f in c.por_cobrar|reverse %}
-    <tr><td>{{ doc(f.pid, f.numero) }}</td><td class="nota">{{ f.data | data }}</td><td class="num">{{ f.total | eur }}</td>
-      <td class="nota">{{ f.itens|map('first')|join(' · ') }}</td></tr>
+    <thead><tr><th>Lançamento</th><th>Data</th><th class="num">Valor</th><th>O quê</th><th>Validação</th></tr></thead>
+    {% for l in sem_fatura %}{% set e = l.lancamentos[0] %}
+    <tr><td>{{ doc(e.pid, e.chave) }}</td><td class="nota">{{ e.data | data }}</td><td class="num">{{ e.valor | eur }}</td>
+      <td class="nota">{{ e.descricao if e.tem_pdf else 'só pela carta (PDF em falta)' }}</td><td>{{ validacao(e.validacao, e.validado) }}</td></tr>
     {% endfor %}
   </table></div>
-  <p class="nota">As das últimas semanas costumam entrar na próxima nota de lançamento (dia 15 ou fim do mês).</p>
   {% endif %}
+  {% if c.n_antigas %}<p class="nota">{{ c.n_antigas }} lançamento{{ 's' if c.n_antigas != 1 }} de antes da 1.ª fatura da farmácia no
+    Paperless não {{ 'são comparados' if c.n_antigas != 1 else 'é comparado' }}.</p>{% endif %}
 </section>
 
 {% set so_por_validar = request.query_params.get('ver') == 'por_validar' %}

@@ -61,21 +61,49 @@ def test_cent_e_leitores():
     assert lar.ler_farmacia(7, "uma fatura qualquer") is None
 
 
-def test_conciliar_medicamentos():
-    fs = [lar.ler_farmacia(i, t) for i, t in enumerate([
-        farmacia(1, "03-10-2026", "2,64"), farmacia(2, "10-10-2026", "10,00"),       # 1.ª quinzena = 12,64
-        farmacia(3, "17-10-2026", "2,53"), farmacia(4, "23-10-2026", "26,55"),       # 2.ª quinzena = 29,08
-        farmacia(5, "28-10-2026", "5,00"),                                           # esquecida na NLD de 31/10
-        farmacia(6, "02-11-2026", "4,00")], 1)]                                      # ainda por cobrar
-    ns = [lar.ler_santa_casa(10, nld(1, "15-10-2026", "12,64")), lar.ler_santa_casa(11, nld(2, "31-10-2026", "29,08")),
-          lar.ler_santa_casa(12, nld(3, "15-11-2026", "9,99")), lar.ler_santa_casa(13, nld(4, "15-11-2026", "5,00", "26 - Reembolso de Consultas"))]
-    linhas, por_cobrar = lar.conciliar_medicamentos(fs, ns)
-    assert [(l.nld.numero, l.ok, l.metodo) for l in linhas] == [(1, True, "quinzena"), (2, True, "combinação"), (3, False, "sem correspondência")]
-    assert linhas[2].diferenca == 999 - 400                     # a quinzena só tem a fatura de 4,00
-    assert [f.numero for f in por_cobrar] == ["FT U014/5", "FT U014/6"]
-    # NLD antiga, de antes da 1.ª fatura da farmácia no Paperless: não é erro
-    l, _ = lar.conciliar_medicamentos(fs, [lar.ler_santa_casa(14, nld(9, "15-03-2026", "30,21"))])
-    assert l[0].metodo == "sem faturas no Paperless"
+def _ligar(faturas, santa_casa, **kw):
+    c = lar.conciliar(faturas, santa_casa, [], hoje=kw.pop("hoje", date(2026, 12, 15)), **kw)
+    return {(tuple(f.numero for f in l.faturas), tuple(e.chave for e in l.lancamentos)): l for l in c.farmacia}, c
+
+
+def test_farmacia_setembro_um_lancamento_por_fatura():
+    """O caso real de setembro: a carta lista NLD 3077 (1,67), NLD 3298 (1,81) e FT 5755 (21,00) sem os PDF;
+    cada fatura da farmácia liga-se, pelo valor, ao lançamento do mesmo mês ou do seguinte."""
+    fs = [(1, farmacia(47843, "18-09-2026", "21,00")), (2, farmacia(47700, "08-09-2026", "1,67")),
+          (3, farmacia(47900, "22-09-2026", "1,81"))]
+    sc = [(10, carta("15-10-2026", [("15-09-2026", "NLD", 2026, 3077, "1,67"), ("30-09-2026", "NLD", 2026, 3298, "1,81"),
+                                    ("30-09-2026", "FT", 2026, 5755, "21,00"), ("01-10-2026", "FT", 2026, 6000, "1.339,41")], "1.363,89"))]
+    lig, c = _ligar(fs, sc)
+    assert lig[(("FT U014/47843",), ("FT 2026/5755",))].metodo == "mesmo valor"
+    assert lig[(("FT U014/47700",), ("NLD 2026/3077",))].ok and lig[(("FT U014/47900",), ("NLD 2026/3298",))].ok
+    assert not any("FT 2026/6000" in k[1] for k in lig)                 # a mensalidade não entra
+    assert not any(t[0] == "farmacia" for t in c.alertas)
+
+
+def test_farmacia_uma_fatura_varios_lancamentos():
+    """Uma fatura de 24,48 € cobrada pela Santa Casa em três lançamentos (1,67 + 1,81 + 21,00)."""
+    fs = [(1, farmacia(47843, "18-09-2026", "24,48"))]
+    sc = [(10, carta("15-10-2026", [("15-09-2026", "NLD", 2026, 3077, "1,67"), ("30-09-2026", "NLD", 2026, 3298, "1,81"),
+                                    ("30-09-2026", "FT", 2026, 5755, "21,00")], "24,48"))]
+    lig, _ = _ligar(fs, sc)
+    l = lig[(("FT U014/47843",), ("NLD 2026/3077", "NLD 2026/3298", "FT 2026/5755"))]
+    assert l.ok and l.metodo == "soma de lançamentos"
+
+
+def test_farmacia_varias_faturas_num_lancamento_e_sem_par():
+    fs = [(1, farmacia(1, "03-10-2026", "2,64")), (2, farmacia(2, "10-10-2026", "10,00")),     # juntas na NLD de 15/10
+          (3, farmacia(3, "20-10-2026", "7,77")),                                                # ninguém a cobrou
+          (4, farmacia(4, "05-12-2026", "4,00"))]                                                # ainda dentro do prazo
+    sc = [(10, nld(1, "15-10-2026", "12,64")), (11, nld(2, "31-10-2026", "9,50")),
+          (12, nld(3, "31-10-2026", "5,00", "26 - Reembolso de Consultas")),                    # não é farmácia
+          (13, nld(9, "15-03-2026", "30,21"))]                                                  # antes da 1.ª fatura
+    lig, c = _ligar(fs, sc)
+    assert lig[(("FT U014/1", "FT U014/2"), ("NLD 2026/1",))].metodo == "soma de faturas"
+    assert lig[((), ("NLD 2026/2",))].metodo == "sem fatura"
+    assert lig[(("FT U014/3",), ())].metodo == "sem lançamento" and lig[(("FT U014/4",), ())].metodo == "sem lançamento"
+    assert not any("NLD 2026/3" in k[1] for k in lig) and c.n_antigas == 1
+    textos = " | ".join(t for _, t in c.alertas)
+    assert "FT U014/3" in textos and "FT U014/4" not in textos and "NLD 2026/2 de 31/10/2026 (9,50 €) sem fatura" in textos
 
 
 def test_conciliar_cartas_recibos_pagamentos():
@@ -119,7 +147,7 @@ def test_pagina_lar(tmp_path, falso):
     _post(c, "/setup", nome="Admin", login="admin", password=PW, password2=PW)
     r = c.get("/lar")
     assert r.status_code == 200, r.text
-    assert "Lar · conciliação" in r.text and "2 faturas da farmácia" in r.text and "certo" in r.text and "quinzena" in r.text
+    assert "Lar · conciliação" in r.text and "2 faturas da farmácia" in r.text and "certo" in r.text and "soma de faturas" in r.text
     # regularização gravada pela migração 0044: pago até 31/10/2026, validar desde 01/01/2026
     assert "tudo pago até 31/10/2026" in r.text and "FT 2026/5319" in r.text and "Lar (Santa Casa)" in r.text
     assert "por validar" in r.text and "Validar o mês" in r.text and "outubro 2026" in r.text
@@ -146,12 +174,12 @@ def test_regularizado_e_por_validar():
     assert c.n_por_validar == 2                                  # FT 2291 e NLD 800
     textos = " | ".join(t for _, t in c.alertas)
     assert "NLD 2025/765" not in textos                          # regularizado: o valor mudou, mas não alerta
-    assert "continua por pagar" not in textos and "NLD 800" in textos   # a NLD de 2026 não bate com a farmácia
+    assert "continua por pagar" not in textos and "NLD 2026/800" in textos   # a NLD de 2026 não tem fatura da farmácia
     # depois de validada, deixa de alertar
     c = lar.conciliar(fs, sc, [], hoje=date(2026, 10, 26), pago_ate=date(2026, 10, 31), validar_desde=date(2026, 1, 1),
                       validados={"NLD 2026/800": {"em": date(2026, 10, 26), "por": "Sérgio", "nota": ""}})
-    assert "NLD 800" not in " | ".join(t for _, t in c.alertas) and c.n_por_validar == 1
-    assert next(l for l in c.medicamentos if l.nld.numero == 800).validacao == "validado"
+    assert "NLD 2026/800" not in " | ".join(t for _, t in c.alertas) and c.n_por_validar == 1
+    assert next(l for l in c.farmacia if l.lancamentos and l.lancamentos[0].chave == "NLD 2026/800").lancamentos[0].validacao == "validado"
 
 
 def test_validar_e_anular(tmp_path, falso):
