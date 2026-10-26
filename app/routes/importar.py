@@ -386,6 +386,122 @@ async def confirmar(request: Request, u: Utilizador = Depends(utilizador_atual),
     return RedirectResponse(f"/contas/{conta.id}/movimentos", status_code=303)
 
 
+# ---------------------------------------------------------------- várias contas de uma vez (Revolut consolidado)
+
+def _subconta_para(extrato, chave: tuple, conta: Conta):
+    """Cópia do extrato só com a subconta `chave`, pronta a importar na conta."""
+    import copy
+    ext = copy.copy(extrato)
+    ext.movimentos, ext.moeda, ext.avisos = copy.deepcopy(extrato.subcontas[chave]), chave[1], []
+    if investimentos.e_investimento(conta):
+        investimentos.adaptar_extrato(ext)
+    return ext
+
+
+def _linhas_todas(db: Session, u: Utilizador, extrato, conta_base: Conta, escolhas: dict | None = None):
+    """Uma linha por subconta do ficheiro, com as contas possíveis (mesma entidade e moeda) e a sugerida: a conta
+    para a qual a importação normal escolheria essa subconta."""
+    contas = [c for c in _contas_editaveis(db, u) if c.entidade_id == conta_base.entidade_id]
+    sugestao: dict = {}
+    for c in sorted(contas, key=lambda c: (c.id != conta_base.id, c.nome)):
+        chave = servicos.chave_subconta(extrato, c)
+        if chave in extrato.subcontas and chave not in sugestao:
+            sugestao[chave] = c
+    linhas = []
+    for i, (chave, movs) in enumerate(extrato.subcontas.items()):
+        possiveis = [c for c in contas if c.moeda == chave[1]]
+        if escolhas is not None:
+            escolhida = next((c for c in possiveis if c.id == escolhas.get(i)), None)
+        else:
+            escolhida = sugestao.get(chave)
+        n_novos = None
+        if escolhida:
+            n_novos = sum(1 for l in servicos.preparar(db, escolhida, _subconta_para(extrato, chave, escolhida))
+                          if not l.duplicado)
+        resumo = (extrato.saldos_resumo or {}).get(chave) or {}
+        linhas.append({"i": i, "produto": chave[0], "moeda": chave[1], "n": len(movs), "contas": possiveis,
+                       "conta": escolhida, "n_novos": n_novos, "saldo_final": resumo.get("final"),
+                       "de": movs[0].data_mov if movs else None, "ate": movs[-1].data_mov if movs else None})
+    sem_movimentos = [(p, m, s) for (p, m), s in (extrato.saldos_resumo or {}).items() if (p, m) not in extrato.subcontas]
+    return linhas, sem_movimentos
+
+
+def _ler_guardado(request: Request, nome: str, sha: str):
+    return ler_extrato(nome, servicos.ler_upload(request.app.state.defs.data_dir, sha))
+
+
+@router.get("/todas")
+def todas_form(request: Request, sha: str, nome: str, conta: int, u: Utilizador = Depends(utilizador_atual),
+               db: Session = Depends(get_db)):
+    """Extrato com várias contas (Revolut «Extrato personalizado», o do ano fiscal): cada subconta numa conta."""
+    base = db.get(Conta, conta)
+    if not base:
+        raise HTTPException(status_code=404, detail="Não encontrado.")
+    exigir_papel(db, u, base.entidade_id, "editar")
+    try:
+        extrato = _ler_guardado(request, nome, sha)
+    except (FileNotFoundError, FormatoDesconhecido):
+        flash(request, "O ficheiro já não está disponível. Volta a carregá-lo.", "erro")
+        return RedirectResponse("/importar", status_code=303)
+    if not extrato.subcontas:
+        return RedirectResponse(f"/importar?conta={base.id}", status_code=303)
+    linhas, sem_mov = _linhas_todas(db, u, extrato, base)
+    return render(request, "importar/todas.html", extrato=extrato, linhas=linhas, sem_movimentos=sem_mov, base=base,
+                  sha=sha, nome=nome)
+
+
+@router.post("/todas")
+async def todas_confirmar(request: Request, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
+    form = await ler_form(request)
+    sha, nome, base_txt = str(form.get("sha", "")), str(form.get("nome", "")), str(form.get("conta", ""))
+    base = db.get(Conta, int(base_txt)) if base_txt.isdigit() else None
+    if not base:
+        raise HTTPException(status_code=404, detail="Não encontrado.")
+    exigir_papel(db, u, base.entidade_id, "editar")
+    try:
+        extrato = _ler_guardado(request, nome, sha)
+    except (FileNotFoundError, FormatoDesconhecido):
+        flash(request, "O ficheiro já não está disponível. Volta a carregá-lo.", "erro")
+        return RedirectResponse("/importar", status_code=303)
+    if not extrato.subcontas:
+        raise HTTPException(status_code=400, detail="O ficheiro não tem várias contas.")
+    escolhas = {i: int(form[f"sub_{i}"]) for i in range(len(extrato.subcontas))
+                if str(form.get(f"sub_{i}", "")).isdigit()}
+    linhas, sem_mov = _linhas_todas(db, u, extrato, base, escolhas)
+    ids = [l["conta"].id for l in linhas if l["conta"]]
+    erro = None
+    if not ids:
+        erro = "Escolhe a conta de pelo menos uma subconta."
+    elif len(ids) != len(set(ids)):
+        erro = "A mesma conta foi escolhida para duas subcontas: cada subconta vai para uma conta diferente."
+    if erro:
+        return render(request, "importar/todas.html", status_code=400, extrato=extrato, linhas=linhas,
+                      sem_movimentos=sem_mov, base=base, sha=sha, nome=nome, erro=erro)
+    feitas = []
+    for l in linhas:
+        conta = l["conta"]
+        if not conta or not l["n_novos"]:
+            continue
+        exigir_papel(db, u, conta.entidade_id, "editar")
+        ext = _subconta_para(extrato, (l["produto"], l["moeda"]), conta)
+        imp, _ = servicos.confirmar(db, conta, ext, nome, sha, u)
+        auditar(db, u, "importacao", f"{imp.id}: {conta.nome} ({l['produto']} {l['moeda']}) — {imp.n_novos} novos, "
+                                     f"{imp.n_duplicados} duplicados")
+        feitas.append(f"{conta.nome}: {imp.n_novos}")
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        flash(request, "A importação foi cancelada: o ficheiro tem movimentos que não foi possível distinguir "
+                       "entre si. Nada foi gravado.", "erro")
+        return RedirectResponse("/importar", status_code=303)
+    if feitas:
+        flash(request, f"Importadas {len(feitas)} conta(s) do extrato — movimentos novos: {'; '.join(feitas)}.")
+    else:
+        flash(request, "Nada de novo para importar: todos os movimentos já existiam.")
+    return RedirectResponse("/importar/historico", status_code=303)
+
+
 @router.post("/{imp_id}/anular")
 async def anular(request: Request, imp_id: int, u: Utilizador = Depends(utilizador_atual),
                  db: Session = Depends(get_db)):

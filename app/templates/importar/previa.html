@@ -53,6 +53,16 @@
   {% endif %}
 </section>
 
+{% if extrato.subcontas and extrato.subcontas | length > 1 and not pendente %}
+<section class="cartao">
+  <h2>Este ficheiro tem várias contas</h2>
+  <p class="nota">{% for (p, m), v in extrato.subcontas.items() %}{{ p }} {{ m }} ({{ v | length }}){{ ', ' if not loop.last }}{% endfor %}.
+    Podes importá-las todas de uma vez, cada uma na sua conta.</p>
+  <p class="sem-margem"><a class="botao" href="/importar/todas?sha={{ sha }}&amp;nome={{ nome | urlencode }}&amp;conta={{ conta.id }}">Importar todas as contas…</a></p>
+</section>
+{% endif %}
+{% include "importar/_resumo_fiscal.html" %}
+
 <section class="cartao">
   <div class="rolar">
   <table class="tabela compacta">

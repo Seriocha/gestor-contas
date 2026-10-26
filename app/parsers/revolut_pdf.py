@@ -11,6 +11,9 @@ Estrutura observada (2026-10):
   - «Savings Accounts · Transaction Statements»: a Conta reforçada («Poupança de
     Acesso Imediato») só com os recibos de juros («10/08 … 0,01€ … 0,01€» e «/2026» na linha seguinte);
   - fundos, investimentos, cripto, ouro: não são movimentos de conta — ignorados.
+  - páginas de resumo: o saldo disponível inicial e final de cada conta (para conferir os movimentos e
+    mostrar as contas sem movimentos) e, nas outras secções, os rendimentos e impostos do período
+    (juros, dividendos, retornos dos fundos, vendas/mais-valias, staking) — o resumo fiscal do ano.
 
 Decisões:
   - O saldo de cada linha não desconta impostos/comissões (já estão no valor), por
@@ -43,6 +46,18 @@ DESCRICAO_PROPRIA = re.compile(r"CONTA DE INVESTIMENTO|POUPAN|CONTA REFOR|SUBCON
 COLUNAS = {"descricao": 125, "categoria": 257, "montante": 342, "saldo": 384, "imposto": 427, "outros": 469,
            "comissoes": 505}
 TOTAIS = ("Total",)
+PERIODO = re.compile(r"^(\d{1,2} de [a-zç]{3}\.? de \d{4}) - (\d{1,2} de [a-zç]{3}\.? de \d{4})$", re.IGNORECASE)
+SALDO_RESUMO = re.compile(r"Saldo disponível (inicial|final) (-?[\d.,]+)")
+# «Rótulo 12,34€» (vários por linha); só os rótulos de rendimentos/impostos contam para o resumo fiscal
+PAR_FISCAL = re.compile(r"([A-Za-zÀ-ÿ&][A-Za-zÀ-ÿ&./ -]*?)\s+(-?[\d.]+,\d{2}€)")
+ROTULO_FISCAL = re.compile(r"rendimento|retorno|imposto|dividend|tax|income|receita|cost basis|^base$|ganhos|pnl|"
+                           r"comiss|staking|vendas|custo|valor total|valor bruto", re.IGNORECASE)
+ROTULO_IGNORAR = re.compile(r"saldo|carregamentos|levantamentos|médio", re.IGNORECASE)
+SECCOES_FISCAIS = {"Savings Accounts": "Conta reforçada (juros)", "Fundos Monetários Flexíveis": "Fundos Monetários Flexíveis",
+                   "Investment Services": "Investimentos (ações)", "Cripto": "Cripto", "Bem": "Bens (metais preciosos)"}
+TRADUCOES = {"Gross income": "Juros brutos", "Net income": "Juros líquidos", "Dividends": "Dividendos",
+             "Tax withheld on dividend": "Imposto retido nos dividendos", "Cost basis": "Custo de aquisição",
+             "Base": "Custo de aquisição", "Ganhos e perdas brutos": "Mais/menos-valias brutas realizadas"}
 
 
 class Parser:
@@ -55,9 +70,13 @@ class Parser:
         "colunas": "Data, Descrição, Categoria, Dinheiro a entrar/sair, Saldo, Imposto retido, Outros impostos, Comissões",
         "ordem": "Mais antigo primeiro, uma tabela por conta e moeda",
         "saldo": True,
-        "destino": "Carteira digital (todas as moedas convertidas a EUR), conta numa moeda, Poupança (cofre ou juros)",
+        "destino": "Carteira digital (todas as moedas convertidas a EUR), conta numa moeda, Poupança (cofre ou juros); "
+                   "ou todas as contas de uma vez («Importar todas as contas»)",
         "notas": "Moedas estrangeiras convertidas pelo valor em euros do próprio extrato; câmbios, carregamentos e "
-                 "envios para poupança/investimento são transferências; a Conta reforçada só traz os juros.",
+                 "envios para poupança/investimento são transferências; a Conta reforçada só traz os juros. "
+                 "Serve o extrato do ano fiscal (1 de janeiro até hoje, todas as contas): os saldos de cada conta "
+                 "são conferidos com as páginas de resumo e os rendimentos e impostos (juros, dividendos, fundos, "
+                 "vendas, staking) aparecem no resumo fiscal da pré-visualização.",
     }
 
     @staticmethod
@@ -135,6 +154,10 @@ def interpretar(paginas: list[list[dict]]) -> Extrato:
     juros: list[MovimentoBruto] = []
     atual: list[list[dict]] | None = None
     juros_pendente = None
+    periodo = None
+    saldos: dict = {}
+    fiscal: list[tuple[str, str, int]] = []
+    conta_resumo = None
 
     def fechar():
         nonlocal atual
@@ -145,6 +168,33 @@ def interpretar(paginas: list[list[dict]]) -> Extrato:
     for palavras in paginas:
         for linha in _linhas(palavras):
             texto = _texto(linha)
+            if periodo is None and (mp := PERIODO.match(texto)):
+                periodo = (_data(mp.group(1)), _data(mp.group(2)))
+            if texto.endswith(" Resumos"):          # «Contas-correntes Resumos», «Cripto Resumos», …
+                fechar()
+                nome_r = texto[:-len(" Resumos")].strip()
+                modo, seccao = ("resumo_contas", None) if nome_r == "Contas-correntes" else ("resumo", nome_r)
+                conta_resumo = None
+                continue
+            if modo == "resumo_contas" and "Extratos de opera" not in texto:
+                m = SECCAO.match(texto)
+                if m:
+                    conta_resumo = ("Atual" if m.group(1) == "Conta Pessoal" else m.group(1), m.group(2))
+                elif conta_resumo:
+                    for tipo, val in SALDO_RESUMO.findall(texto):
+                        saldos.setdefault(conta_resumo, {})[tipo] = _valor(val)
+                continue
+            if modo == "resumo" and not re.search(r"Extratos de opera|Transaction Statements", texto):
+                nome_s = SECCOES_FISCAIS.get(seccao, seccao)
+                for rot, val in PAR_FISCAL.findall(texto):
+                    rot = rot.strip(" -/.")
+                    v = _valor(val)
+                    if not v or not ROTULO_FISCAL.search(rot) or ROTULO_IGNORAR.search(rot):
+                        continue
+                    rot = TRADUCOES.get(rot, rot)
+                    if not any(s == nome_s and r == rot for s, r, _ in fiscal):
+                        fiscal.append((nome_s, rot, v))
+                continue
             if "Extratos de opera" in texto and "Contas-correntes" in texto:
                 fechar()
                 modo, seccao = "contas", None
@@ -216,7 +266,35 @@ def interpretar(paginas: list[list[dict]]) -> Extrato:
     principal = subcontas.get(("Todas as moedas", "EUR")) or next(iter(subcontas.values()), [])
     ext = Extrato(parser=Parser.chave, banco=Parser.banco, movimentos=list(principal), subcontas=dict(subcontas))
     ext.dedup_dias = 4   # o PDF usa a data de conclusão; o CSV a de início (até ~3 dias antes)
+    if periodo and all(periodo):
+        ext.periodo = periodo
+    ext.saldos_resumo = saldos or None
+    ext.resumo_fiscal = fiscal
+    ext.avisos += conferir_saldos(ext)
     return ext
+
+
+def conferir_saldos(ext: Extrato) -> list[str]:
+    """Os movimentos de cada conta batem com o saldo inicial e final das páginas de resumo?"""
+    avisos = []
+    for (prod, moeda), s in (ext.saldos_resumo or {}).items():
+        movs = (ext.subcontas or {}).get((prod, moeda)) or []
+        com_saldo = [m for m in movs if m.saldo is not None]
+        if not com_saldo:
+            if s.get("final"):
+                avisos.append(f"{prod} {moeda}: o resumo indica saldo final {_fmt(s['final'])} {moeda}, mas não há movimentos.")
+            continue
+        inicial = com_saldo[0].saldo - com_saldo[0].montante
+        if s.get("inicial") is not None and inicial != s["inicial"]:
+            avisos.append(f"{prod} {moeda}: saldo inicial pelos movimentos {_fmt(inicial)} ≠ {_fmt(s['inicial'])} do resumo.")
+        if s.get("final") is not None and com_saldo[-1].saldo != s["final"]:
+            avisos.append(f"{prod} {moeda}: saldo final pelos movimentos {_fmt(com_saldo[-1].saldo)} ≠ "
+                          f"{_fmt(s['final'])} do resumo.")
+    return avisos
+
+
+def _fmt(cent: int) -> str:
+    return f"{cent / 100:,.2f}".replace(",", " ").replace(".", ",").replace(" ", ".")
 
 
 def _operacao(linhas: list[list[dict]], moeda: str, col: dict):

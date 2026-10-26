@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block titulo %}Importar todas as contas{% endblock %}
+{% block conteudo %}
+<h1>Importar todas as contas <span class="nota">· {{ base.entidade.nome }}</span></h1>
+{% if erro %}<div class="aviso aviso-erro">{{ erro }}</div>{% endif %}
+{% for a in extrato.avisos %}<div class="aviso aviso-alerta">{{ a }}</div>{% endfor %}
+
+<section class="cartao">
+  <p class="nota">{{ extrato.banco }} · <strong>{{ nome }}</strong>{% if extrato.periodo %} · {{ extrato.periodo[0] | data }} a {{ extrato.periodo[1] | data }}{% endif %}.
+    Cada subconta do ficheiro vai para a conta escolhida (só contas desta entidade na mesma moeda). «Todas as moedas»
+    é a conta em euros com as outras moedas convertidas pelo próprio extrato; as contas noutras moedas recebem os
+    movimentos na moeda original. Os movimentos que já existem são ignorados.</p>
+  <form method="post" action="/importar/todas">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <input type="hidden" name="sha" value="{{ sha }}">
+    <input type="hidden" name="nome" value="{{ nome }}">
+    <input type="hidden" name="conta" value="{{ base.id }}">
+    <div class="rolar">
+    <table class="tabela compacta">
+      <thead><tr><th>Subconta</th><th>Período</th><th class="num">Movimentos</th><th class="num">Saldo final (resumo)</th><th>Conta no Gestor</th><th class="num">Novos</th></tr></thead>
+      <tbody>
+      {% for l in linhas %}
+      <tr>
+        <td><strong>{{ l.produto }}</strong> {{ l.moeda }}</td>
+        <td>{{ l.de | data if l.de }} a {{ l.ate | data if l.ate }}</td>
+        <td class="num">{{ l.n }}</td>
+        <td class="num">{{ l.saldo_final | eur(l.moeda) if l.saldo_final is not none else '—' }}</td>
+        <td>{% if l.contas %}
+          <select name="sub_{{ l.i }}" aria-label="Conta para {{ l.produto }} {{ l.moeda }}">
+            <option value="">— não importar</option>
+            {% for c in l.contas %}<option value="{{ c.id }}" {% if l.conta and l.conta.id == c.id %}selected{% endif %}>{{ c.nome }} ({{ c.instituicao.nome }})</option>{% endfor %}
+          </select>
+          {% else %}<span class="nota">Sem contas em {{ l.moeda }} — cria-a em Contas.</span>{% endif %}</td>
+        <td class="num">{{ l.n_novos if l.n_novos is not none else '—' }}</td>
+      </tr>
+      {% endfor %}
+      {% for p, m, s in sem_movimentos %}
+      <tr class="arquivada"><td><strong>{{ p }}</strong> {{ m }}</td><td colspan="2" class="nota">sem movimentos no período</td>
+        <td class="num">{{ s.final | eur(m) if s.final is not none else '—' }}</td><td></td><td></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <p class="nota">«Novos» conta para a conta sugerida; se mudares a conta, a contagem é refeita ao importar.</p>
+    <div class="acoes-form">
+      <button class="primario">Importar as contas escolhidas</button>
+      <a href="/importar">Cancelar</a>
+    </div>
+  </form>
+</section>
+{% include "importar/_resumo_fiscal.html" %}
+{% endblock %}

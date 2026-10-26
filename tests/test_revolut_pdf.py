@@ -37,8 +37,25 @@ def _cabecalho(top):
 
 
 def paginas_ficticias():
-    resumo = _texto(100, 40, "Contas-correntes Resumos") + _texto(120, 40, "Conta Pessoal (EUR)") \
-        + _texto(140, 40, "Data de abertura 27 de nov. de 2018")
+    resumo = (_texto(10, 356, "Extrato personalizado") + _texto(30, 40, "1 de jan. de 2026 - 26 de out. de 2026")
+              + _texto(100, 40, "Contas-correntes Resumos") + _texto(120, 40, "Conta Pessoal (EUR)")
+              + _texto(140, 40, "Data de abertura 27 de nov. de 2018")
+              + _texto(160, 40, "Saldo médio T1 2026 309,79€ Saldo disponível inicial 283,23€")
+              + _texto(180, 40, "Saldo médio T2 2026 140,11€ Saldo disponível final 525,11€")
+              + _texto(200, 40, "Conta Pessoal (KRW)")
+              + _texto(220, 40, "Saldo médio T1 2026 32.669 KRW Saldo disponível inicial 0 KRW")
+              + _texto(240, 40, "Saldo médio T2 2026 0 KRW Saldo disponível final 12.807 KRW")
+              + _texto(260, 40, "Conta Pessoal (AED)")
+              + _texto(280, 40, "Saldo médio T1 2026 0,00 AED Saldo disponível inicial 0,00 AED")
+              + _texto(300, 40, "Saldo médio T2 2026 0,00 AED Saldo disponível final 0,00 AED"))
+    fiscal = (_texto(100, 40, "Investment Services Resumos") + _texto(120, 40, "Dividendos recebidos")
+              + _texto(140, 40, "Dividends 28,72€ Tax withheld on dividend 2,98€")
+              + _texto(160, 40, "Comissões e outros encargos 3,97€ PnL líquido 15,45€")
+              + _texto(180, 40, "Imposto retido nas vendas 0,00€")
+              + _texto(200, 40, "Saldo médio T1 5.835,48€ Saldo médio T2 7.127,64€")
+              + _texto(220, 40, "Total de carregamentos em 3.021,32€")
+              + _texto(300, 40, "Cripto Resumos") + _texto(320, 40, "Rendimento de Staking 0,05€")
+              + _texto(340, 40, "SOL 0,704123 90,55€ 63,76€"))
     eur = (_texto(10, 356, "Extrato personalizado") + _texto(144, 40, "Contas-correntes Extratos de operações")
            + _texto(185, 40, "Conta Pessoal (EUR)") + _cabecalho(246)
            + _linha(271, data="5 de jan. de 2026", descricao="Amazon", categoria="Comerciante", montante="-8,12€",
@@ -67,7 +84,7 @@ def paginas_ficticias():
              + [{"text": "/2026", "x0": 40, "top": 210}, {"text": "de", "x0": 70, "top": 210}]
              + _texto(300, 40, "Cripto Extratos de operações")
              + _linha(330, data="1 de mar. de 2026", descricao="Bitcoin", montante="-50,00€", saldo="0,00€"))
-    return [resumo, eur, krw, juros]
+    return [resumo, fiscal, eur, krw, juros]
 
 
 def test_interpretar():
@@ -133,3 +150,58 @@ def test_comissao_separada_no_csv_e_data_de_conclusao(admin):
     _importar(admin, "revolut.csv", csv.encode(), conta_id="1")
     previa, _ = _importar(admin, "consolidated-statement.pdf", PDF, conta_id="1")
     assert previa.text.count("já existe") == 1 and "Importar 5 movimentos" in previa.text
+
+
+def test_resumos_do_ano_fiscal():
+    e = interpretar(paginas_ficticias())
+    assert e.periodo == (date(2026, 1, 1), date(2026, 10, 26))
+    assert e.saldos_resumo == {("Atual", "EUR"): {"inicial": 28323, "final": 52511},
+                               ("Atual", "KRW"): {"inicial": 0, "final": 1280700},
+                               ("Atual", "AED"): {"inicial": 0, "final": 0}}
+    assert e.avisos == []                                    # os movimentos batem com os saldos do resumo
+    assert e.resumo_fiscal == [("Investimentos (ações)", "Dividendos", 2872),
+                               ("Investimentos (ações)", "Imposto retido nos dividendos", 298),
+                               ("Investimentos (ações)", "Comissões e outros encargos", 397),
+                               ("Investimentos (ações)", "PnL líquido", 1545),
+                               ("Cripto", "Rendimento de Staking", 5)]
+    # um saldo do resumo que não bate com os movimentos dá aviso
+    paginas = paginas_ficticias()
+    for w in paginas[0]:
+        if w["text"] == "525,11€":
+            w["text"] = "500,00€"
+    assert any("Atual EUR: saldo final pelos movimentos 525,11 ≠ 500,00" in a for a in interpretar(paginas).avisos)
+
+
+def _csrf(r):
+    import re
+    return re.search(r'name="csrf" value="([^"]+)"', r.text).group(1)
+
+
+def test_importar_todas_as_contas(admin):
+    import re
+    previa, _ = (lambda c: (c.post("/importar", data={"csrf": _csrf(c.get("/importar")), "conta_id": "1"},
+                                   files={"ficheiro": ("consolidated-statement.pdf", PDF)}), None))(admin)
+    assert "Importar todas as contas" in previa.text and "Resumo fiscal" in previa.text and "Dividendos" in previa.text
+    href = re.search(r'href="(/importar/todas\?[^"]+)"', previa.text).group(1).replace("&amp;", "&")
+    pagina = admin.get(href)
+    assert pagina.status_code == 200
+    t = pagina.text
+    # sugestões: «Todas as moedas» → Revolut (EUR), KRW → Revolut KRW, Depósito → Revolut reforçada; AED sem movimentos
+    assert re.search(r'name="sub_1".*?<option value="1" selected', t, re.S)          # Todas as moedas
+    assert re.search(r'name="sub_2".*?<option value="2" selected', t, re.S)          # Atual KRW
+    assert re.search(r'name="sub_3".*?<option value="3" selected', t, re.S)          # Depósito
+    assert "sem movimentos no período" in t and "AED" in t
+    dados = {"csrf": _csrf(pagina), "sha": re.search(r'name="sha" value="([0-9a-f]+)"', t).group(1),
+             "nome": "consolidated-statement.pdf", "conta": "1", "sub_0": "", "sub_1": "1", "sub_2": "2", "sub_3": "3"}
+    # a mesma conta em duas subcontas não pode
+    r = admin.post("/importar/todas", data={**dados, "sub_0": "1"})
+    assert r.status_code == 400 and "A mesma conta foi escolhida" in r.text
+    r = admin.post("/importar/todas", data=dados, follow_redirects=False)
+    assert r.status_code == 303
+    with admin.app.state.SessionLocal() as db:
+        from sqlalchemy import func, select
+        n = dict(db.execute(select(Movimento.conta_id, func.count()).group_by(Movimento.conta_id)).all())
+    assert n == {1: 6, 2: 2, 3: 1}
+    # outra vez: nada de novo
+    r = admin.post("/importar/todas", data={**dados, "csrf": _csrf(admin.get(href))}, follow_redirects=True)
+    assert "Nada de novo para importar" in r.text

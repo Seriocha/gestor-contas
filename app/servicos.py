@@ -200,13 +200,11 @@ def confirmar(db: Session, conta: Conta, extrato: Extrato, nome: str, sha: str,
 
 # ---------------------------------------------------------------- subcontas (Revolut)
 
-def escolher_subconta(extrato: Extrato, conta: Conta) -> tuple[str | None, list[str]]:
-    """Num extrato com várias subcontas (Revolut), escolhe a da conta de destino, na moeda da conta:
-    poupança → cofre com o mesmo nome / «Poupanças» (conta com cofre/poupanças no nome) / «Depósito»
+def chave_subconta(extrato: Extrato, conta: Conta) -> tuple[str, str]:
+    """A subconta (produto, moeda) de um extrato com várias subcontas (Revolut) que vai para a conta, na moeda
+    da conta: poupança → cofre com o mesmo nome / «Poupanças» (conta com cofre/poupanças no nome) / «Depósito»
     (Conta reforçada); investimento → «Investimentos»; as outras → «Todas as moedas» (euros + outras
-    moedas convertidas) ou «Atual». Devolve (erro, avisos)."""
-    if not extrato.subcontas:
-        return None, []
+    moedas convertidas) ou «Atual». Pode não existir no extrato."""
     produto = "Depósito" if conta.tipo == "POUPANCA" else "Atual"
     nome = conta.nome.lower()
     if conta.tipo == "POUPANCA":
@@ -221,7 +219,16 @@ def escolher_subconta(extrato: Extrato, conta: Conta) -> tuple[str | None, list[
         produto = "Investimentos"
     elif ("Todas as moedas", conta.moeda) in extrato.subcontas:
         produto = "Todas as moedas"   # conta em euros + outras moedas convertidas pelo próprio extrato
-    chave = (produto, conta.moeda)
+    return produto, conta.moeda
+
+
+def escolher_subconta(extrato: Extrato, conta: Conta) -> tuple[str | None, list[str]]:
+    """Num extrato com várias subcontas (Revolut), escolhe a da conta de destino (chave_subconta).
+    Devolve (erro, avisos)."""
+    if not extrato.subcontas:
+        return None, []
+    chave = chave_subconta(extrato, conta)
+    produto = chave[0]
     disponiveis = ", ".join(f"{p} {m} ({len(v)})" for (p, m), v in extrato.subcontas.items())
     if chave not in extrato.subcontas:
         return (f"O ficheiro não tem movimentos da subconta «{produto}» em {conta.moeda}. "
@@ -229,7 +236,8 @@ def escolher_subconta(extrato: Extrato, conta: Conta) -> tuple[str | None, list[
     extrato.movimentos, extrato.moeda = extrato.subcontas[chave], conta.moeda
     outras = [f"{p} {m}" for (p, m) in extrato.subcontas if (p, m) != chave]
     avisos = [f"Importa-se só a subconta «{produto} {conta.moeda}». O ficheiro também tem: {', '.join(outras)} — "
-              "importa o mesmo ficheiro na conta correspondente (ex.: uma conta poupança Revolut para o «Depósito»)."]         if outras else []
+              "usa «Importar todas as contas» ou importa o mesmo ficheiro na conta correspondente."] \
+        if outras else []
     return None, avisos
 
 

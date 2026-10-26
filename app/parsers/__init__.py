@@ -51,6 +51,10 @@ class Extrato:
     periodo: tuple | None = None
     saldo_inicial: int | None = None
     saldo_final: int | None = None
+    # Extrato do ano fiscal (PDF consolidado da Revolut): saldos inicial/final de cada subconta segundo as páginas de
+    # resumo ((produto, moeda) → {"inicial", "final"}) e os rendimentos/impostos do período [(secção, rótulo, cêntimos)]
+    saldos_resumo: dict | None = None
+    resumo_fiscal: list = field(default_factory=list)
 
 
 # ---------------------------------------------------------------- utilitários

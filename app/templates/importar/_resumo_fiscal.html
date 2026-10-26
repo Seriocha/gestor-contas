@@ -1,0 +1,19 @@
+{# Extrato do ano fiscal (Revolut «Extrato personalizado»): rendimentos e impostos das páginas de resumo. #}
+{% if extrato.resumo_fiscal %}
+<section class="cartao">
+  <h2>Resumo fiscal {% if extrato.periodo %}<span class="nota">· {{ extrato.periodo[0] | data }} a {{ extrato.periodo[1] | data }}</span>{% endif %}</h2>
+  <p class="nota">Rendimentos e impostos do período segundo as páginas de resumo do extrato (valores em euros). Não são
+    movimentos de conta: servem para a declaração de IRS. Só aparecem os valores diferentes de zero.</p>
+  <div class="rolar">
+  <table class="tabela compacta">
+    <thead><tr><th>Secção</th><th>Rubrica</th><th class="num">Valor</th></tr></thead>
+    <tbody>
+    {% for seccao, rotulo, valor in extrato.resumo_fiscal %}
+    <tr><td>{% if loop.first or extrato.resumo_fiscal[loop.index0 - 1][0] != seccao %}<strong>{{ seccao }}</strong>{% endif %}</td>
+      <td>{{ rotulo }}</td><td class="num">{{ valor | eur }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+{% endif %}
