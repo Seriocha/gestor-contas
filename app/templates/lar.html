@@ -21,6 +21,10 @@
 {% if c %}
 <section class="cartao">
   <h2>A ver <span class="nota">· {{ c.n_faturas }} faturas da farmácia · {{ c.n_docs }} documentos da Santa Casa</span></h2>
+  {% if not c.pago_ate or not c.validar_desde %}
+  <div class="aviso aviso-erro">As datas de regularização não estão definidas ({{ 'tudo pago até' if not c.pago_ate }}{{ ' e ' if not c.pago_ate and not c.validar_desde }}{{ 'validar a partir de' if not c.validar_desde }}):
+    sem elas, os documentos aparecem «por pagar» e não ficam «por validar». Preenche-as em <a href="#configurar">Configurar</a>.</div>
+  {% endif %}
   <p class="pp-resumo">
     {% if c.pago_ate %}<span class="etiqueta etiqueta-ok">tudo pago até {{ c.pago_ate | data }}</span>{% endif %}
     {% if c.validar_desde %}<span class="nota">documentos anteriores a {{ c.validar_desde | data }}: regularizados</span>
@@ -93,7 +97,7 @@
         <input name="nota" maxlength="200" placeholder="nota (opcional)" class="lar-nota">
         <button class="pequeno primario" name="acao" value="validar_mes">Validar o mês</button>
         {% endif %}
-      {% else %}<span class="etiqueta etiqueta-ok">validado</span>{% endif %}
+      {% elif c.validar_desde %}<span class="etiqueta etiqueta-ok">validado</span>{% endif %}
     </header>
     <div class="rolar"><table class="tabela compacta">
       <thead><tr><th>Documento</th><th>O quê</th><th class="num">Valor</th><th>PDF</th><th>Cartas</th><th>Recibo</th><th>Estado</th><th>O que falta</th><th>Validação</th></tr></thead>
@@ -103,7 +107,9 @@
         <td class="sem-quebra">{{ doc(e.pid, e.chave) }}<br><span class="nota">{{ e.data | data if e.data else '—' }}</span></td>
         <td class="nota">{{ e.descricao if e.tem_pdf else ('Nota de lançamento' if e.tipo == 'NLD' else 'Fatura') }}</td>
         <td class="num">{% if e.valores|length > 1 %}<span class="pp-problema">{{ e.valores|map('eur')|join(' → ') }}</span>{% else %}{{ e.valor | eur }}{% endif %}</td>
-        <td>{% if e.tem_pdf %}<span class="etiqueta etiqueta-ok">✓</span>{% else %}<span class="etiqueta etiqueta-erro" title="o PDF não está no Paperless">✗</span>{% endif %}</td>
+        <td>{% if e.tem_pdf %}<span class="etiqueta etiqueta-ok">✓</span>{% else %}<span class="etiqueta etiqueta-erro" title="o PDF não está entre os documentos da Santa Casa no Paperless">✗</span>
+          {% if link %}<br><a class="nota sem-quebra" target="_blank" rel="noopener" title="pesquisa no Paperless (todos os correspondentes) pelo n.º do documento"
+             href="{{ link }}/documents?query={{ ((e.tipo ~ 'UT1' ~ e.chave.split(' ')[1]) if e.chave.split(' ')|length > 1 else e.chave)|urlencode }}">procurar ↗</a>{% endif %}{% endif %}</td>
         <td class="nota sem-quebra">{% for d in e.cartas %}{{ d.strftime('%d/%m') }}{{ ', ' if not loop.last }}{% else %}—{% endfor %}</td>
         <td class="nota sem-quebra">{% if e.recibo %}{{ doc(e.recibo.pid, e.recibo.numero) }}<br>{{ e.recibo.data | data }}{% else %}—{% endif %}</td>
         <td>{% if est in ('pago', 'pago (declarado)') %}<span class="etiqueta etiqueta-ok">pago</span>
@@ -147,9 +153,27 @@
 </div>
 {% endif %}
 
+{% if c and (c.nao_reconhecidos or c.n_anulados) %}
+<section class="cartao" id="nao-reconhecidos">
+  <h2>Documentos da Santa Casa que o Gestor não leu <span class="nota">· {{ c.nao_reconhecidos|length }}{% if c.n_anulados %} · {{ c.n_anulados }} anulado{{ 's' if c.n_anulados != 1 }} (ignorados){% endif %}</span></h2>
+  <p class="nota">Estão no Paperless com o correspondente da Santa Casa, mas o texto não tem o formato de uma nota de lançamento,
+    fatura, carta ou recibo. Se for uma NLD ou FT com «PDF em falta» acima, abre-a e vê o separador <strong>Conteúdo</strong>:
+    se o texto estiver estragado, usa «Refazer OCR» no Paperless; se estiver bem, manda-me esse texto para eu ajustar a leitura.
+    Fichas, contratos e outros documentos podem ficar aqui sem problema.</p>
+  {% if c.nao_reconhecidos %}
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th>Documento</th><th>Início do texto</th></tr></thead>
+    {% for pid, inicio in c.nao_reconhecidos %}
+    <tr><td>{{ doc(pid, '#' ~ pid) }}</td><td class="nota">{{ inicio }}</td></tr>
+    {% endfor %}
+  </table></div>
+  {% endif %}
+</section>
+{% endif %}
+
 {% if token_ok %}
-<section class="cartao">
-  <details {% if erros %}open{% endif %}><summary><strong>Configurar</strong></summary>
+<section class="cartao" id="configurar">
+  <details {% if erros or (c and (not c.pago_ate or not c.validar_desde)) %}open{% endif %}><summary><strong>Configurar</strong></summary>
   <form method="post" action="/lar/config" class="formulario estreito" style="margin-top: 1rem">
     <input type="hidden" name="csrf" value="{{ csrf_token }}">
     <label>Entidade da utente (movimentos do banco)

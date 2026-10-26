@@ -110,6 +110,7 @@ def falso(monkeypatch):
             return {"results": [{"id": i, "content": t} for i, t in docs[cid]]}
         raise AssertionError(caminho)
     monkeypatch.setattr(paperless, "_pedido", pedido)
+    return docs
 
 
 def test_pagina_lar(tmp_path, falso):
@@ -195,3 +196,32 @@ def test_validar_o_mes(tmp_path, falso):
     assert "2 documentos validados" in r.text
     with app.state.SessionLocal() as db:
         assert {v.chave for v in db.scalars(select(LarValidacao))} == {"NLD 2026/1", "FT 2026/5319"}
+
+
+def test_nao_reconhecidos_e_anulados():
+    sc = [(1, ft(2291, "01-03-2026")), (2, "DOC. ANULADO\n" + nld(5, "01-03-2026", "1,00")),
+          (3, "CARACTERIZAÇÃO SÓCIO-ECONÓMICA\nAtualização de Mensalidade\nNome: Maria Exemplo"), (4, "")]
+    c = lar.conciliar([], sc, [], validar_desde=date(2026, 1, 1))
+    assert c.n_anulados == 1 and [pid for pid, _ in c.nao_reconhecidos] == [3, 4]
+    assert c.nao_reconhecidos[0][1].startswith("CARACTERIZAÇÃO SÓCIO-ECONÓMICA · Atualização")
+    assert c.nao_reconhecidos[1][1] == "(sem texto: o OCR falhou?)"
+
+
+def test_pagina_procurar_e_aviso_sem_datas(tmp_path, falso, monkeypatch):
+    monkeypatch.setenv("GESTOR_PAPERLESS_LINK", "http://192.168.1.232:8300")
+    app = create_app(tmp_path, backups_automaticos=False)
+    c = TestClient(app)
+    _post(c, "/setup", nome="Admin", login="admin", password=PW, password2=PW)
+    falso[2].append((23, carta("05-10-2026", [("03-10-2026", "NLD", 2026, 3298, "1,81")], "1,81")))
+    r = c.get("/lar?renovar=1")                                     # a página guarda o Paperless em memória 10 min
+    # a NLD 3298 só está na carta (o PDF falta): ligação para a procurar no Paperless pelo n.º
+    assert "http://192.168.1.232:8300/documents?query=NLDUT12026/3298" in r.text
+    assert "documents?query=FTUT12026/5319" not in r.text           # esta tem PDF
+    assert "As datas de regularização não estão definidas" not in r.text
+    from app import preferencias
+    with app.state.SessionLocal() as db:
+        preferencias.gravar(db, "lar_pago_ate", "")
+        db.commit()
+        app.state.prefs = preferencias.carregar(db)
+    r = c.get("/lar")
+    assert "As datas de regularização não estão definidas (tudo pago até)" in r.text

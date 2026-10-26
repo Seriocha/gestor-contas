@@ -348,6 +348,8 @@ class Conciliacao:
     n_por_validar: int = 0
     meses: list = field(default_factory=list)     # [{mes, docs, total, por_validar}] do intervalo em análise
     n_fora: int = 0                                # documentos de antes do intervalo (escondidos)
+    nao_reconhecidos: list = field(default_factory=list)   # [(pid, início do texto)] da Santa Casa que não se leram
+    n_anulados: int = 0
 
 
 def conciliar(farmacia_docs: list[tuple[int, str]], santa_casa_docs: list[tuple[int, str]], movimentos: list,
@@ -372,7 +374,7 @@ def conciliar(farmacia_docs: list[tuple[int, str]], santa_casa_docs: list[tuple[
     for f in faturas:                                 # o mesmo documento importado duas vezes
         vistos_f.setdefault(f.numero, f)
     faturas = list(vistos_f.values())
-    docs, cartas, recibos = [], [], []
+    docs, cartas, recibos, nao_reconhecidos, n_anulados = [], [], [], [], 0
     for pid, t in santa_casa_docs:
         x = ler_santa_casa(pid, t)
         if isinstance(x, DocSantaCasa):
@@ -381,6 +383,11 @@ def conciliar(farmacia_docs: list[tuple[int, str]], santa_casa_docs: list[tuple[
             cartas.append(x)
         elif isinstance(x, Recibo):
             recibos.append(x)
+        elif "DOC. ANULADO" in (t or "").upper():
+            n_anulados += 1
+        else:                                   # nem NLD, nem fatura, nem carta, nem recibo: ver no Paperless porquê
+            linhas = [l.strip() for l in (t or "").splitlines() if l.strip()]
+            nao_reconhecidos.append((pid, " · ".join(linhas[:3])[:160] or "(sem texto: o OCR falhou?)"))
     docs = list({d.chave: d for d in docs}.values())
     cartas = list({(c.data, tuple(k for k, *_ in c.docs)): c for c in cartas}.values())
     recibos = list({(r.numero or r.pid): r for r in recibos}.values())
@@ -439,4 +446,5 @@ def conciliar(farmacia_docs: list[tuple[int, str]], santa_casa_docs: list[tuple[
                        sorted([c for c in cartas if no_intervalo(c.data)], key=lambda c: c.data, reverse=True),
                        alertas, len(faturas), len(docs) + len(cartas) + len(recibos), pago_ate, validar_desde,
                        sum(1 for e in dentro if e.validacao == "por validar"),
-                       sorted(meses.values(), key=lambda m: m["mes"] or date.min, reverse=True), len(est) - len(dentro))
+                       sorted(meses.values(), key=lambda m: m["mes"] or date.min, reverse=True), len(est) - len(dentro),
+                       nao_reconhecidos, n_anulados)
