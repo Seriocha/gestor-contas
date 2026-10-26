@@ -60,7 +60,8 @@ def _documentos(token: str, cid: int, renovar: bool) -> list[tuple[int, str]]:
     agora = time.time()
     if not renovar and k in _CACHE and agora - _CACHE[k][0] < CACHE_SEGUNDOS:
         return _CACHE[k][1]
-    docs = [(d["id"], d.get("content") or "") for d in pg.listar("documents", token, correspondent__id=cid, fields="id,content")]
+    docs = [(d["id"], d.get("content") or "", lar._data_iso(d.get("created")))
+            for d in pg.listar("documents", token, correspondent__id=cid, fields="id,content,created")]
     _CACHE[k] = (agora, docs)
     return docs
 

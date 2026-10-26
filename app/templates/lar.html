@@ -27,7 +27,8 @@
   {% endif %}
   <p class="pp-resumo">
     {% if c.pago_ate %}<span class="etiqueta etiqueta-ok">tudo pago até {{ c.pago_ate | data }}</span>{% endif %}
-    {% if c.validar_desde %}<span class="nota">documentos anteriores a {{ c.validar_desde | data }}: regularizados</span>
+    {% if c.inicio %}<span class="nota">a mostrar só o que é de {{ c.inicio | data }} em diante</span>{% endif %}
+    {% if c.validar_desde %}
       {% if c.n_por_validar %}<a class="etiqueta etiqueta-cor" href="/lar?ver=por_validar#documentos">{{ c.n_por_validar }} por validar</a>
       {% else %}<span class="etiqueta etiqueta-ok">tudo validado</span>{% endif %}{% endif %}
   </p>
@@ -77,12 +78,12 @@
 {% set so_por_validar = request.query_params.get('ver') == 'por_validar' %}
 {% set MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'] %}
 <section class="cartao" id="documentos">
-  <h2>Documentos da Santa Casa{% if c.validar_desde %} <span class="nota">· desde {{ c.validar_desde | data }}</span>{% endif %}</h2>
+  <h2>Documentos da Santa Casa{% if c.inicio %} <span class="nota">· desde {{ c.inicio | data }}</span>{% endif %}</h2>
   <p class="nota">Por mês: cada nota de lançamento (NLD) e fatura (FT), se o próprio PDF está no Paperless, em que cartas
     apareceu, o recibo que a pagou e <strong>o que falta</strong> para casar por completo — quase sempre é um documento que
     ainda não está no Paperless: «PDF em falta» (a NLD/FT não foi importada; só se sabe dela pelas cartas ou recibos),
     «recibo em falta», «sem carta nem recibo», «valor mudou».{% if c.n_fora %} {{ c.n_fora }} documento{{ 's' if c.n_fora != 1 }} de antes de
-    {{ c.validar_desde | data }} (regularizados) não {{ 'são mostrados' if c.n_fora != 1 else 'é mostrado' }}.{% endif %}</p>
+    {{ c.inicio | data }} (pagos ou regularizados) não {{ 'são mostrados' if c.n_fora != 1 else 'é mostrado' }}.{% endif %}</p>
   <nav class="separadores">
     <a href="/lar#documentos" {% if not so_por_validar %}class="ativo"{% endif %}>Todos</a>
     <a href="/lar?ver=por_validar#documentos" {% if so_por_validar %}class="ativo"{% endif %}>Por validar <span class="nota">{{ c.n_por_validar }}</span></a>
@@ -165,9 +166,9 @@
     Fichas, contratos e outros documentos podem ficar aqui sem problema.</p>
   {% if c.nao_reconhecidos %}
   <div class="rolar"><table class="tabela compacta">
-    <thead><tr><th>Documento</th><th>Início do texto</th></tr></thead>
-    {% for pid, inicio in c.nao_reconhecidos %}
-    <tr><td>{{ doc(pid, '#' ~ pid) }}</td><td class="nota">{{ inicio }}</td></tr>
+    <thead><tr><th>Documento</th><th>Data</th><th>Início do texto</th></tr></thead>
+    {% for pid, inicio, criado in c.nao_reconhecidos %}
+    <tr><td>{{ doc(pid, '#' ~ pid) }}</td><td class="nota">{{ criado | data if criado else '—' }}</td><td class="nota">{{ inicio }}</td></tr>
     {% endfor %}
   </table></div>
   {% endif %}

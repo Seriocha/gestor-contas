@@ -126,9 +126,9 @@ def test_conciliar_cartas_recibos_pagamentos():
 def falso(monkeypatch):
     monkeypatch.setenv("GESTOR_PAPERLESS_URL", "http://paperless:8000")
     monkeypatch.setenv("GESTOR_PAPERLESS_TOKEN", "token-admin")
-    docs = {1: [(10, farmacia(1, "03-10-2026", "2,64")), (11, farmacia(2, "10-10-2026", "10,00"))],
-            2: [(20, nld(1, "15-10-2026", "12,64")), (21, ft(5319, "01-10-2026")),
-                (22, carta("04-10-2026", [("01-10-2026", "FT", 2026, 5319, "1.339,41")], "1.339,41"))]}
+    docs = {1: [(10, farmacia(1, "03-11-2026", "2,64")), (11, farmacia(2, "10-11-2026", "10,00"))],
+            2: [(20, nld(1, "15-11-2026", "12,64")), (21, ft(5319, "01-11-2026")),
+                (22, carta("04-11-2026", [("01-11-2026", "FT", 2026, 5319, "1.339,41")], "1.339,41"))]}
 
     def pedido(caminho, params=None, binario=False, token=None):
         if caminho == "/api/correspondents/":
@@ -150,7 +150,7 @@ def test_pagina_lar(tmp_path, falso):
     assert "Lar · conciliação" in r.text and "2 faturas da farmácia" in r.text and "certo" in r.text and "soma de faturas" in r.text
     # regularização gravada pela migração 0044: pago até 31/10/2026, validar desde 01/01/2026
     assert "tudo pago até 31/10/2026" in r.text and "FT 2026/5319" in r.text and "Lar (Santa Casa)" in r.text
-    assert "por validar" in r.text and "Validar o mês" in r.text and "outubro 2026" in r.text
+    assert "por validar" in r.text and "Validar o mês" in r.text and "novembro 2026" in r.text
     from tests.test_app import _csrf
     r = c.post("/lar/config", data={"csrf": _csrf(r), "entidade": "", "santa_casa": "Santa Casa STC", "farmacia": ""},
                follow_redirects=True)
@@ -158,26 +158,25 @@ def test_pagina_lar(tmp_path, falso):
 
 
 def test_regularizado_e_por_validar():
-    sc = [(1, nld(765, "15-12-2025", "30,21", ano=2025)), (2, ft(2291, "01-03-2026")), (3, nld(800, "15-03-2026", "9,99")),
-          (4, carta("04-03-2026", [("15-12-2025", "NLD", 2025, 765, "30,21"), ("01-03-2026", "FT", 2026, 2291, "1.339,41")], "1.369,62")),
-          (5, carta("04-04-2026", [("15-12-2025", "NLD", 2025, 765, "31,21"), ("01-03-2026", "FT", 2026, 2291, "1.339,41")], "1.370,62"))]
-    fs = [(9, farmacia(1, "02-03-2026", "1,00"))]
-    c = lar.conciliar(fs, sc, [], hoje=date(2026, 10, 26), pago_ate=date(2026, 10, 31), validar_desde=date(2026, 1, 1))
+    """Só se mostra o que é depois de «tudo pago até» e a partir de «validar desde» (a mais tardia das duas)."""
+    sc = [(1, nld(765, "15-12-2025", "30,21", ano=2025)), (2, ft(2291, "01-03-2026")), (3, nld(800, "15-11-2026", "9,99")),
+          (4, carta("04-11-2026", [("15-12-2025", "NLD", 2025, 765, "31,21"), ("01-11-2026", "FT", 2026, 3000, "1.339,41")], "1.370,62"))]
+    fs = [(9, farmacia(1, "02-11-2026", "1,00"))]
+    kw = dict(hoje=date(2026, 12, 26), pago_ate=date(2026, 10, 31), validar_desde=date(2026, 1, 1))
+    c = lar.conciliar(fs, sc, [], **kw)
     est = {e.chave: e for e in c.estados}
-    assert "NLD 2025/765" not in est and c.n_fora == 1          # regularizado: fora do intervalo, escondido
-    assert est["FT 2026/2291"].validacao == "por validar"
-    assert [m["mes"] for m in c.meses] == [date(2026, 3, 1)] and c.meses[0]["por_validar"] == 2
-    # o que falta para casar: a NLD 800 não aparece em cartas nem recibos; a FT 2291 não tem recibo
-    assert "sem carta nem recibo" in est["NLD 2026/800"].falta(c.pago_ate)
-    assert est["FT 2026/2291"].falta(c.pago_ate) == ["recibo em falta (pago até 31/10)"]
-    assert est["FT 2026/2291"].estado(c.ultima_carta, c.pago_ate) == "pago (declarado)"
-    assert c.n_por_validar == 2                                  # FT 2291 e NLD 800
+    assert c.inicio == date(2026, 11, 1) and set(est) == {"NLD 2026/800", "FT 2026/3000"} and c.n_fora == 2
+    assert [m["mes"] for m in c.meses] == [date(2026, 11, 1)] and c.n_por_validar == 2
+    assert est["FT 2026/3000"].falta(c.pago_ate) == ["PDF em falta", "recibo em falta"]
+    assert est["FT 2026/3000"].estado(c.ultima_carta, c.pago_ate) == "por pagar"
     textos = " | ".join(t for _, t in c.alertas)
-    assert "NLD 2025/765" not in textos                          # regularizado: o valor mudou, mas não alerta
-    assert "continua por pagar" not in textos and "NLD 2026/800" in textos   # a NLD de 2026 não tem fatura da farmácia
+    assert "765" not in textos                                    # o valor mudou, mas é de antes do início: não alerta
+    assert "FT 2026/3000" in textos and "NLD 2026/800" in textos  # por pagar há 55 dias; sem fatura da farmácia
+    # um limite só: «validar desde» mais tardio que «pago até» também manda
+    c2 = lar.conciliar(fs, sc, [], hoje=date(2026, 12, 26), pago_ate=date(2026, 2, 28), validar_desde=date(2026, 11, 10))
+    assert c2.inicio == date(2026, 11, 10) and {e.chave for e in c2.estados} == {"NLD 2026/800"}
     # depois de validada, deixa de alertar
-    c = lar.conciliar(fs, sc, [], hoje=date(2026, 10, 26), pago_ate=date(2026, 10, 31), validar_desde=date(2026, 1, 1),
-                      validados={"NLD 2026/800": {"em": date(2026, 10, 26), "por": "Sérgio", "nota": ""}})
+    c = lar.conciliar(fs, sc, [], validados={"NLD 2026/800": {"em": date(2026, 12, 1), "por": "Sérgio", "nota": ""}}, **kw)
     assert "NLD 2026/800" not in " | ".join(t for _, t in c.alertas) and c.n_por_validar == 1
     assert next(l for l in c.farmacia if l.lancamentos and l.lancamentos[0].chave == "NLD 2026/800").lancamentos[0].validacao == "validado"
 
@@ -229,8 +228,8 @@ def test_validar_o_mes(tmp_path, falso):
 def test_nao_reconhecidos_e_anulados():
     sc = [(1, ft(2291, "01-03-2026")), (2, "DOC. ANULADO\n" + nld(5, "01-03-2026", "1,00")),
           (3, "CARACTERIZAÇÃO SÓCIO-ECONÓMICA\nAtualização de Mensalidade\nNome: Maria Exemplo"), (4, "")]
-    c = lar.conciliar([], sc, [], validar_desde=date(2026, 1, 1))
-    assert c.n_anulados == 1 and [pid for pid, _ in c.nao_reconhecidos] == [3, 4]
+    c = lar.conciliar([], sc + [(5, "Ficha antiga", "2025-05-01")], [], validar_desde=date(2026, 1, 1))
+    assert c.n_anulados == 1 and [pid for pid, *_ in c.nao_reconhecidos] == [3, 4]     # a de 2025 fica escondida
     assert c.nao_reconhecidos[0][1].startswith("CARACTERIZAÇÃO SÓCIO-ECONÓMICA · Atualização")
     assert c.nao_reconhecidos[1][1] == "(sem texto: o OCR falhou?)"
 
@@ -240,7 +239,7 @@ def test_pagina_procurar_e_aviso_sem_datas(tmp_path, falso, monkeypatch):
     app = create_app(tmp_path, backups_automaticos=False)
     c = TestClient(app)
     _post(c, "/setup", nome="Admin", login="admin", password=PW, password2=PW)
-    falso[2].append((23, carta("05-10-2026", [("03-10-2026", "NLD", 2026, 3298, "1,81")], "1,81")))
+    falso[2].append((23, carta("05-11-2026", [("03-11-2026", "NLD", 2026, 3298, "1,81")], "1,81")))
     r = c.get("/lar?renovar=1")                                     # a página guarda o Paperless em memória 10 min
     # a NLD 3298 só está na carta (o PDF falta): ligação para a procurar no Paperless pelo n.º
     assert "http://192.168.1.232:8300/documents?query=NLDUT12026/3298" in r.text

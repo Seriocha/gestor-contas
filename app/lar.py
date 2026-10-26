@@ -61,6 +61,14 @@ def _data(txt: str) -> date | None:
 _DOC = re.compile(r"\b(NLD|FT)\s+(?:NLDUT1|FTUT1)\s*/?\s*(20\d{2})\s*/?\s*0*(\d+)")
 
 
+def _data_iso(txt) -> date | None:
+    """«2026-09-30» ou «2026-09-30T12:00:00+01:00» (a data de criação no Paperless) → date."""
+    try:
+        return date.fromisoformat(str(txt or "")[:10])
+    except ValueError:
+        return None
+
+
 def chave(tipo: str, ano: int, numero: int) -> str:
     return f"{tipo} {ano}/{numero}"
 
@@ -396,8 +404,9 @@ class Conciliacao:
     n_por_validar: int = 0
     meses: list = field(default_factory=list)     # [{mes, docs, total, por_validar}] do intervalo em análise
     n_fora: int = 0                                # documentos de antes do intervalo (escondidos)
-    nao_reconhecidos: list = field(default_factory=list)   # [(pid, início do texto)] da Santa Casa que não se leram
+    nao_reconhecidos: list = field(default_factory=list)   # [(pid, início do texto, data)] da Santa Casa que não se leram
     n_anulados: int = 0
+    inicio: date | None = None                     # o que se mostra: a partir daqui (depois de «pago até» e de «validar desde»)
 
 
 def conciliar(farmacia_docs: list[tuple[int, str]], santa_casa_docs: list[tuple[int, str]], movimentos: list,
@@ -417,13 +426,17 @@ def conciliar(farmacia_docs: list[tuple[int, str]], santa_casa_docs: list[tuple[
         if d and d < validar_desde:
             return "regularizado"
         return "por validar"
-    faturas = [f for pid, t in farmacia_docs if (f := ler_farmacia(pid, t))]
+    faturas = [f for item in farmacia_docs if (f := ler_farmacia(item[0], item[1]))]
     vistos_f = {}
     for f in faturas:                                 # o mesmo documento importado duas vezes
         vistos_f.setdefault(f.numero, f)
     faturas = list(vistos_f.values())
     docs, cartas, recibos, nao_reconhecidos, n_anulados = [], [], [], [], 0
-    for pid, t in santa_casa_docs:
+    for item in santa_casa_docs:                # (id, texto) ou (id, texto, data de criação no Paperless)
+        pid, t = item[0], item[1]
+        criado = item[2] if len(item) > 2 else None
+        if isinstance(criado, str):
+            criado = _data_iso(criado)
         x = ler_santa_casa(pid, t)
         if isinstance(x, DocSantaCasa):
             docs.append(x)
@@ -435,7 +448,7 @@ def conciliar(farmacia_docs: list[tuple[int, str]], santa_casa_docs: list[tuple[
             n_anulados += 1
         else:                                   # nem NLD, nem fatura, nem carta, nem recibo: ver no Paperless porquê
             linhas = [l.strip() for l in (t or "").splitlines() if l.strip()]
-            nao_reconhecidos.append((pid, " · ".join(linhas[:3])[:160] or "(sem texto: o OCR falhou?)"))
+            nao_reconhecidos.append((pid, " · ".join(linhas[:3])[:160] or "(sem texto: o OCR falhou?)", criado))
     docs = list({d.chave: d for d in docs}.values())
     cartas = list({(c.data, tuple(k for k, *_ in c.docs)): c for c in cartas}.values())
     recibos = list({(r.numero or r.pid): r for r in recibos}.values())
@@ -445,42 +458,46 @@ def conciliar(farmacia_docs: list[tuple[int, str]], santa_casa_docs: list[tuple[
         e.validacao = situacao(e.chave, e.data)
         e.validado = validados.get(e.chave)
     ligacoes, n_antigas = ligar_farmacia(faturas, est)
+    limites = [d for d in (validar_desde, pago_ate + timedelta(days=1) if pago_ate else None) if d]
+    inicio = max(limites) if limites else None
 
-    alertas = []
+    def no_intervalo(d: date | None) -> bool:
+        return inicio is None or (d is not None and d >= inicio)
+
+    alertas = []                                     # (tipo, texto, data do registo) — só os do intervalo ficam
     for l in ligacoes:
         if l.metodo == "sem lançamento":
             f = l.faturas[0]
             # só depois de passar o prazo em que a Santa Casa a podia lançar (fim do mês seguinte)
             if (validar_desde is None or f.data >= validar_desde) and _fim_mes_seguinte(f.data) < hoje:
                 alertas.append(("farmacia", f"Fatura da farmácia {f.numero} de {f.data:%d/%m/%Y} ({fmt_montante(f.total)}) "
-                                            "sem lançamento da Santa Casa com esse valor"))
+                                            "sem lançamento da Santa Casa com esse valor", f.data))
         elif l.metodo == "sem fatura":
             e = l.lancamentos[0]
             if e.validacao not in ("regularizado", "validado"):
                 alertas.append(("farmacia", f"{e.chave} de {e.data:%d/%m/%Y} ({fmt_montante(e.valor)}) sem fatura da farmácia "
-                                            "com esse valor no Paperless"))
+                                            "com esse valor no Paperless", e.data))
     for e in est:
         if e.validacao in ("regularizado", "validado"):
             continue
         if len(e.valores) > 1:
-            alertas.append(("carta", f"{e.chave}: o valor mudou entre cartas ({' → '.join(fmt_montante(v) for v in e.valores)})"))
+            alertas.append(("carta", f"{e.chave}: o valor mudou entre cartas ({' → '.join(fmt_montante(v) for v in e.valores)})", e.data))
         if e.estado(ultima, pago_ate) == "por pagar" and e.data and (hoje - e.data).days > 45:
-            alertas.append(("carta", f"{e.chave} de {e.data:%d/%m/%Y} ({fmt_montante(e.valor)}) continua por pagar há {(hoje - e.data).days} dias"))
+            alertas.append(("carta", f"{e.chave} de {e.data:%d/%m/%Y} ({fmt_montante(e.valor)}) continua por pagar há {(hoje - e.data).days} dias", e.data))
     for c in cartas:
         if validar_desde and c.data < validar_desde:
             continue
         soma = sum(p for *_, p in c.docs)
         if c.total is not None and abs(soma - c.total) > TOLERANCIA:
-            alertas.append(("carta", f"Carta de {c.data:%d/%m/%Y}: as linhas somam {fmt_montante(soma)}, o total diz {fmt_montante(c.total)}"))
+            alertas.append(("carta", f"Carta de {c.data:%d/%m/%Y}: as linhas somam {fmt_montante(soma)}, o total diz {fmt_montante(c.total)}", c.data))
     if movimentos:
         for r, m in pagamentos:
             regularizado = (validar_desde is not None and r.data < validar_desde) or \
                 (bool(r.docs) and all(k in validados for k, _ in r.docs))
             if m is None and not regularizado and r.data >= hoje - timedelta(days=400):
-                alertas.append(("pagamento", f"Recibo {r.numero} de {r.data:%d/%m/%Y} ({fmt_montante(r.total or 0)}) sem débito igual na conta"))
-    # só o intervalo em análise (a partir de «validar desde»): o resto está regularizado e fica escondido
-    def no_intervalo(d: date | None) -> bool:
-        return validar_desde is None or (d is not None and d >= validar_desde)
+                alertas.append(("pagamento", f"Recibo {r.numero} de {r.data:%d/%m/%Y} ({fmt_montante(r.total or 0)}) sem débito igual na conta", r.data))
+    # só o intervalo em análise: o resto está pago/regularizado e fica escondido
+    alertas = [(tipo, texto) for tipo, texto, d in alertas if no_intervalo(d)]
     dentro = [e for e in est if no_intervalo(e.data)]
     meses = {}
     for e in dentro:
@@ -488,10 +505,12 @@ def conciliar(farmacia_docs: list[tuple[int, str]], santa_casa_docs: list[tuple[
         m["docs"].append(e)
         m["total"] += e.valor
         m["por_validar"] += e.validacao == "por validar"
-    return Conciliacao([l for l in ligacoes if no_intervalo(l.data)], n_antigas, dentro, ultima,
+    # uma ligação da farmácia entra se algum dos seus documentos for do intervalo (fatura de 30/10 cobrada a 15/11)
+    datas_lig = lambda l: [f.data for f in l.faturas] + [e.data for e in l.lancamentos if e.data]
+    return Conciliacao([l for l in ligacoes if any(no_intervalo(d) for d in datas_lig(l))], n_antigas, dentro, ultima,
                        [(r, m) for r, m in pagamentos if no_intervalo(r.data)],
                        sorted([c for c in cartas if no_intervalo(c.data)], key=lambda c: c.data, reverse=True),
                        alertas, len(faturas), len(docs) + len(cartas) + len(recibos), pago_ate, validar_desde,
                        sum(1 for e in dentro if e.validacao == "por validar"),
                        sorted(meses.values(), key=lambda m: m["mes"] or date.min, reverse=True), len(est) - len(dentro),
-                       nao_reconhecidos, n_anulados)
+                       [x for x in nao_reconhecidos if x[2] is None or no_intervalo(x[2])], n_anulados, inicio)
