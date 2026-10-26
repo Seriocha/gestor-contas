@@ -121,7 +121,7 @@ def test_pagina_lar(tmp_path, falso):
     assert "Lar · conciliação" in r.text and "2 faturas da farmácia" in r.text and "certo" in r.text and "quinzena" in r.text
     # regularização gravada pela migração 0044: pago até 31/10/2026, validar desde 01/01/2026
     assert "tudo pago até 31/10/2026" in r.text and "FT 2026/5319" in r.text and "Lar (Santa Casa)" in r.text
-    assert "por validar" in r.text and "Validar marcados" in r.text
+    assert "por validar" in r.text and "Validar o mês" in r.text and "outubro 2026" in r.text
     from tests.test_app import _csrf
     r = c.post("/lar/config", data={"csrf": _csrf(r), "entidade": "", "santa_casa": "Santa Casa STC", "farmacia": ""},
                follow_redirects=True)
@@ -135,7 +135,12 @@ def test_regularizado_e_por_validar():
     fs = [(9, farmacia(1, "02-03-2026", "1,00"))]
     c = lar.conciliar(fs, sc, [], hoje=date(2026, 10, 26), pago_ate=date(2026, 10, 31), validar_desde=date(2026, 1, 1))
     est = {e.chave: e for e in c.estados}
-    assert est["NLD 2025/765"].validacao == "regularizado" and est["FT 2026/2291"].validacao == "por validar"
+    assert "NLD 2025/765" not in est and c.n_fora == 1          # regularizado: fora do intervalo, escondido
+    assert est["FT 2026/2291"].validacao == "por validar"
+    assert [m["mes"] for m in c.meses] == [date(2026, 3, 1)] and c.meses[0]["por_validar"] == 2
+    # o que falta para casar: a NLD 800 não aparece em cartas nem recibos; a FT 2291 não tem recibo
+    assert "sem carta nem recibo" in est["NLD 2026/800"].falta(c.pago_ate)
+    assert est["FT 2026/2291"].falta(c.pago_ate) == ["recibo em falta (pago até 31/10)"]
     assert est["FT 2026/2291"].estado(c.ultima_carta, c.pago_ate) == "pago (declarado)"
     assert c.n_por_validar == 2                                  # FT 2291 e NLD 800
     textos = " | ".join(t for _, t in c.alertas)
@@ -166,3 +171,27 @@ def test_validar_e_anular(tmp_path, falso):
         assert db.scalar(select(Auditoria).where(Auditoria.acao == "lar_validacao"))
     r = c.post("/lar/validar", data={"csrf": _csrf(r), "acao": "anular:NLD 2026/1"}, follow_redirects=True)
     assert "1 documento com a validação anulada" in r.text and "1 por validar" in r.text
+
+
+def test_falta_pdf_so_na_carta():
+    """Documento que só aparece numa carta (o PDF não foi importado para o Paperless)."""
+    sc = [(1, carta("04-03-2026", [("01-03-2026", "FT", 2026, 999, "1.339,41")], "1.339,41"))]
+    c = lar.conciliar([], sc, [], hoje=date(2026, 10, 26), validar_desde=date(2026, 1, 1))
+    e = c.estados[0]
+    assert not e.tem_pdf and e.mes == date(2026, 3, 1)
+    assert "PDF em falta" in e.falta()
+
+
+def test_validar_o_mes(tmp_path, falso):
+    from sqlalchemy import select
+    from app.models import LarValidacao
+    from tests.test_app import _csrf
+    app = create_app(tmp_path, backups_automaticos=False)
+    c = TestClient(app)
+    _post(c, "/setup", nome="Admin", login="admin", password=PW, password2=PW)
+    r = c.get("/lar")
+    r = c.post("/lar/validar", data={"csrf": _csrf(r), "acao": "validar_mes", "mes_chave": ["NLD 2026/1", "FT 2026/5319"]},
+               follow_redirects=True)
+    assert "2 documentos validados" in r.text
+    with app.state.SessionLocal() as db:
+        assert {v.chave for v in db.scalars(select(LarValidacao))} == {"NLD 2026/1", "FT 2026/5319"}

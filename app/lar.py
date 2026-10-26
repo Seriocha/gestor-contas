@@ -275,6 +275,29 @@ class EstadoDoc:
     def valor(self) -> int:
         return self.valores[-1] if self.valores else 0
 
+    @property
+    def tem_pdf(self) -> bool:
+        """O próprio documento (NLD/FT) está no Paperless — senão só se sabe dele pelas cartas ou pelos recibos."""
+        return self.pid is not None
+
+    @property
+    def mes(self) -> date | None:
+        return self.data.replace(day=1) if self.data else None
+
+    def falta(self, pago_ate: date | None = None) -> list[str]:
+        """Porque é que este documento não «casa» por completo: o que falta no Paperless ou o que não bate."""
+        out = []
+        if not self.tem_pdf:
+            out.append("PDF em falta")
+        if not self.cartas and not self.recibo:
+            out.append("sem carta nem recibo")
+        if not self.recibo:
+            out.append(f"recibo em falta (pago até {pago_ate:%d/%m})" if pago_ate and self.data and self.data <= pago_ate
+                       else "recibo em falta")
+        if len(self.valores) > 1:
+            out.append("valor mudou: " + " → ".join(fmt_montante(v) for v in self.valores))
+        return out
+
 
 def estados(docs: list[DocSantaCasa], cartas: list[Carta], recibos: list[Recibo]) -> tuple[list[EstadoDoc], date | None]:
     por = {}
@@ -289,7 +312,7 @@ def estados(docs: list[DocSantaCasa], cartas: list[Carta], recibos: list[Recibo]
                 e.cartas.append(c.data)
     for r in sorted(recibos, key=lambda r: r.data):
         for k, valor in r.docs:
-            e = por.setdefault(k, EstadoDoc(k, k.split()[0], None, [valor], []))
+            e = por.setdefault(k, EstadoDoc(k, k.split()[0], r.data, [valor], []))
             e.recibo = r
     ultima = max((c.data for c in cartas), default=None)
     return sorted(por.values(), key=lambda e: (e.data or date.min, e.chave), reverse=True), ultima
@@ -323,6 +346,8 @@ class Conciliacao:
     pago_ate: date | None = None
     validar_desde: date | None = None
     n_por_validar: int = 0
+    meses: list = field(default_factory=list)     # [{mes, docs, total, por_validar}] do intervalo em análise
+    n_fora: int = 0                                # documentos de antes do intervalo (escondidos)
 
 
 def conciliar(farmacia_docs: list[tuple[int, str]], santa_casa_docs: list[tuple[int, str]], movimentos: list,
@@ -398,6 +423,20 @@ def conciliar(farmacia_docs: list[tuple[int, str]], santa_casa_docs: list[tuple[
                 (bool(r.docs) and all(k in validados for k, _ in r.docs))
             if m is None and not regularizado and r.data >= hoje - timedelta(days=400):
                 alertas.append(("pagamento", f"Recibo {r.numero} de {r.data:%d/%m/%Y} ({fmt_montante(r.total or 0)}) sem débito igual na conta"))
-    return Conciliacao(linhas, por_cobrar, est, ultima, pagamentos, sorted(cartas, key=lambda c: c.data, reverse=True),
+    # só o intervalo em análise (a partir de «validar desde»): o resto está regularizado e fica escondido
+    def no_intervalo(d: date | None) -> bool:
+        return validar_desde is None or (d is not None and d >= validar_desde)
+    dentro = [e for e in est if no_intervalo(e.data)]
+    meses = {}
+    for e in dentro:
+        m = meses.setdefault(e.mes, {"mes": e.mes, "docs": [], "total": 0, "por_validar": 0})
+        m["docs"].append(e)
+        m["total"] += e.valor
+        m["por_validar"] += e.validacao == "por validar"
+    return Conciliacao([l for l in linhas if no_intervalo(l.nld.data) or l.metodo == "sem faturas no Paperless"],
+                       [f for f in por_cobrar if no_intervalo(f.data)], dentro, ultima,
+                       [(r, m) for r, m in pagamentos if no_intervalo(r.data)],
+                       sorted([c for c in cartas if no_intervalo(c.data)], key=lambda c: c.data, reverse=True),
                        alertas, len(faturas), len(docs) + len(cartas) + len(recibos), pago_ate, validar_desde,
-                       sum(1 for e in est if e.validacao == "por validar"))
+                       sum(1 for e in dentro if e.validacao == "por validar"),
+                       sorted(meses.values(), key=lambda m: m["mes"] or date.min, reverse=True), len(est) - len(dentro))

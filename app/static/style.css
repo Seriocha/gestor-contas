@@ -1033,3 +1033,15 @@ body.a-personalizar .grupo-cabecalho { flex-wrap: wrap; }
 .pp-recl { max-width: 980px; }
 .pp-grelha { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: .75rem 1rem; }
 .pp-grelha label { min-width: 0; }
+
+/* Lar (Santa Casa): documentos por mês */
+.lar-mes { border-top: 1px solid var(--linha); padding-top: .9rem; margin-top: .9rem; }
+.lar-mes-topo { display: flex; flex-wrap: wrap; gap: .5rem .75rem; align-items: center; margin-bottom: .5rem; }
+.lar-mes-topo h3 { margin-right: auto; text-transform: capitalize; }
+.lar-mes-topo h3 .nota { text-transform: none; }
+.lar-nota { max-width: 16rem; min-height: 32px; padding: .3rem .6rem; }
+.lar-mes table { table-layout: fixed; min-width: 960px; }
+.lar-mes th:nth-child(1) { width: 12%; } .lar-mes th:nth-child(2) { width: 14%; } .lar-mes th:nth-child(3) { width: 9%; }
+.lar-mes th:nth-child(4) { width: 5%; } .lar-mes th:nth-child(5) { width: 9%; } .lar-mes th:nth-child(6) { width: 11%; }
+.lar-mes th:nth-child(7) { width: 7%; } .lar-mes th:nth-child(8) { width: 17%; } .lar-mes th:nth-child(9) { width: 16%; }
+.lar-mes td { white-space: normal; }

@@ -140,6 +140,8 @@ async def validar(request: Request, u: Utilizador = Depends(utilizador_atual), d
     if ":" in acao:                                   # botão de uma linha: «validar:NLD 2026/221»
         acao, um = acao.split(":", 1)
         chaves = [um]
+    elif acao == "validar_mes":                       # «Validar o mês»: os documentos por validar desse mês
+        acao, chaves = "validar", [str(x) for x in form.getlist("mes_chave")]
     else:
         chaves = [str(x) for x in form.getlist("chave")]
     chaves = [k.strip()[:30] for k in chaves if k.strip()]
