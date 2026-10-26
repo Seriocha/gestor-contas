@@ -116,7 +116,7 @@
       await enviar(tipo === 'repor' ? '' : JSON.stringify(estado()));
       location.reload();
     } catch (err) {
-      alert(err.message);
+      (window.mensagem || alert)(err.message, 'erro');
       acao.disabled = false;
     }
   });

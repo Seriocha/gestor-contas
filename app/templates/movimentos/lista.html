@@ -410,7 +410,7 @@
         origem.className = 'nota origem'; origem.textContent = 'à mão';
         setTimeout(() => sel.classList.remove('gravado'), 1200);
       } catch (e) {
-        alert('Não foi possível gravar a categoria. Recarrega a página.');
+        (window.mensagem || alert)('Não foi possível gravar a categoria. Recarrega a página.', 'erro');
       } finally { sel.disabled = false; }
     });
   });
@@ -463,7 +463,7 @@
     const f = e.target, acao = f.acao.selectedOptions[0];
     const todos = f.ambito.value === 'filtro';
     const n = todos ? {{ total }} : caixas.filter(c => c.checked).length;
-    if (!n) { e.preventDefault(); alert('Seleciona movimentos ou escolhe «todos do filtro».'); return; }
+    if (!n) { e.preventDefault(); (window.mensagem || alert)('Seleciona movimentos ou escolhe «todos do filtro».', 'alerta'); return; }
     if ((todos || acao.value.startsWith('repor')) && !confirm(`${acao.textContent.trim()} em ${n} movimento${n === 1 ? '' : 's'}?`)) e.preventDefault();
   });
   document.getElementById('selecionar-todos')?.addEventListener('change', e => {

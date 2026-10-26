@@ -130,6 +130,8 @@ def render(request: Request, template: str, status_code: int = 200, **ctx):
         try:
             with request.app.state.SessionLocal() as db:
                 ctx["n_por_validar"] = por_validar(db, ctx["utilizador"])
+                # o menu «Lar (Santa Casa)» só aparece a quem vê uma entidade com o módulo (as heranças)
+                ctx["menu_lar"] = any(e.tem("lar") for e, _ in entidades_visiveis(db, ctx["utilizador"]))
         except Exception:          # o contador nunca impede a página de abrir
             ctx["n_por_validar"] = 0
     ctx["flashes"] = request.session.pop("flash", [])

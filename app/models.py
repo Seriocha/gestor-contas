@@ -59,7 +59,8 @@ TIPOS_ENTIDADE = {"pessoal": "Pessoal", "heranca": "Herança"}
 # Módulos que cada entidade usa (Administração › Entidades): os ecrãs só mostram o que a entidade tem.
 MODULOS = {"imoveis": "Casas e propriedades", "viaturas": "Viaturas (carros, Via Verde, abastecimentos)",
            "subscricoes": "Subscrições e assinaturas", "viagens": "Viagens",
-           "saude": "Saúde (perfis e dados do Google Health)"}
+           "saude": "Saúde (perfis e dados do Google Health)",
+           "lar": "Lar (Santa Casa) — conciliação; ligado nas heranças"}
 
 
 def fracao(pct: float | None) -> str:

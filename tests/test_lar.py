@@ -44,6 +44,17 @@ def recibo(num, data, docs, total):
             f"Observações: Tipo Pagamento: Bancos - CCAM")
 
 
+def _heranca(app, nome="Mãe"):
+    """O Lar faz parte da gestão das heranças: a entidade passa a herança com o módulo «lar» (como a migração 0045)."""
+    from sqlalchemy import select
+    from app.models import Entidade
+    with app.state.SessionLocal() as db:
+        e = db.scalar(select(Entidade).where(Entidade.nome == nome))
+        e.tipo = "heranca"
+        e.modulos = (e.modulos or "") + ",lar"
+        db.commit()
+
+
 def test_cent_e_leitores():
     assert lar.cent("1.339,41") == 133941 and lar.cent("1 339,41") == 133941 and lar.cent("2,64 €") == 264
     f = lar.ler_farmacia(1, farmacia(49113, "17-10-2026", "2,64"))
@@ -145,6 +156,7 @@ def test_pagina_lar(tmp_path, falso):
     app = create_app(tmp_path, backups_automaticos=False)
     c = TestClient(app)
     _post(c, "/setup", nome="Admin", login="admin", password=PW, password2=PW)
+    _heranca(app)
     r = c.get("/lar")
     assert r.status_code == 200, r.text
     assert "Lar · conciliação" in r.text and "2 faturas da farmácia" in r.text and "certo" in r.text and "soma de faturas" in r.text
@@ -188,6 +200,7 @@ def test_validar_e_anular(tmp_path, falso):
     app = create_app(tmp_path, backups_automaticos=False)
     c = TestClient(app)
     _post(c, "/setup", nome="Admin", login="admin", password=PW, password2=PW)
+    _heranca(app)
     r = c.get("/lar?ver=por_validar")
     assert "NLD 2026/1" in r.text
     r = c.post("/lar/validar", data={"csrf": _csrf(r), "acao": "validar", "chave": ["NLD 2026/1", "FT 2026/5319"],
@@ -217,6 +230,7 @@ def test_validar_o_mes(tmp_path, falso):
     app = create_app(tmp_path, backups_automaticos=False)
     c = TestClient(app)
     _post(c, "/setup", nome="Admin", login="admin", password=PW, password2=PW)
+    _heranca(app)
     r = c.get("/lar")
     r = c.post("/lar/validar", data={"csrf": _csrf(r), "acao": "validar_mes", "mes_chave": ["NLD 2026/1", "FT 2026/5319"]},
                follow_redirects=True)
@@ -239,6 +253,7 @@ def test_pagina_procurar_e_aviso_sem_datas(tmp_path, falso, monkeypatch):
     app = create_app(tmp_path, backups_automaticos=False)
     c = TestClient(app)
     _post(c, "/setup", nome="Admin", login="admin", password=PW, password2=PW)
+    _heranca(app)
     falso[2].append((23, carta("05-11-2026", [("03-11-2026", "NLD", 2026, 3298, "1,81")], "1,81")))
     r = c.get("/lar?renovar=1")                                     # a página guarda o Paperless em memória 10 min
     # a NLD 3298 só está na carta (o PDF falta): ligação para a procurar no Paperless pelo n.º
@@ -252,3 +267,14 @@ def test_pagina_procurar_e_aviso_sem_datas(tmp_path, falso, monkeypatch):
         app.state.prefs = preferencias.carregar(db)
     r = c.get("/lar")
     assert "As datas de regularização não estão definidas (tudo pago até)" in r.text
+
+
+def test_lar_so_nas_herancas(tmp_path, falso):
+    app = create_app(tmp_path, backups_automaticos=False)
+    c = TestClient(app)
+    _post(c, "/setup", nome="Admin", login="admin", password=PW, password2=PW)
+    r = c.get("/lar")
+    assert "O Lar faz parte da gestão das heranças" in r.text and 'href="/lar"' not in r.text
+    assert 'href="/lar"' not in c.get("/inicio").text                       # o menu não mostra o Lar
+    _heranca(app)
+    assert 'href="/lar"' in c.get("/inicio").text and "Lar · conciliação" in c.get("/lar").text

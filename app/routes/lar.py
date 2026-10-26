@@ -21,12 +21,19 @@ _CACHE: dict = {}             # (token, ids) → (instante, documentos): o texto
 CACHE_SEGUNDOS = 600
 
 
+def _entidades_lar(db: Session, u: Utilizador) -> list[Entidade]:
+    """As entidades com o módulo «lar» (ligado nas heranças) que o utilizador vê."""
+    return [e for e, _ in entidades_visiveis(db, u) if e.tem("lar")]
+
+
 def _entidade(db: Session, u: Utilizador, prefs: dict) -> Entidade | None:
-    visiveis = [e for e, _ in entidades_visiveis(db, u)]
+    visiveis = _entidades_lar(db, u)
     pref = prefs.get("lar_entidade")
     if pref and pref.isdigit():
-        return next((e for e in visiveis if e.id == int(pref)), None)
-    return next((e for e in visiveis if e.nome.strip().lower() in ("mãe", "mae")), None)
+        escolhida = next((e for e in visiveis if e.id == int(pref)), None)
+        if escolhida:
+            return escolhida
+    return visiveis[0] if visiveis else None
 
 
 def _data_pref(prefs: dict, chave: str) -> date | None:
@@ -71,11 +78,13 @@ def pagina(request: Request, renovar: int = 0, u: Utilizador = Depends(utilizado
     prefs = request.app.state.prefs
     token = token_paperless(request, u)
     ctx = {"hoje": date.today(), "paperless_cfg": paperless.configurado(), "token_ok": bool(token), "erros": [], "c": None, "prefs": prefs,
-           "entidades": [e for e, _ in entidades_visiveis(db, u)], "correspondentes": [],
+           "entidades": _entidades_lar(db, u), "correspondentes": [],
            "link": paperless.url_browser() if paperless.configurado() else ""}
     ent = _entidade(db, u, prefs)
     ctx["entidade"] = ent
     ctx["pode_validar"] = _pode_validar(db, u, ent)
+    if not ent:                       # o Lar faz parte da gestão das heranças
+        return render(request, "lar.html", sem_modulo=True, **ctx)
     if not token:
         return render(request, "lar.html", **ctx)
     try:

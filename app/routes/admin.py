@@ -260,7 +260,8 @@ async def nova_entidade(request: Request, admin: Utilizador = Depends(exigir_adm
         flash(request, " ".join(erros), "erro")
         return RedirectResponse("/admin/entidades", status_code=303)
     if "modulos" not in dados:
-        dados["modulos"] = ",".join(MODULOS)        # nova entidade: tudo ligado (desliga-se em Editar)
+        # nova entidade: tudo ligado (desliga-se em Editar); o Lar só nas heranças
+        dados["modulos"] = ",".join(m for m in MODULOS if m != "lar" or dados.get("tipo") == "heranca")
     e = Entidade(**dados, ordem=(db.scalar(select(func.max(Entidade.ordem))) or 0) + 1)
     db.add(e)
     db.flush()

@@ -33,8 +33,8 @@
     ('/subscricoes', 'subscricoes', 'Subscrições', caminho.startswith('/subscricoes'), 0),
     ('/previsoes', 'previsoes', 'Previsões', caminho.startswith('/previsoes'), 0)]),
   ('Património', [
-    ('/patrimonio', 'patrimonio', 'Património', caminho.startswith('/patrimonio'), 0),
-    ('/lar', 'tarefas', 'Lar (Santa Casa)', caminho.startswith('/lar'), 0)]),
+    ('/patrimonio', 'patrimonio', 'Património', caminho.startswith('/patrimonio'), 0)]
+    + ([('/lar', 'tarefas', 'Lar (Santa Casa)', caminho.startswith('/lar'), 0)] if menu_lar else [])),
   ('Viagens', [
     ('/viagens', 'viagens', 'Viagens', caminho.startswith('/viagens') and not caminho.startswith('/viagens/detetar'), 0),
     ('/viagens/detetar', 'procurar', 'Detetar viagens', caminho.startswith('/viagens/detetar'), 0)]),
@@ -81,10 +81,14 @@
 {% endif %}
 
 <main class="{% block classe_main %}conteudo{% endblock %}">
-  {% for tipo, msg in flashes %}<div class="aviso aviso-{{ tipo }}" role="status">{{ msg }}</div>{% endfor %}
   {% block conteudo %}{% endblock %}
   <footer class="rodape">Gestor de Contas · v{{ versao }}</footer>
 </main>
+
+{# Linha de mensagens no fundo do ecrã (mensagens.js): ações, avisos da página e mensagens do JavaScript. #}
+<div class="mensagens" id="mensagens" role="status" aria-live="polite">
+  {% for tipo, msg in flashes %}<div class="mensagem mensagem-{{ tipo }}" data-tipo="{{ tipo }}"><div class="mensagem-texto">{{ msg }}</div></div>{% endfor %}
+</div>
 
 {% if utilizador %}
 <nav class="abas-movel" aria-label="Navegação rápida">
@@ -115,6 +119,7 @@
 </script>
 {% endif %}
 <script src="/static/datas.js?v={{ versao }}"></script>
+<script src="/static/mensagens.js?v={{ versao }}"></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

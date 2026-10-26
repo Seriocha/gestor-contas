@@ -13,7 +13,9 @@
   pagamentos na conta{% if entidade %} da entidade <strong>{{ entidade.nome }}</strong>{% endif %}. Tudo lido do Paperless
   (o texto de cada documento); nada é alterado.</p>
 
-{% if not paperless_cfg %}<section class="cartao"><p class="vazio sem-margem">O Paperless não está configurado.</p></section>
+{% if sem_modulo %}<section class="cartao"><p class="vazio sem-margem">O Lar faz parte da gestão das heranças: só aparece nas
+  entidades de herança (ou noutra entidade com o módulo «Lar» ligado em Administração › Entidades).</p></section>
+{% elif not paperless_cfg %}<section class="cartao"><p class="vazio sem-margem">O Paperless não está configurado.</p></section>
 {% elif not token_ok %}<section class="cartao"><p class="vazio sem-margem">Guarda o teu token do Paperless em <a href="/perfil#paperless">Perfil</a>.</p></section>
 {% endif %}
 {% for e in erros %}<div class="aviso aviso-erro">{{ e }}</div>{% endfor %}
@@ -175,13 +177,13 @@
 </section>
 {% endif %}
 
-{% if token_ok %}
+{% if token_ok and not sem_modulo %}
 <section class="cartao" id="configurar">
   <details {% if erros or (c and (not c.pago_ate or not c.validar_desde)) %}open{% endif %}><summary><strong>Configurar</strong></summary>
   <form method="post" action="/lar/config" class="formulario estreito" style="margin-top: 1rem">
     <input type="hidden" name="csrf" value="{{ csrf_token }}">
-    <label>Entidade da utente (movimentos do banco)
-      <select name="entidade"><option value="">— detetar («Mãe»)</option>{% for e in entidades %}<option value="{{ e.id }}" {% if prefs.lar_entidade == e.id|string %}selected{% endif %}>{{ e.nome }}</option>{% endfor %}</select></label>
+    <label>Entidade (herança) com os movimentos do banco
+      <select name="entidade"><option value="">— a primeira com o módulo «Lar»</option>{% for e in entidades %}<option value="{{ e.id }}" {% if prefs.lar_entidade == e.id|string %}selected{% endif %}>{{ e.nome }}</option>{% endfor %}</select></label>
     <label>Correspondente da Santa Casa no Paperless
       <select name="santa_casa"><option value="">— detetar pelo nome</option>{% for x in correspondentes %}<option {% if prefs.lar_corr_santa_casa == x.name %}selected{% endif %}>{{ x.name }}</option>{% endfor %}</select></label>
     <label>Tudo pago até <input type="date" name="lar_pago_ate" value="{{ prefs.lar_pago_ate }}">

@@ -92,21 +92,21 @@ code { font-size: .85em; background: var(--superficie-2); border: 1px solid var(
   background: var(--superficie); border-right: 1px solid var(--linha);
   display: flex; flex-direction: column; padding: 20px 14px;
 }
-.lateral-topo { display: flex; align-items: center; justify-content: space-between; padding: 0 8px 18px; }
+.lateral-topo { display: flex; align-items: center; justify-content: space-between; padding: 0 8px 10px; }
 .marca { display: inline-flex; align-items: center; gap: .55rem; font-family: var(--fonte-titulo); font-weight: 800; font-size: 1.15rem; letter-spacing: -0.02em; color: var(--texto); text-decoration: none; }
 .marca .logo { color: var(--texto); flex: none; }
 .menu { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; flex: 1; }
-.menu-grupo { margin: 1rem 10px .35rem; font-size: .72rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--suave); }
+.menu-grupo { margin: .45rem 10px .1rem; font-size: .66rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--suave); }
 .menu-grupo:first-child { margin-top: 0; }
 .menu a {
-  display: flex; align-items: center; gap: .75rem; padding: .62rem .75rem; border-radius: var(--raio-m);
-  color: var(--texto); text-decoration: none; font-weight: 500; font-size: .95rem;
+  display: flex; align-items: center; gap: .6rem; padding: .32rem .7rem; border-radius: var(--raio-m);
+  color: var(--texto); text-decoration: none; font-weight: 500; font-size: .86rem;
 }
-.menu a .icone { color: var(--suave); flex: none; }
+.menu a .icone { color: var(--suave); flex: none; width: 18px; height: 18px; }
 .menu a:hover { background: var(--superficie-2); }
 .menu a.ativo { background: var(--texto); color: var(--fundo); font-weight: 650; }
 .menu a.ativo .icone { color: var(--destaque); }
-.lateral-rodape { display: flex; align-items: center; gap: .5rem; border-top: 1px solid var(--linha); padding: 14px 4px 0; }
+.lateral-rodape { display: flex; align-items: center; gap: .5rem; border-top: 1px solid var(--linha); padding: 8px 4px 0; }
 .lateral-rodape form { margin: 0; }
 .utilizador { display: flex; align-items: center; gap: .6rem; flex: 1; min-width: 0; padding: .35rem; border-radius: var(--raio-m); text-decoration: none; }
 .utilizador:hover, .utilizador.ativo { background: var(--superficie-2); }
@@ -1062,3 +1062,24 @@ body.a-personalizar .grupo-cabecalho { flex-wrap: wrap; }
 .fl-edicao > td { background: var(--fundo); }
 .fl-painel { padding: .5rem .25rem; }
 .fl-painel h4 { margin: .5rem 0 .3rem; }
+
+/* Linha de mensagens no fundo do ecrã (mensagens.js) */
+.mensagens { position: fixed; z-index: 60; left: 16px; right: 16px; bottom: 16px; display: flex; flex-direction: column;
+  gap: .5rem; pointer-events: none; max-height: 45vh; overflow-y: auto; }
+.com-menu .mensagens { left: calc(var(--largura-lateral) + 16px); }
+.mensagens:empty { display: none; }
+.mensagem { pointer-events: auto; display: flex; align-items: flex-start; gap: .75rem; padding: .7rem .9rem .7rem 1.1rem;
+  border-radius: var(--raio-m); font-weight: 500; box-shadow: 0 6px 24px rgb(0 0 0 / .18);
+  background: linear-gradient(var(--alerta-fundo), var(--alerta-fundo)), var(--superficie); color: var(--alerta-texto);
+  animation: mensagem-entra .18s ease-out; }
+.mensagem-ok { background: linear-gradient(var(--ok-fundo), var(--ok-fundo)), var(--superficie); color: var(--ok-texto); }
+.mensagem-erro { background: linear-gradient(var(--erro-fundo), var(--erro-fundo)), var(--superficie); color: var(--erro-texto); }
+.mensagem-texto { flex: 1; min-width: 0; }
+.mensagem-texto a { color: inherit; font-weight: 700; }
+.mensagem-texto ul { margin: 0; padding-left: 1.2rem; }
+.mensagem-fechar { flex: none; border: 0; background: transparent; color: inherit; font-size: 1.3rem; line-height: 1;
+  padding: 0 .2rem; cursor: pointer; min-height: 0; }
+@keyframes mensagem-entra { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (max-width: 900px) {
+  .com-menu .mensagens { left: 12px; right: 12px; bottom: calc(var(--altura-abas) + 10px + env(safe-area-inset-bottom)); }
+}
