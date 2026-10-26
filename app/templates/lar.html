@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block titulo %}Lar · conciliação{% endblock %}
+{% macro validacao(v, info=none) -%}
+{% if v == 'validado' %}<span class="etiqueta etiqueta-ok" title="{{ info.por ~ ' · ' ~ info.em.strftime('%d/%m/%Y') ~ (' · ' ~ info.nota if info.nota else '') if info else '' }}">validado</span>
+{% elif v == 'por validar' %}<span class="etiqueta etiqueta-cor">por validar</span>
+{% elif v == 'regularizado' %}<span class="nota">regularizado</span>{% endif %}
+{%- endmacro %}
+{% macro doc(pid, texto) -%}{% if pid and link %}<a href="{{ link }}/documents/{{ pid }}/details" target="_blank" rel="noopener">{{ texto }}</a>{% else %}{{ texto }}{% endif %}{%- endmacro %}
+{% block conteudo %}
+<div class="titulo-acoes"><h1>Lar · conciliação</h1>
+  {% if c %}<a class="botao" href="/lar?renovar=1">Ler de novo do Paperless</a>{% endif %}</div>
+<p class="nota">Faturas da farmácia ↔ notas de lançamento de medicamentos da Santa Casa ↔ cartas de aviso ↔ recibos ↔
+  pagamentos na conta{% if entidade %} da entidade <strong>{{ entidade.nome }}</strong>{% endif %}. Tudo lido do Paperless
+  (o texto de cada documento); nada é alterado.</p>
+
+{% if not paperless_cfg %}<section class="cartao"><p class="vazio sem-margem">O Paperless não está configurado.</p></section>
+{% elif not token_ok %}<section class="cartao"><p class="vazio sem-margem">Guarda o teu token do Paperless em <a href="/perfil#paperless">Perfil</a>.</p></section>
+{% endif %}
+{% for e in erros %}<div class="aviso aviso-erro">{{ e }}</div>{% endfor %}
+
+{% if c %}
+<section class="cartao">
+  <h2>A ver <span class="nota">· {{ c.n_faturas }} faturas da farmácia · {{ c.n_docs }} documentos da Santa Casa</span></h2>
+  <p class="pp-resumo">
+    {% if c.pago_ate %}<span class="etiqueta etiqueta-ok">tudo pago até {{ c.pago_ate | data }}</span>{% endif %}
+    {% if c.validar_desde %}<span class="nota">documentos anteriores a {{ c.validar_desde | data }}: regularizados</span>
+      {% if c.n_por_validar %}<a class="etiqueta etiqueta-cor" href="/lar?ver=por_validar#documentos">{{ c.n_por_validar }} por validar</a>
+      {% else %}<span class="etiqueta etiqueta-ok">tudo validado</span>{% endif %}{% endif %}
+  </p>
+  {% if c.alertas %}
+  <ul class="pp-lista">{% for tipo, texto in c.alertas %}<li class="pp-problema">⚠ {{ texto }}</li>{% endfor %}</ul>
+  {% else %}<p class="sem-margem"><span class="etiqueta etiqueta-ok">tudo bate certo</span></p>{% endif %}
+</section>
+
+<section class="cartao">
+  <h2>Medicamentos <span class="nota">· farmácia ↔ notas de lançamento «Reembolso de Medicamentos»</span></h2>
+  <p class="nota">Cada nota de lançamento deve ser a soma das faturas da farmácia da quinzena (1 a 15, 16 ao fim do mês).
+    Se não for, procura-se na quinzena anterior e depois a combinação de faturas ainda não cobradas que dá o valor.</p>
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th>Nota de lançamento</th><th class="num">Cobrado</th><th>Faturas da farmácia</th><th class="num">Soma</th><th>Resultado</th><th>Validação</th></tr></thead>
+    {% set antigas = c.medicamentos|selectattr('metodo', 'equalto', 'sem faturas no Paperless')|list %}
+    {% for l in c.medicamentos|reverse if l.metodo != 'sem faturas no Paperless' %}
+    <tr>
+      <td class="sem-quebra">{{ doc(l.nld.pid, 'NLD ' ~ l.nld.numero) }}<br><span class="nota">{{ l.nld.data | data }}</span></td>
+      <td class="num">{{ l.nld.medicamentos | eur }}</td>
+      <td class="nota">{% for f in l.faturas %}{{ doc(f.pid, f.numero) }} · {{ f.data | data }} · {{ f.total | eur }}{% if not loop.last %}<br>{% endif %}{% else %}—{% endfor %}</td>
+      <td class="num">{{ l.soma | eur if l.faturas else '—' }}</td>
+      <td>{% if l.ok %}<span class="etiqueta etiqueta-ok">certo</span> <span class="nota">{{ l.metodo }}</span>
+        {% else %}<span class="etiqueta etiqueta-erro">diferença {{ l.diferenca | eur }}</span>{% endif %}</td>
+      <td>{{ validacao(l.validacao) }}</td>
+    </tr>
+    {% else %}<tr><td colspan="6" class="vazio">Sem notas de lançamento de medicamentos para comparar{{ ' (ainda não há faturas da farmácia no Paperless desses períodos)' if antigas }}.</td></tr>{% endfor %}
+  </table></div>
+  {% if antigas %}<p class="nota">{{ antigas|length }} nota{{ 's' if antigas|length != 1 }} de lançamento de medicamentos de antes da
+    1.ª fatura da farmácia no Paperless ({{ antigas[0].nld.data | data }} a {{ antigas[-1].nld.data | data }}) não
+    {{ 'são comparadas' if antigas|length != 1 else 'é comparada' }}.</p>{% endif %}
+  {% if c.por_cobrar %}
+  <h3>Faturas da farmácia ainda sem nota de lançamento</h3>
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th>Fatura</th><th>Data</th><th class="num">Utente</th><th>Produtos</th></tr></thead>
+    {% for f in c.por_cobrar|reverse %}
+    <tr><td>{{ doc(f.pid, f.numero) }}</td><td class="nota">{{ f.data | data }}</td><td class="num">{{ f.total | eur }}</td>
+      <td class="nota">{{ f.itens|map('first')|join(' · ') }}</td></tr>
+    {% endfor %}
+  </table></div>
+  <p class="nota">As das últimas semanas costumam entrar na próxima nota de lançamento (dia 15 ou fim do mês).</p>
+  {% endif %}
+</section>
+
+{% set so_por_validar = request.query_params.get('ver') == 'por_validar' %}
+<section class="cartao" id="documentos">
+  <h2>Documentos da Santa Casa <span class="nota">· o que as cartas pediram, o que foi pago e o que já validaste</span></h2>
+  <nav class="separadores">
+    <a href="/lar#documentos" {% if not so_por_validar %}class="ativo"{% endif %}>Todos</a>
+    <a href="/lar?ver=por_validar#documentos" {% if so_por_validar %}class="ativo"{% endif %}>Por validar <span class="nota">{{ c.n_por_validar }}</span></a>
+  </nav>
+  <form method="post" action="/lar/validar">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  {% if pode_validar and c.n_por_validar %}
+  <div class="acoes-form">
+    <input name="nota" maxlength="200" placeholder="nota (opcional): ex.: confirmado com a carta de setembro" style="flex: 1 1 18rem">
+    <button class="primario" name="acao" value="validar">Validar marcados</button>
+  </div>
+  {% endif %}
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th></th><th>Documento</th><th>Data</th><th>O quê</th><th class="num">Valor</th><th class="num">Cartas</th><th>Estado</th><th>Validação</th></tr></thead>
+    {% for e in (c.estados|selectattr('validacao', 'equalto', 'por validar')|list if so_por_validar else c.estados[:120]) %}
+    {% set est = e.estado(c.ultima_carta, c.pago_ate) %}
+    <tr><td>{% if pode_validar and e.validacao == 'por validar' %}<input type="checkbox" name="chave" value="{{ e.chave }}">{% endif %}</td>
+      <td class="sem-quebra">{{ doc(e.pid, e.chave) }}</td><td class="nota">{{ e.data | data if e.data else '—' }}</td>
+      <td class="nota">{{ e.descricao or e.tipo }}</td>
+      <td class="num">{% if e.valores|length > 1 %}<span class="pp-problema">{{ e.valores|map('eur')|join(' → ') }}</span>{% else %}{{ e.valor | eur }}{% endif %}</td>
+      <td class="num">{{ e.cartas|length or '—' }}</td>
+      <td>{% if est == 'pago' %}<span class="etiqueta etiqueta-ok">pago</span> <span class="nota">{{ e.recibo.data | data }}</span>
+        {% elif est == 'pago (declarado)' %}<span class="etiqueta etiqueta-ok">pago</span> <span class="nota">até {{ c.pago_ate | data }}</span>
+        {% elif est == 'por pagar' %}<span class="etiqueta etiqueta-erro">por pagar</span>
+        {% elif est == 'saiu das cartas' %}<span class="etiqueta">saiu das cartas</span> <span class="nota">sem recibo no Paperless</span>
+        {% else %}<span class="nota">sem carta</span>{% endif %}</td>
+      <td class="sem-quebra">{{ validacao(e.validacao, e.validado) }}
+        {% if pode_validar and e.validacao == 'por validar' %}<button class="pequeno" name="acao" value="validar:{{ e.chave }}">Validar</button>
+        {% elif pode_validar and e.validacao == 'validado' %}<button class="pequeno" name="acao" value="anular:{{ e.chave }}" onclick="return confirm('Anular a validação deste documento?')">anular</button>{% endif %}</td></tr>
+    {% else %}<tr><td colspan="8" class="vazio">{{ 'Nada por validar.' if so_por_validar else 'Sem documentos.' }}</td></tr>
+    {% endfor %}
+  </table></div>
+  </form>
+</section>
+
+<div class="grelha-2">
+<section class="cartao">
+  <h2>Cartas de aviso</h2>
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th>Data</th><th class="num">Documentos</th><th class="num">Por pagar</th></tr></thead>
+    {% for ca in c.cartas[:24] %}
+    <tr><td>{{ doc(ca.pid, ca.data.strftime('%d/%m/%Y')) }}</td><td class="num">{{ ca.docs|length }}</td><td class="num">{{ ca.total | eur if ca.total is not none else '—' }}</td></tr>
+    {% else %}<tr><td colspan="3" class="vazio">Sem cartas.</td></tr>{% endfor %}
+  </table></div>
+</section>
+<section class="cartao">
+  <h2>Pagamentos <span class="nota">· recibos ↔ conta{% if entidade %} ({{ entidade.nome }}){% endif %}</span></h2>
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th>Recibo</th><th class="num">Total</th><th>Movimento</th></tr></thead>
+    {% for r, m in c.pagamentos[:24] %}
+    <tr><td>{{ doc(r.pid, r.numero) }}<br><span class="nota">{{ r.data | data }} · {{ r.docs|map('first')|join(', ') }}</span></td>
+      <td class="num">{{ (r.total or 0) | eur }}</td>
+      <td class="nota">{% if m %}<a href="/movimentos/{{ m.id }}/detalhe">{{ m.data_mov | data }} · {{ m.descricao_original|truncate(30) }}</a>
+        {% elif entidade %}<span class="pp-problema">sem débito igual</span>{% else %}—{% endif %}</td></tr>
+    {% else %}<tr><td colspan="3" class="vazio">Sem recibos.</td></tr>{% endfor %}
+  </table></div>
+</section>
+</div>
+{% endif %}
+
+{% if token_ok %}
+<section class="cartao">
+  <details {% if erros %}open{% endif %}><summary><strong>Configurar</strong></summary>
+  <form method="post" action="/lar/config" class="formulario estreito" style="margin-top: 1rem">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <label>Entidade da utente (movimentos do banco)
+      <select name="entidade"><option value="">— detetar («Mãe»)</option>{% for e in entidades %}<option value="{{ e.id }}" {% if prefs.lar_entidade == e.id|string %}selected{% endif %}>{{ e.nome }}</option>{% endfor %}</select></label>
+    <label>Correspondente da Santa Casa no Paperless
+      <select name="santa_casa"><option value="">— detetar pelo nome</option>{% for x in correspondentes %}<option {% if prefs.lar_corr_santa_casa == x.name %}selected{% endif %}>{{ x.name }}</option>{% endfor %}</select></label>
+    <label>Tudo pago até <input type="date" name="lar_pago_ate" value="{{ prefs.lar_pago_ate }}">
+      <span class="nota">os documentos até esta data contam como pagos (sem alertas de «por pagar»)</span></label>
+    <label>Validar documentos a partir de <input type="date" name="lar_validar_desde" value="{{ prefs.lar_validar_desde }}">
+      <span class="nota">os anteriores ficam «regularizados»; os seguintes ficam «por validar» até os validares</span></label>
+    <label>Correspondente da farmácia no Paperless
+      <select name="farmacia"><option value="">— detetar pelo nome</option>{% for x in correspondentes %}<option {% if prefs.lar_corr_farmacia == x.name %}selected{% endif %}>{{ x.name }}</option>{% endfor %}</select></label>
+    <button class="primario">Guardar</button>
+  </form>
+  </details>
+</section>
+{% endif %}
+{% endblock %}

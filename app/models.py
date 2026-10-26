@@ -1336,3 +1336,16 @@ class DispositivoSaude(Base):
 
     perfil: Mapped[PerfilSaude] = relationship()
     utilizador: Mapped[Utilizador] = relationship()
+
+
+class LarValidacao(Base):
+    """Documento da Santa Casa (NLD/FT, pela chave «NLD 2026/221») validado à mão na conciliação do Lar (app/lar.py)."""
+    __tablename__ = "lar_validacao"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    chave: Mapped[str] = mapped_column(String(30), unique=True)
+    nota: Mapped[str | None] = mapped_column(String(200))
+    utilizador_id: Mapped[int | None] = mapped_column(ForeignKey("utilizador.id", ondelete="SET NULL"))
+    em: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+    utilizador: Mapped[Utilizador | None] = relationship()

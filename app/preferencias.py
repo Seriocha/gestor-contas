@@ -37,6 +37,13 @@ OMISSAO = {
     "motor_ia": "1",
     "motor_ligar": "1",
     "motor_desde": "",
+    # Lar (Santa Casa): entidade da utente (movimentos do banco) e correspondentes no Paperless; vazio = deteta pelo nome.
+    "lar_entidade": "",
+    "lar_corr_santa_casa": "",
+    "lar_corr_farmacia": "",
+    # «Tudo pago até» (AAAA-MM-DD, declarado pelo utilizador) e a partir de quando os documentos ficam «por validar».
+    "lar_pago_ate": "",
+    "lar_validar_desde": "",
 }
 
 

@@ -33,7 +33,8 @@
     ('/subscricoes', 'subscricoes', 'Subscrições', caminho.startswith('/subscricoes'), 0),
     ('/previsoes', 'previsoes', 'Previsões', caminho.startswith('/previsoes'), 0)]),
   ('Património', [
-    ('/patrimonio', 'patrimonio', 'Património', caminho.startswith('/patrimonio'), 0)]),
+    ('/patrimonio', 'patrimonio', 'Património', caminho.startswith('/patrimonio'), 0),
+    ('/lar', 'tarefas', 'Lar (Santa Casa)', caminho.startswith('/lar'), 0)]),
   ('Viagens', [
     ('/viagens', 'viagens', 'Viagens', caminho.startswith('/viagens') and not caminho.startswith('/viagens/detetar'), 0),
     ('/viagens/detetar', 'procurar', 'Detetar viagens', caminho.startswith('/viagens/detetar'), 0)]),
