@@ -1063,23 +1063,44 @@ body.a-personalizar .grupo-cabecalho { flex-wrap: wrap; }
 .fl-painel { padding: .5rem .25rem; }
 .fl-painel h4 { margin: .5rem 0 .3rem; }
 
-/* Linha de mensagens no fundo do ecrã (mensagens.js) */
-.mensagens { position: fixed; z-index: 60; left: 16px; right: 16px; bottom: 16px; display: flex; flex-direction: column;
-  gap: .5rem; pointer-events: none; max-height: 45vh; overflow-y: auto; }
-.com-menu .mensagens { left: calc(var(--largura-lateral) + 16px); }
-.mensagens:empty { display: none; }
-.mensagem { pointer-events: auto; display: flex; align-items: flex-start; gap: .75rem; padding: .7rem .9rem .7rem 1.1rem;
-  border-radius: var(--raio-m); font-weight: 500; box-shadow: 0 6px 24px rgb(0 0 0 / .18);
-  background: linear-gradient(var(--alerta-fundo), var(--alerta-fundo)), var(--superficie); color: var(--alerta-texto);
-  animation: mensagem-entra .18s ease-out; }
-.mensagem-ok { background: linear-gradient(var(--ok-fundo), var(--ok-fundo)), var(--superficie); color: var(--ok-texto); }
-.mensagem-erro { background: linear-gradient(var(--erro-fundo), var(--erro-fundo)), var(--superficie); color: var(--erro-texto); }
+/* Moldura de mensagens no fundo do ecrã (mensagens.js): barra fixa com a última mensagem; abre para o histórico */
+:root { --altura-moldura: 44px; }
+body { padding-bottom: var(--altura-moldura); }
+.moldura-mensagens { position: fixed; z-index: 60; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column-reverse;
+  background: var(--superficie); border-top: 2px solid var(--linha); box-shadow: 0 -6px 20px rgb(0 0 0 / .12); }
+.com-menu .moldura-mensagens { left: var(--largura-lateral); }
+.mm-barra { display: flex; align-items: center; gap: .75rem; min-height: var(--altura-moldura); padding: 0 var(--margem, 16px); }
+.mm-titulo { flex: none; font-size: .7rem; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; color: var(--suave);
+  display: inline-flex; align-items: center; gap: .4rem; }
+.mm-contagem:not(:empty) { min-width: 1.4em; padding: 0 .4em; border-radius: 99px; background: var(--superficie-2);
+  color: var(--texto); font-size: .72rem; text-align: center; letter-spacing: 0; }
+.mm-ultima { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 550; }
+.mm-ultima a { color: inherit; font-weight: 700; }
+.mm-botao { flex: none; min-height: 0; padding: .3rem .7rem; font-size: .8rem; }
+.moldura-mensagens[data-tipo="vazio"] .mm-ultima { color: var(--suave); font-weight: 400; }
+.moldura-mensagens[data-tipo="vazio"] #mm-limpar { display: none; }
+.moldura-mensagens[data-tipo="ok"] { border-top-color: var(--ok-texto); }
+.moldura-mensagens[data-tipo="ok"] .mm-barra { background: var(--ok-fundo); color: var(--ok-texto); }
+.moldura-mensagens[data-tipo="alerta"] { border-top-color: var(--alerta-texto); }
+.moldura-mensagens[data-tipo="alerta"] .mm-barra { background: var(--alerta-fundo); color: var(--alerta-texto); }
+.moldura-mensagens[data-tipo="erro"] { border-top-color: var(--erro-texto); }
+.moldura-mensagens[data-tipo="erro"] .mm-barra { background: var(--erro-fundo); color: var(--erro-texto); }
+.moldura-mensagens[data-tipo]:not([data-tipo="vazio"]) .mm-titulo { color: inherit; }
+.moldura-mensagens.pisca .mm-barra { animation: mm-pisca .9s ease-out; }
+@keyframes mm-pisca { 0% { filter: brightness(1.35); } 100% { filter: none; } }
+.mm-lista { display: none; max-height: 40vh; overflow-y: auto; border-bottom: 1px solid var(--linha); padding: .4rem var(--margem, 16px); }
+.moldura-mensagens.aberta .mm-lista { display: block; }
+.mensagem { display: flex; align-items: baseline; gap: .75rem; padding: .45rem .7rem; margin: .25rem 0; border-radius: var(--raio-m);
+  border-left: 4px solid var(--alerta-texto); background: var(--alerta-fundo); color: var(--alerta-texto); }
+.mensagem-ok { border-left-color: var(--ok-texto); background: var(--ok-fundo); color: var(--ok-texto); }
+.mensagem-erro { border-left-color: var(--erro-texto); background: var(--erro-fundo); color: var(--erro-texto); }
+.mensagem-hora { flex: none; font-size: .75rem; opacity: .75; font-variant-numeric: tabular-nums; }
 .mensagem-texto { flex: 1; min-width: 0; }
 .mensagem-texto a { color: inherit; font-weight: 700; }
 .mensagem-texto ul { margin: 0; padding-left: 1.2rem; }
-.mensagem-fechar { flex: none; border: 0; background: transparent; color: inherit; font-size: 1.3rem; line-height: 1;
-  padding: 0 .2rem; cursor: pointer; min-height: 0; }
-@keyframes mensagem-entra { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
 @media (max-width: 900px) {
-  .com-menu .mensagens { left: 12px; right: 12px; bottom: calc(var(--altura-abas) + 10px + env(safe-area-inset-bottom)); }
+  .com-menu .moldura-mensagens { left: 0; bottom: calc(var(--altura-abas) + env(safe-area-inset-bottom)); }
+  .com-menu { padding-bottom: 0; }
+  .com-menu .conteudo { padding-bottom: calc(var(--altura-abas) + var(--altura-moldura) + 28px + env(safe-area-inset-bottom)); }
+  .mm-titulo { display: none; }
 }

@@ -85,10 +85,18 @@
   <footer class="rodape">Gestor de Contas · v{{ versao }}</footer>
 </main>
 
-{# Linha de mensagens no fundo do ecrã (mensagens.js): ações, avisos da página e mensagens do JavaScript. #}
-<div class="mensagens" id="mensagens" role="status" aria-live="polite">
-  {% for tipo, msg in flashes %}<div class="mensagem mensagem-{{ tipo }}" data-tipo="{{ tipo }}"><div class="mensagem-texto">{{ msg }}</div></div>{% endfor %}
-</div>
+{# Moldura de mensagens no fundo do ecrã (mensagens.js): ações, avisos da página e mensagens do JavaScript. #}
+<section class="moldura-mensagens" id="moldura-mensagens" data-tipo="vazio" aria-label="Mensagens">
+  <div class="mm-barra">
+    <span class="mm-titulo">Mensagens <span class="mm-contagem" id="mm-contagem"></span></span>
+    <span class="mm-ultima" id="mm-ultima" role="status" aria-live="polite">Sem mensagens.</span>
+    <button type="button" class="mm-botao" id="mm-abrir" aria-controls="mensagens" aria-expanded="false" hidden>Histórico ▴</button>
+    <button type="button" class="mm-botao" id="mm-limpar">Limpar</button>
+  </div>
+  <div class="mm-lista" id="mensagens">
+    {% for tipo, msg in flashes %}<div class="mensagem mensagem-{{ tipo }}" data-tipo="{{ tipo }}"><div class="mensagem-texto">{{ msg }}</div></div>{% endfor %}
+  </div>
+</section>
 
 {% if utilizador %}
 <nav class="abas-movel" aria-label="Navegação rápida">

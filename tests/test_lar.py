@@ -325,3 +325,21 @@ def test_regularizacao_e_comprovativo():
                       hoje=date(2026, 11, 2))
     assert {(r.tipo, m.id if m else None) for r, m in c.pagamentos} == {("regularização", 8), ("recibo", 9)}
     assert {e.chave: e for e in c.estados}["FT 2026/6073"].estado(c.ultima_carta) == "pago"
+
+
+def test_config_datas_no_formato_do_campo(tmp_path, falso):
+    """O campo de data envia dd/mm/aaaa (datas.js): as datas têm de ficar gravadas (antes ficavam vazias)."""
+    from tests.test_app import _csrf
+    app = create_app(tmp_path, backups_automaticos=False)
+    c = TestClient(app)
+    _post(c, "/setup", nome="Admin", login="admin", password=PW, password2=PW)
+    _heranca(app)
+    r = c.get("/lar")
+    r = c.post("/lar/config", data={"csrf": _csrf(r), "entidade": "", "santa_casa": "Santa Casa STC", "farmacia": "",
+                                    "lar_pago_ate": "30/09/2026", "lar_validar_desde": "01/01/2026"}, follow_redirects=True)
+    assert "Configuração do Lar guardada." in r.text
+    assert app.state.prefs["lar_pago_ate"] == "2026-09-30" and app.state.prefs["lar_validar_desde"] == "2026-01-01"
+    assert "As datas de regularização não estão definidas" not in r.text and "tudo pago até 30/09/2026" in r.text
+    r = c.post("/lar/config", data={"csrf": _csrf(r), "entidade": "", "santa_casa": "", "farmacia": "",
+                                    "lar_pago_ate": "31/02/2026", "lar_validar_desde": "01/01/2026"}, follow_redirects=True)
+    assert "«Tudo pago até»: data inválida" in r.text and app.state.prefs["lar_pago_ate"] == "2026-09-30"

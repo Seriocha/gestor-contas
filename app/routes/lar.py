@@ -13,6 +13,7 @@ from .. import lar, paperless, preferencias
 from .. import paperless_gestao as pg
 from ..deps import auditar, entidades_visiveis, exigir_papel, flash, get_db, render, utilizador_atual
 from ..models import PAPEIS, Conta, Entidade, LarValidacao, Movimento, Utilizador
+from ..formatos import parse_data
 from ..seguranca import ler_form
 from .documentos import token as token_paperless
 
@@ -123,18 +124,23 @@ async def config(request: Request, u: Utilizador = Depends(utilizador_atual), db
     preferencias.gravar(db, "lar_entidade", ent if ent.isdigit() else "")
     preferencias.gravar(db, "lar_corr_santa_casa", str(form.get("santa_casa", "")).strip()[:128])
     preferencias.gravar(db, "lar_corr_farmacia", str(form.get("farmacia", "")).strip()[:128])
-    for chave in ("lar_pago_ate", "lar_validar_desde"):
-        v = str(form.get(chave, "")).strip()
+    erros = []
+    for chave, rotulo in (("lar_pago_ate", "Tudo pago até"), ("lar_validar_desde", "Validar a partir de")):
+        # o campo de data envia dd/mm/aaaa (datas.js); antes só se aceitava aaaa-mm-dd e a data ficava vazia
         try:
-            v = date.fromisoformat(v).isoformat() if v else ""
+            d = parse_data(str(form.get(chave, "")))
         except ValueError:
-            v = ""
-        preferencias.gravar(db, chave, v)
+            erros.append(f"«{rotulo}»: data inválida (usa dd/mm/aaaa)")
+            continue
+        preferencias.gravar(db, chave, d.isoformat() if d else "")
     auditar(db, u, "lar_config", "")
     db.commit()
     request.app.state.prefs = preferencias.carregar(db)
     _CACHE.clear()
-    flash(request, "Configuração do Lar guardada.")
+    if erros:
+        flash(request, "Configuração do Lar guardada, menos: " + "; ".join(erros) + ".", "erro")
+    else:
+        flash(request, "Configuração do Lar guardada.")
     return RedirectResponse("/lar", status_code=303)
 
 
