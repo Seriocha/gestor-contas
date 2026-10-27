@@ -278,3 +278,50 @@ def test_lar_so_nas_herancas(tmp_path, falso):
     assert 'href="/lar"' not in c.get("/inicio").text                       # o menu não mostra o Lar
     _heranca(app)
     assert 'href="/lar"' in c.get("/inicio").text and "Lar · conciliação" in c.get("/lar").text
+
+
+def regularizacao(num, data, docs, total, via="ORIGINAL"):
+    linhas = "\n".join(f"{t} {t}UT1/{a} {n} 1 {v} {v}" for t, a, n, v in docs)
+    return (f"Santa Casa da Misericórdia de Exemplo {via}\nRua Exemplo n.º 1\n*165533*\n"
+            f"Regularização n.º PNL NLCDIV2026/{num} Maria Exemplo\nData {data} Moeda: EUR Contribuinte: 100000000\n"
+            f"Códigos do Ano/Mês: 2026/9 QTD. Valor Total IVA %\n{linhas}\n0,00 0,00 TOTAL {total}\n"
+            f"Observações: Tipo Pagamento: Bancos - CCAM\nRecebido em 01 de SETEMBRO de 2026\n"
+            f"Processado Por Computador. Este documento não serve de factura.")
+
+
+def comprovativo(data, valor, info):
+    return (f"Pág. 1/2\nID operação: 300000000001\nUtilizador: FULANO EXEMPLO Emitido a: {data} 10:06\n"
+            f"Foi registada uma operação com os seguintes dados:\nDetalhe da Operação Operação\nEnviar Nacional\n"
+            f"Conta a Debitar\n40000000000\nNome do Beneficiário\nSANTA CASA DA MISERICORDIA EXEMPLO\nMontante\n{valor} €\n"
+            f"Tipo de Operação\nTransferência\nInformação Complementar\n{info}\nDados da Operação Data de Registo\n"
+            f"{data} 10:06\nData da Operação\n{data}\nCanal\nCA Online\nEstado\nAceite")
+
+
+def test_regularizacao_e_comprovativo():
+    r = lar.ler_santa_casa(1, regularizacao(1436, "01-09-2026", [("NLD", 2026, 2709, "3,80"), ("NLD", 2026, 2439, "3,95"),
+                                                                ("NLD", 2026, 2302, "1,77")], "9,52"))
+    assert r.tipo == "regularização" and r.numero == "NLCDIV2026/1436" and r.data == date(2026, 9, 1) and r.total == 952
+    assert r.docs == [("NLD 2026/2709", 380), ("NLD 2026/2439", 395), ("NLD 2026/2302", 177)]
+    t = lar.ler_santa_casa(2, comprovativo("26/10/2026", "1.392,01", "01-10-2026 FTUT12026 / 00006073 c/extras"))
+    assert t.tipo == "comprovativo" and t.total == 139201 and t.data == date(2026, 10, 26)
+    assert t.docs == [("FT 2026/6073", 139201)] and t.numero == "transferência 300000000001"
+
+    sc = [(1, nld(2709, "15-08-2026", "3,80")), (2, regularizacao(1436, "01-09-2026", [("NLD", 2026, 2709, "3,80")], "3,80")),
+          (3, regularizacao(1436, "01-09-2026", [("NLD", 2026, 2709, "3,80")], "3,80", via="2.ª VIA")),
+          (4, ft(6073, "01-10-2026", "1.392,01")),
+          (5, comprovativo("26/10/2026", "1.392,01", "01-10-2026 FTUT12026 / 00006073 c/extras"))]
+    movs = [SimpleNamespace(id=8, montante=-380, data_mov=date(2026, 9, 1), descricao_original="TRF SANTA CASA"),
+            SimpleNamespace(id=9, montante=-139201, data_mov=date(2026, 10, 26), descricao_original="TRF SANTA CASA")]
+    c = lar.conciliar([], sc, movs, hoje=date(2026, 10, 27))
+    est = {e.chave: e for e in c.estados}
+    assert c.nao_reconhecidos == []                                   # nenhum fica por ler
+    assert est["NLD 2026/2709"].estado(c.ultima_carta) == "pago" and est["NLD 2026/2709"].recibo.tipo == "regularização"
+    ft6073 = est["FT 2026/6073"]
+    assert ft6073.estado(c.ultima_carta) == "transferido" and "recibo por emitir (transferência de 26/10)" in ft6073.falta()
+    assert {(r.tipo, m.id if m else None) for r, m in c.pagamentos} == {("regularização", 8), ("comprovativo", 9)}
+    assert len(c.pagamentos) == 2                                      # a 2.ª via não duplica
+    # chega o recibo da FT: o débito passa para o recibo e a transferência sai dos pagamentos
+    c = lar.conciliar([], sc + [(6, recibo(1500, "30-10-2026", [("FT", 2026, 6073, "1 392,01")], "1392,01"))], movs,
+                      hoje=date(2026, 11, 2))
+    assert {(r.tipo, m.id if m else None) for r, m in c.pagamentos} == {("regularização", 8), ("recibo", 9)}
+    assert {e.chave: e for e in c.estados}["FT 2026/6073"].estado(c.ultima_carta) == "pago"

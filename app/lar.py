@@ -11,6 +11,11 @@ Como funciona o circuito (confirmado pelo utilizador e pelos documentos reais):
   3. A mensalidade vem numa FATURA da Santa Casa (FT: 39 Mensalidade ERPI, 41 Comp. descendentes…).
   4. A CARTA INFORMATIVA/AVISO lista os documentos (NLD e FT) por pagar e o total.
   5. O RECIBO (REC) diz que documentos foram pagos e quando; o pagamento sai da conta da utente (Crédito Agrícola).
+     A REGULARIZAÇÃO («Regularização n.º PNL NLCDIV2026/1436») é o recibo das NLD de medicamentos: lista as NLD
+     pagas e o total, e conta como recibo.
+  6. O COMPROVATIVO da transferência (Crédito Agrícola, «Enviar Nacional» para a Santa Casa) vai por mail depois de
+     pagar, para a Santa Casa emitir o recibo: diz o montante, a data e, na «Informação Complementar», os documentos
+     pagos. Até chegar o recibo, o documento fica «transferido» (pago, recibo por emitir).
 
 A conciliação aponta: NLD de medicamentos que não batem com as faturas da farmácia, faturas da farmácia ainda não
 cobradas (ou esquecidas), documentos repetidos em várias cartas ou com valor alterado, e recibos sem movimento no banco.
@@ -123,6 +128,11 @@ class Recibo:
     docs: list = field(default_factory=list)    # [(chave, valor)]
     total: int | None = None
     pagamento: str = ""
+    tipo: str = "recibo"            # recibo | regularização | comprovativo (transferência, o recibo vem depois)
+
+    @property
+    def rotulo(self) -> str:
+        return {"regularização": "Regularização", "comprovativo": "Transferência"}.get(self.tipo, "Recibo")
 
 
 def ler_farmacia(pid: int, texto: str) -> FaturaFarmacia | None:
@@ -158,6 +168,37 @@ def ler_santa_casa(pid: int, texto: str):
         tot = re.search(r"Total\s+por\s+Pagar\s*:?\s*(" + _VALOR + ")", s, re.I)
         c.total = cent(tot.group(1)) if tot else None
         return c if c.data else None
+    if re.search(r"Regularizacao\s+n", s, re.I):
+        # recibo das NLD de medicamentos: «NLD NLDUT1/2026 2709 1 3,80 3,80» (documento, qtd., valor, total)
+        num = re.search(r"Regularizacao\s+n\S*\s+(?:PNL\s+)?(\S+)", s, re.I)
+        data_r = re.search(r"Data\s+(\d{2}-\d{2}-\d{4})", t)
+        r = Recibo(pid, num.group(1) if num else "", _data(data_r.group(1)) if data_r else None, tipo="regularização")
+        for m in re.finditer(r"^(NLD|FT)\s+(?:NLDUT1|FTUT1)\s*/?\s*(20\d{2})\s*/?\s*0*(\d+)\s+\d+\s+(" + _VALOR
+                             + r")\s+(" + _VALOR + ")", t, re.M):
+            r.docs.append((chave(m.group(1), int(m.group(2)), int(m.group(3))), cent(m.group(5))))
+        tot = re.search(r"TOTAL\s+(\d[\d .]*,\d{2})", t)
+        r.total = cent(tot.group(1)) if tot else (sum(v for _, v in r.docs) or None)
+        pag = re.search(r"Tipo\s+Pagamento:\s*([^\n]+)", s)
+        r.pagamento = pag.group(1).strip() if pag else ""
+        return r if r.data else None
+    if re.search(r"ID\s+opera", s, re.I) and re.search(r"SANTA\s+CASA", s, re.I) and re.search(r"Montante", s):
+        # comprovativo da transferência (Crédito Agrícola): «Montante 1.392,01 €», «Data da Operação 26/10/2026»,
+        # «Informação Complementar 01-10-2026 FTUT12026 / 00006073 c/extras»
+        mont = re.search(r"Montante\s*\n?\s*(" + _VALOR + ")", t)
+        data_op = re.search(r"Data\s+da\s+Opera\S*\s*\n?\s*(\d{2}/\d{2}/\d{4})", s) or \
+            re.search(r"Emitido\s+a:?\s*(\d{2}/\d{2}/\d{4})", s)
+        oper = re.search(r"ID\s+opera\S*:?\s*(\d+)", s, re.I)
+        if not mont or not data_op:
+            return None
+        r = Recibo(pid, f"transferência {oper.group(1)}" if oper else "transferência", _data(data_op.group(1)),
+                   total=cent(mont.group(1)), tipo="comprovativo")
+        info = re.search(r"Informa\S*\s+Complementar\s*\n?([^\n]*)", s)
+        refs = re.findall(r"(NLD|FT)\s*(?:NLD|FT)?UT1\s*/?\s*(20\d{2})\s*/?\s*0*(\d+)", info.group(1) if info else "")
+        r.docs = [(chave(tp, int(ano), int(n)), None) for tp, ano, n in refs]
+        if len(r.docs) == 1:
+            r.docs = [(r.docs[0][0], r.total)]
+        r.pagamento = "Transferência (comprovativo)"
+        return r
     if re.search(r"Recebimento\s+n", s, re.I):
         num = re.search(r"REC\s+(\S+)", t)
         r = Recibo(pid, num.group(1) if num else "", _data(re.search(r"Data\s+(\d{2}-\d{2}-\d{4})", t).group(1))
@@ -309,6 +350,7 @@ class EstadoDoc:
     valores: list                   # valores vistos (cartas e documento)
     cartas: list                    # datas das cartas em que aparece
     recibo: Recibo | None = None
+    transferencia: Recibo | None = None   # comprovativo da transferência (o recibo ainda não chegou)
     descricao: str = ""
     pid: int | None = None
     validacao: str = ""             # regularizado | validado | por validar
@@ -318,6 +360,8 @@ class EstadoDoc:
     def estado(self, ultima_carta: date | None, pago_ate: date | None = None) -> str:
         if self.recibo:
             return "pago"
+        if self.transferencia:
+            return "transferido"
         if pago_ate and self.data and self.data <= pago_ate:
             return "pago (declarado)"
         if ultima_carta and self.cartas and self.cartas[-1] == ultima_carta:
@@ -344,9 +388,11 @@ class EstadoDoc:
         out = []
         if not self.tem_pdf:
             out.append("PDF em falta")
-        if not self.cartas and not self.recibo:
+        if not self.cartas and not self.recibo and not self.transferencia:
             out.append("sem carta nem recibo")
-        if not self.recibo:
+        if not self.recibo and self.transferencia:
+            out.append(f"recibo por emitir (transferência de {self.transferencia.data:%d/%m})")
+        elif not self.recibo:
             out.append(f"recibo em falta (pago até {pago_ate:%d/%m})" if pago_ate and self.data and self.data <= pago_ate
                        else "recibo em falta")
         if len(self.valores) > 1:
@@ -368,23 +414,32 @@ def estados(docs: list[DocSantaCasa], cartas: list[Carta], recibos: list[Recibo]
                 e.cartas.append(c.data)
     for r in sorted(recibos, key=lambda r: r.data):
         for k, valor in r.docs:
-            e = por.setdefault(k, EstadoDoc(k, k.split()[0], r.data, [valor], []))
-            e.recibo = r
+            e = por.setdefault(k, EstadoDoc(k, k.split()[0], r.data, [valor] if valor is not None else [], []))
+            if r.tipo == "comprovativo":
+                e.transferencia = r
+            else:
+                e.recibo = r
     ultima = max((c.data for c in cartas), default=None)
     return sorted(por.values(), key=lambda e: (e.data or date.min, e.chave), reverse=True), ultima
 
 
 def ligar_pagamentos(recibos: list[Recibo], movimentos: list) -> list[tuple[Recibo, object | None]]:
-    """Cada recibo ↔ o débito de valor igual na conta da utente entre 10 dias antes e 3 dias depois do recibo."""
+    """Cada recibo ↔ o débito de valor igual na conta da utente entre 10 dias antes e 3 dias depois do recibo; um
+    comprovativo de transferência ↔ o débito do próprio dia (até 3 dias depois). Os comprovativos cujos documentos já
+    têm recibo saem (o débito é do recibo)."""
+    com_recibo = {k for r in recibos if r.tipo != "comprovativo" for k, _ in r.docs}
+    recibos = [r for r in recibos if r.tipo != "comprovativo" or not r.docs
+               or not all(k in com_recibo for k, _ in r.docs)]
     livres = list(movimentos)
     out = []
-    for r in sorted(recibos, key=lambda r: r.data, reverse=True):
+    for r in sorted(recibos, key=lambda r: (r.tipo != "comprovativo", r.data), reverse=True):
+        antes = timedelta(days=1 if r.tipo == "comprovativo" else 10)
         m = next((m for m in livres if r.total and m.montante == -r.total
-                  and r.data - timedelta(days=10) <= m.data_mov <= r.data + timedelta(days=3)), None)
+                  and r.data - antes <= m.data_mov <= r.data + timedelta(days=3)), None)
         if m:
             livres.remove(m)
         out.append((r, m))
-    return out
+    return sorted(out, key=lambda x: x[0].data, reverse=True)
 
 
 # ------------------------------------------------------------------ tudo junto
@@ -495,7 +550,7 @@ def conciliar(farmacia_docs: list[tuple[int, str]], santa_casa_docs: list[tuple[
             regularizado = (validar_desde is not None and r.data < validar_desde) or \
                 (bool(r.docs) and all(k in validados for k, _ in r.docs))
             if m is None and not regularizado and r.data >= hoje - timedelta(days=400):
-                alertas.append(("pagamento", f"Recibo {r.numero} de {r.data:%d/%m/%Y} ({fmt_montante(r.total or 0)}) sem débito igual na conta", r.data))
+                alertas.append(("pagamento", f"{r.rotulo} {r.numero} de {r.data:%d/%m/%Y} ({fmt_montante(r.total or 0)}) sem débito igual na conta", r.data))
     # só o intervalo em análise: o resto está pago/regularizado e fica escondido
     alertas = [(tipo, texto) for tipo, texto, d in alertas if no_intervalo(d)]
     dentro = [e for e in est if no_intervalo(e.data)]

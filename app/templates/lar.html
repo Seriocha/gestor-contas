@@ -117,8 +117,10 @@
           {% if link %}<br><a class="nota sem-quebra" target="_blank" rel="noopener" title="pesquisa no Paperless (todos os correspondentes) pelo n.º do documento"
              href="{{ link }}/documents?query={{ ((e.tipo ~ 'UT1' ~ e.chave.split(' ')[1]) if e.chave.split(' ')|length > 1 else e.chave)|urlencode }}">procurar ↗</a>{% endif %}{% endif %}</td>
         <td class="nota sem-quebra">{% for d in e.cartas %}{{ d.strftime('%d/%m') }}{{ ', ' if not loop.last }}{% else %}—{% endfor %}</td>
-        <td class="nota sem-quebra">{% if e.recibo %}{{ doc(e.recibo.pid, e.recibo.numero) }}<br>{{ e.recibo.data | data }}{% else %}—{% endif %}</td>
+        <td class="nota sem-quebra">{% if e.recibo %}{{ doc(e.recibo.pid, e.recibo.numero) }}<br>{{ e.recibo.data | data }}{% if e.recibo.tipo != 'recibo' %} · {{ e.recibo.rotulo | lower }}{% endif %}
+          {%- elif e.transferencia %}{{ doc(e.transferencia.pid, 'transferência') }}<br>{{ e.transferencia.data | data }} · recibo por emitir{% else %}—{% endif %}</td>
         <td>{% if est in ('pago', 'pago (declarado)') %}<span class="etiqueta etiqueta-ok">pago</span>
+          {% elif est == 'transferido' %}<span class="etiqueta etiqueta-ok" title="há comprovativo da transferência; falta o recibo">transferido</span>
           {% elif est == 'por pagar' %}<span class="etiqueta etiqueta-erro">por pagar</span>
           {% else %}<span class="nota">{{ est }}</span>{% endif %}</td>
         <td class="nota">{% for f in e.falta(c.pago_ate) %}<div>· {{ f }}</div>{% else %}<span class="etiqueta etiqueta-ok">casa</span>{% endfor %}</td>
@@ -145,11 +147,11 @@
   </table></div>
 </section>
 <section class="cartao">
-  <h2>Pagamentos <span class="nota">· recibos ↔ conta{% if entidade %} ({{ entidade.nome }}){% endif %}</span></h2>
+  <h2>Pagamentos <span class="nota">· recibos, regularizações e transferências ↔ conta{% if entidade %} ({{ entidade.nome }}){% endif %}</span></h2>
   <div class="rolar"><table class="tabela compacta">
-    <thead><tr><th>Recibo</th><th class="num">Total</th><th>Movimento</th></tr></thead>
+    <thead><tr><th>Recibo / comprovativo</th><th class="num">Total</th><th>Movimento</th></tr></thead>
     {% for r, m in c.pagamentos[:24] %}
-    <tr><td>{{ doc(r.pid, r.numero) }}<br><span class="nota">{{ r.data | data }} · {{ r.docs|map('first')|join(', ') }}</span></td>
+    <tr><td>{% if r.tipo != 'recibo' %}<span class="etiqueta">{{ r.rotulo }}</span> {% endif %}{{ doc(r.pid, r.numero) }}<br><span class="nota">{{ r.data | data }} · {{ r.docs|map('first')|join(', ') or 'sem documento indicado' }}</span></td>
       <td class="num">{{ (r.total or 0) | eur }}</td>
       <td class="nota">{% if m %}<a href="/movimentos/{{ m.id }}/detalhe">{{ m.data_mov | data }} · {{ m.descricao_original|truncate(30) }}</a>
         {% elif entidade %}<span class="pp-problema">sem débito igual</span>{% else %}—{% endif %}</td></tr>
@@ -163,7 +165,7 @@
 <section class="cartao" id="nao-reconhecidos">
   <h2>Documentos da Santa Casa que o Gestor não leu <span class="nota">· {{ c.nao_reconhecidos|length }}{% if c.n_anulados %} · {{ c.n_anulados }} anulado{{ 's' if c.n_anulados != 1 }} (ignorados){% endif %}</span></h2>
   <p class="nota">Estão no Paperless com o correspondente da Santa Casa, mas o texto não tem o formato de uma nota de lançamento,
-    fatura, carta ou recibo. Se for uma NLD ou FT com «PDF em falta» acima, abre-a e vê o separador <strong>Conteúdo</strong>:
+    fatura, carta, recibo, regularização ou comprovativo de transferência. Se for uma NLD ou FT com «PDF em falta» acima, abre-a e vê o separador <strong>Conteúdo</strong>:
     se o texto estiver estragado, usa «Refazer OCR» no Paperless; se estiver bem, manda-me esse texto para eu ajustar a leitura.
     Fichas, contratos e outros documentos podem ficar aqui sem problema.</p>
   {% if c.nao_reconhecidos %}
