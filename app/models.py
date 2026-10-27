@@ -653,6 +653,48 @@ class ContratoServico(Base):
     bem: Mapped["Bem"] = relationship()
 
 
+TARIFAS_LUZ = {"simples": "Simples", "bi-horaria": "Bi-horária", "tri-horaria": "Tri-horária"}
+PRECOS_LUZ = {"fixo": "Preço fixo", "indexado": "Indexado (mercado)", "dinamico": "Dinâmico (muda de mês a mês)"}
+
+
+class ContratoLuz(Base):
+    """Contrato de eletricidade de uma casa num período: o comercializador (operador), quem gere a mudança (ex.: a
+    Manie, que muda de operador quando compensa, em qualquer mês) e os dados do contrato. O histórico de uma casa é a
+    sequência destes períodos (o atual sem `fim`). Os débitos no banco com `texto_debito` (e a `referencia`, se houver)
+    dentro do período vão para esta casa (atribuição das despesas e comparação de fornecedores)."""
+    __tablename__ = "contrato_luz"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    bem_id: Mapped[int] = mapped_column(ForeignKey("bem.id", ondelete="CASCADE"), index=True)
+    comercializador: Mapped[str] = mapped_column(String(60))           # EDP, G9, Iberdrola…
+    gestor: Mapped[str | None] = mapped_column(String(60))             # empresa que gere o contrato (ex.: Manie)
+    inicio: Mapped[date] = mapped_column(Date)
+    fim: Mapped[date | None] = mapped_column(Date)                     # None = em vigor
+    tarifa: Mapped[str | None] = mapped_column(String(12))             # ver TARIFAS_LUZ
+    preco: Mapped[str | None] = mapped_column(String(10))              # ver PRECOS_LUZ
+    potencia: Mapped[str | None] = mapped_column(String(12))           # «6,9 kVA»
+    cpe: Mapped[str | None] = mapped_column(String(30))
+    referencia: Mapped[str | None] = mapped_column(String(30))         # n.º de cliente/contrato no fim do débito
+    texto_debito: Mapped[str | None] = mapped_column(String(60))       # texto do débito no extrato (omissão: o operador)
+    motivo: Mapped[str | None] = mapped_column(String(200))            # porque mudou (ex.: «Manie: −12 % no kWh»)
+    notas: Mapped[str | None] = mapped_column(Text)
+    criado_em: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, server_default=func.now())
+
+    bem: Mapped["Bem"] = relationship(back_populates="contratos_luz")
+
+    @property
+    def texto(self) -> str:
+        return (self.texto_debito or self.comercializador or "").strip()
+
+    @property
+    def tarifa_rotulo(self) -> str:
+        return TARIFAS_LUZ.get(self.tarifa or "", "")
+
+    @property
+    def preco_rotulo(self) -> str:
+        return PRECOS_LUZ.get(self.preco or "", "")
+
+
 class ViagemDescartada(Base):
     """Período detetado (Viagens › Detetar) que o utilizador disse não ser uma viagem: não volta a ser proposto."""
     __tablename__ = "viagem_descartada"
@@ -814,6 +856,8 @@ class Bem(Base):
     registos_km: Mapped[list["RegistoKm"]] = relationship(cascade="all, delete-orphan",
                                                          order_by="[RegistoKm.data, RegistoKm.km]")
     plano: Mapped[list["ItemPlano"]] = relationship(cascade="all, delete-orphan", order_by="ItemPlano.ordem")
+    contratos_luz: Mapped[list["ContratoLuz"]] = relationship(cascade="all, delete-orphan", back_populates="bem",
+                                                              order_by="ContratoLuz.inicio")
     manutencoes: Mapped[list["Manutencao"]] = relationship(cascade="all, delete-orphan",
                                                           order_by="[Manutencao.data, Manutencao.km]")
 

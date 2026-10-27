@@ -31,11 +31,12 @@ CONHECIDOS = [("EDP", r"\bEDP\b"), ("G9", r"\bG9\b"), ("Galp", r"GALP"), ("Endes
               ("Goldenergy", r"GOLD ?ENERGY"), ("Luzboa", r"LUZBOA"), ("Repsol", r"REPSOL"), ("SU Eletricidade", r"SU ELETRICIDADE"),
               ("Plenitude", r"PLENITUDE|\bENI\b"), ("Coopérnico", r"COOPERNICO"), ("MEO Energia", r"MEO ENERGIA"),
               ("Muon", r"\bMUON\b"), ("YES Energy", r"YES ENERGY"), ("Ezu", r"\bEZU\b"), ("Audax", r"AUDAX"),
+              ("Manie", r"\bMANIE\b"),
               ("Vodafone", r"VODAFONE"), ("MEO", r"\bMEO\b"), ("NOS", r"\bNOS\b"), ("Digi", r"\bDIGI\b"),
               ("EPAL", r"\bEPAL\b"), ("SMAS", r"\bSMAS\b"), ("Águas", r"AGUAS? D")]
 
 ENERGIA = {"EDP", "G9", "Galp", "Endesa", "Iberdrola", "Goldenergy", "Luzboa", "Repsol", "SU Eletricidade", "Plenitude",
-           "Coopérnico", "MEO Energia", "Muon", "YES Energy", "Ezu", "Audax"}
+           "Coopérnico", "MEO Energia", "Muon", "YES Energy", "Ezu", "Audax", "Manie"}
 TELECOM = {"Vodafone", "MEO", "NOS", "Digi"}
 AGUA = {"EPAL", "SMAS", "Águas"}
 POR_ATRIBUIR = "Por atribuir"
@@ -329,16 +330,26 @@ def analisar(db: Session, entidade_id: int, categoria_id: int | None, extras: li
     # casas atribuídas à mão a um débito (Movimento.bem_id com bem_manual): ganham aos contratos
     casas_mao = {b.id: b for b in db.scalars(select(Bem).where(Bem.entidade_id == entidade_id, Bem.tipo == "casa"))}
     a_mao = {m.id: casas_mao[m.bem_id] for m, _ in itens if m.bem_manual and m.bem_id in casas_mao}
-    if not itens or (not a.contratos and not a_mao):
+    # contratos de luz das casas (ficha do imóvel): o operador e o período decidem a casa, mesmo com mudanças a meio
+    from .luz import contrato_do_debito
+    from .models import ContratoLuz
+    luz = db.scalars(select(ContratoLuz).join(Bem).where(Bem.entidade_id == entidade_id)
+                     .options(selectinload(ContratoLuz.bem))).all()
+    if not itens or (not a.contratos and not a_mao and not luz):
         a.propostas = propostas(itens) if itens else []
         a.atribuicao = {m.id: (None, None) for m, _ in itens}
         return a
     por_casa, por_atribuir = defaultdict(list), []
-    bens = {c.bem_id: c.bem for c in a.contratos} | {b.id: b for b in a_mao.values()}
+    bens = {c.bem_id: c.bem for c in a.contratos} | {b.id: b for b in a_mao.values()} | {c.bem_id: c.bem for c in luz}
     for m, f in itens:
         if m.id in a_mao:
             por_casa[a_mao[m.id].id].append((m, f))
             a.atribuicao[m.id] = (a_mao[m.id].nome, "à mão")
+            continue
+        cl = contrato_do_debito(luz, m) if luz else None
+        if cl:
+            por_casa[cl.bem_id].append((m, f))
+            a.atribuicao[m.id] = (cl.bem.nome, "contrato de luz")
             continue
         c = next((c for c in a.contratos if corresponde(c, m)), None)
         (por_casa[c.bem_id] if c else por_atribuir).append((m, f))

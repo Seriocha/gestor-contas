@@ -58,6 +58,7 @@
 
 {% if not b.empresa %}
 {% if b.tipo == 'rustico' %}{% include "patrimonio/_construcoes.html" %}{% endif %}
+{% if b.tipo == 'casa' %}{% include "patrimonio/_luz.html" %}{% endif %}
 {% if rech %}{% include "patrimonio/_recheio.html" %}{% endif %}
 
 <details class="cartao recolher" id="avaliacoes" {% if b.tipo != 'carro' %}open{% endif %}>

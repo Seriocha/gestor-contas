@@ -337,6 +337,7 @@ def ficha(request: Request, bid: int, u: Utilizador = Depends(utilizador_atual),
                   via_verde=vv.do_carro(db, b, ini, hoje) if b.tipo == "carro" else [],
                   consumo=fuelio.consumo(db, b, ini, hoje) if b.tipo == "carro" else None,
                   rech=recheio.resumo_casa(db, b, hoje) if b.tipo == "casa" else None,
+                  **(_luz_ctx(db, b, hoje) if b.tipo == "casa" else {}),
                   consumo_total=fuelio.consumo(db, b, date.min, hoje) if b.tipo == "carro" else None)
 
 
@@ -952,6 +953,158 @@ async def apagar_avaliacao(request: Request, bid: int, aid: int, u: Utilizador =
     db.commit()
     flash(request, "Avaliação apagada.")
     return RedirectResponse(f"/patrimonio/{b.id}#avaliacoes", status_code=303)
+
+
+# ------------------------------------------------------------------ eletricidade da casa (contratos e mudanças de operador)
+def _luz_ctx(db: Session, b: Bem, hoje: date) -> dict:
+    from .. import fornecedores as fo
+    from .. import luz
+    from ..models import PRECOS_LUZ, TARIFAS_LUZ, ContadorEnergia
+    contadores = db.scalars(select(ContadorEnergia).where(ContadorEnergia.entidade_id == b.entidade_id)
+                            .order_by(ContadorEnergia.cpe)).all()
+    return {"luz_periodos": luz.periodos(db, b), "luz_atual": luz.atual(b), "luz_problemas": luz.problemas(b.contratos_luz),
+            "luz_sugestoes": luz.sugerir(db, b, hoje) if not b.contratos_luz else [],
+            "luz_contadores": [c for c in contadores if c.bem_id == b.id],
+            "luz_contadores_livres": [c for c in contadores if c.bem_id is None],
+            "luz_operadores": sorted(fo.ENERGIA), "luz_tarifas": TARIFAS_LUZ, "luz_precos": PRECOS_LUZ,
+            "luz_gestor": luz.GESTOR_OMISSAO, "luz_janela": luz.JANELA_FATURA}
+
+
+CAMPOS_LUZ = ("comercializador", "gestor", "tarifa", "preco", "potencia", "cpe", "referencia", "texto_debito", "motivo",
+              "notas")
+
+
+def _dados_luz(form) -> dict:
+    from ..models import PRECOS_LUZ, TARIFAS_LUZ
+    tam = {"comercializador": 60, "gestor": 60, "tarifa": 12, "preco": 10, "potencia": 12, "cpe": 30, "referencia": 30,
+           "texto_debito": 60, "motivo": 200, "notas": 2000}
+    d = {k: str(form.get(k, "")).strip()[:tam[k]] or None for k in CAMPOS_LUZ}
+    if d["tarifa"] not in TARIFAS_LUZ:
+        d["tarifa"] = None
+    if d["preco"] not in PRECOS_LUZ:
+        d["preco"] = None
+    if d["cpe"]:
+        d["cpe"] = d["cpe"].upper().replace(" ", "")
+    return d
+
+
+def _casa(db: Session, u: Utilizador, bid: int) -> Bem:
+    b, _ = _bem(db, u, bid, "editar")
+    if b.tipo != "casa":
+        raise HTTPException(status_code=404, detail="Só as casas têm eletricidade.")
+    return b
+
+
+@router.post("/{bid}/luz/mudar")
+async def luz_mudar(request: Request, bid: int, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
+    """Muda de operador a partir de uma data (ou regista o 1.º contrato): o atual acaba na véspera."""
+    from .. import luz
+    b = _casa(db, u, bid)
+    form = await ler_form(request)
+    dados = _dados_luz(form)
+    voltar = f"/patrimonio/{b.id}#eletricidade"
+    try:
+        data = parse_data(str(form.get("data", "")))
+    except ValueError:
+        data = None
+    if not data or not dados["comercializador"]:
+        flash(request, "Indica a data da mudança e o novo operador.", "erro")
+        return RedirectResponse(voltar, status_code=303)
+    anterior = luz.atual(b)
+    try:
+        novo = luz.mudar(db, b, data, dados.pop("comercializador"), **dados)
+    except ValueError as e:
+        db.rollback()
+        flash(request, str(e), "erro")
+        return RedirectResponse(voltar, status_code=303)
+    n = pt.atribuir(db, b.entidade_id)
+    texto = (f"{anterior.comercializador} → {novo.comercializador} a {data:%d/%m/%Y}" if anterior
+             else f"{novo.comercializador} desde {data:%d/%m/%Y}")
+    auditar(db, u, "luz_mudanca", f"{b.nome}: {texto}" + (f" (gestão: {novo.gestor})" if novo.gestor else ""))
+    db.commit()
+    flash(request, f"Eletricidade de {b.nome}: {texto}." + (f" {n} débito(s) reatribuído(s)." if n else ""))
+    return RedirectResponse(voltar, status_code=303)
+
+
+@router.post("/{bid}/luz/historico")
+async def luz_historico(request: Request, bid: int, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
+    """Cria o histórico de operadores a partir dos débitos de luz já atribuídos à casa (só sem contratos)."""
+    from .. import luz
+    b = _casa(db, u, bid)
+    form = await ler_form(request)
+    if b.contratos_luz:
+        flash(request, "A casa já tem contratos de luz: acrescenta as mudanças uma a uma.", "erro")
+        return RedirectResponse(f"/patrimonio/{b.id}#eletricidade", status_code=303)
+    sug = luz.sugerir(db, b, date.today())
+    gestor = str(form.get("gestor", "")).strip()[:60] or None
+    n = luz.criar_historico(db, b, sug, date.today(), gestor)
+    pt.atribuir(db, b.entidade_id)
+    auditar(db, u, "luz_historico", f"{b.nome}: {n} contratos a partir dos débitos")
+    db.commit()
+    flash(request, f"{n} contrato(s) de luz criados a partir dos débitos — confirma as datas de cada um.")
+    return RedirectResponse(f"/patrimonio/{b.id}#eletricidade", status_code=303)
+
+
+@router.post("/{bid}/luz/contador")
+async def luz_contador(request: Request, bid: int, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
+    """Liga (ou desliga) um contador da E-Redes (CPE) a esta casa: os kWh entram no custo por kWh de cada contrato."""
+    from ..models import ContadorEnergia
+    b = _casa(db, u, bid)
+    form = await ler_form(request)
+    c = db.get(ContadorEnergia, int(form["contador"])) if str(form.get("contador", "")).isdigit() else None
+    if not c or c.entidade_id != b.entidade_id:
+        flash(request, "Escolhe o contador.", "erro")
+        return RedirectResponse(f"/patrimonio/{b.id}#eletricidade", status_code=303)
+    c.bem_id = None if form.get("acao") == "desligar" else b.id
+    db.commit()
+    flash(request, f"Contador {c.cpe} {'desligado de' if c.bem_id is None else 'ligado a'} {b.nome}.")
+    return RedirectResponse(f"/patrimonio/{b.id}#eletricidade", status_code=303)
+
+
+@router.post("/{bid}/luz/{cid}")
+async def luz_editar(request: Request, bid: int, cid: int, u: Utilizador = Depends(utilizador_atual),
+                     db: Session = Depends(get_db)):
+    """Corrige um contrato do histórico (datas e dados); os períodos não se podem sobrepor."""
+    from .. import luz
+    from ..models import ContratoLuz
+    b = _casa(db, u, bid)
+    c = db.get(ContratoLuz, cid)
+    if not c or c.bem_id != b.id:
+        raise HTTPException(status_code=404, detail="Não encontrado.")
+    form = await ler_form(request)
+    voltar = f"/patrimonio/{b.id}#eletricidade"
+    if form.get("acao") == "apagar":
+        nome = c.comercializador
+        db.delete(c)
+        db.flush()
+        pt.atribuir(db, b.entidade_id)
+        auditar(db, u, "luz_apagado", f"{b.nome}: {nome}")
+        db.commit()
+        flash(request, f"Contrato {nome} apagado do histórico.")
+        return RedirectResponse(voltar, status_code=303)
+    dados = _dados_luz(form)
+    try:
+        inicio = parse_data(str(form.get("inicio", "")))
+        fim = parse_data(str(form.get("fim", "")))
+    except ValueError:
+        inicio = None
+    if not inicio or not dados["comercializador"]:
+        flash(request, "O contrato precisa do operador e da data de início.", "erro")
+        return RedirectResponse(voltar, status_code=303)
+    for k, v in dados.items():
+        setattr(c, k, v)
+    c.inicio, c.fim = inicio, fim
+    erros = luz.problemas(b.contratos_luz)
+    if erros:
+        db.rollback()
+        flash(request, "Não guardado: " + " ".join(erros), "erro")
+        return RedirectResponse(voltar, status_code=303)
+    n = pt.atribuir(db, b.entidade_id)
+    auditar(db, u, "luz_editado", f"{b.nome}: {c.comercializador} {inicio:%d/%m/%Y}–{fim:%d/%m/%Y}" if fim else
+            f"{b.nome}: {c.comercializador} desde {inicio:%d/%m/%Y}")
+    db.commit()
+    flash(request, f"Contrato {c.comercializador} guardado." + (f" {n} débito(s) reatribuído(s)." if n else ""))
+    return RedirectResponse(voltar, status_code=303)
 
 
 @router.get("/{bid}/editar")

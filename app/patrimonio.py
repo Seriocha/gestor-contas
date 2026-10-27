@@ -81,6 +81,7 @@ def bem_para(m: Movimento, padroes: list, omissao: dict) -> int | None:
 def atribuir(db: Session, entidade_id: int, movs: list[Movimento] | None = None) -> int:
     """Atribui os movimentos aos bens. Devolve quantos mudaram.
 
+    0.º os abastecimentos do Fuelio e os débitos dos contratos de luz de cada casa (operador e período);
     1.º os padrões de cada bem (texto contido na descrição, dentro do período em que o bem foi nosso);
     2.º o bem «por omissão» do tipo fica com as saídas da categoria Casa (casas) ou Transportes (carros,
     sem os transportes públicos). Sem `movs`, revê todos os movimentos da entidade — a atribuição
@@ -100,11 +101,14 @@ def atribuir(db: Session, entidade_id: int, movs: list[Movimento] | None = None)
     bens_ids = {b.id for b in bens}
     das_regras = {rid: bid for rid, bid in db.execute(select(Regra.id, Regra.bem_id).where(Regra.bem_id.is_not(None)))
                   if bid in bens_ids}
+    from . import luz
+    da_luz = luz.debitos_por_bem(db, entidade_id)              # débitos dos contratos de luz de cada casa
     n = 0
     for m in movs:
         if m.bem_manual:
             continue
         alvo = (abastecidos.get(m.id)
+                or da_luz.get(m.id)
                 or (das_regras.get(m.regra_id) if m.qualificado_por == "regra" else None)
                 or bem_para(m, padroes, omissao))
         if alvo != m.bem_id:

@@ -1,0 +1,130 @@
+{# Casa: eletricidade — contrato em vigor, mudança de operador (ex.: gerida pela Manie, em qualquer mês), histórico com o
+   que se pagou em cada período e o contador da E-Redes. Contexto: b, luz_* (routes/patrimonio._luz_ctx), pode_editar. #}
+{% macro campos(c, novo=false) %}
+  <div class="linha">
+    <label>Operador (comercializador) <input name="comercializador" value="{{ '' if novo else c.comercializador }}" list="luz-operadores" required maxlength="60"></label>
+    <label>Gerido por <input name="gestor" value="{{ (c.gestor if c and c.gestor else (luz_gestor if novo else '')) or '' }}" maxlength="60" placeholder="ex.: {{ luz_gestor }}"></label>
+  </div>
+  <div class="linha">
+    <label>Tarifa <select name="tarifa"><option value="">—</option>{% for k, r in luz_tarifas.items() %}<option value="{{ k }}" {% if c and c.tarifa == k %}selected{% endif %}>{{ r }}</option>{% endfor %}</select></label>
+    <label>Preço <select name="preco"><option value="">—</option>{% for k, r in luz_precos.items() %}<option value="{{ k }}" {% if c and c.preco == k %}selected{% endif %}>{{ r }}</option>{% endfor %}</select></label>
+    <label>Potência <input name="potencia" value="{{ c.potencia if c and c.potencia else '' }}" maxlength="12" placeholder="6,9 kVA"></label>
+  </div>
+  <div class="linha">
+    <label>CPE <input name="cpe" value="{{ c.cpe if c and c.cpe else '' }}" maxlength="30" placeholder="PT0002…"></label>
+    <label>Referência no débito <input name="referencia" value="{{ '' if novo or not c or not c.referencia else c.referencia }}" maxlength="30" placeholder="n.º no fim da descrição"></label>
+    <label>Texto do débito <input name="texto_debito" value="{{ '' if novo or not c or not c.texto_debito else c.texto_debito }}" maxlength="60" placeholder="omissão: o nome do operador"></label>
+  </div>
+  <label>Motivo da mudança <input name="motivo" value="{{ '' if novo or not c or not c.motivo else c.motivo }}" maxlength="200" placeholder="ex.: proposta da {{ luz_gestor }}: −10 % no kWh"></label>
+  <label>Notas <textarea name="notas" rows="2">{{ '' if novo or not c or not c.notas else c.notas }}</textarea></label>
+{% endmacro %}
+
+<section class="cartao" id="eletricidade">
+  <div class="cartao-cabecalho">
+    <h2>Eletricidade {% if luz_atual %}<span class="nota">· {{ luz_atual.comercializador }}{% if luz_atual.gestor %} · gerido por {{ luz_atual.gestor }}{% endif %}</span>{% endif %}</h2>
+  </div>
+  <datalist id="luz-operadores">{% for o in luz_operadores %}<option value="{{ o }}">{% endfor %}</datalist>
+  {% for p in luz_problemas %}<p class="pp-problema">{{ p }}</p>{% endfor %}
+
+  {% if luz_atual %}
+  <div class="kpi-linha">
+    <div class="kpi"><span class="nota">Operador desde {{ luz_atual.inicio | data }}</span><strong>{{ luz_atual.comercializador }}</strong>
+      <span class="nota">{{ luz_atual.gestor and ('gerido por ' ~ luz_atual.gestor) or 'sem gestor' }}</span></div>
+    <div class="kpi"><span class="nota">Contrato</span><strong>{{ luz_atual.tarifa_rotulo or '—' }}</strong>
+      <span class="nota">{{ luz_atual.preco_rotulo }}{{ ' · ' if luz_atual.preco_rotulo and luz_atual.potencia }}{{ luz_atual.potencia or '' }}</span></div>
+    {% set p0 = luz_periodos[0] if luz_periodos else none %}
+    <div class="kpi"><span class="nota">Média por mês (este operador)</span><strong>{{ p0.media_mes | eur if p0 and p0.meses else '—' }}</strong>
+      <span class="nota">{{ p0.meses if p0 else 0 }} mês(es) com débitos{% if p0 and p0.eur_kwh %} · {{ ('%.3f' % p0.eur_kwh).replace('.', ',') }} €/kWh{% endif %}</span></div>
+    <div class="kpi"><span class="nota">CPE</span><strong class="sem-quebra">{{ luz_atual.cpe or '—' }}</strong>
+      <span class="nota">{{ luz_contadores | length }} contador(es) E-Redes ligado(s)</span></div>
+  </div>
+  {% elif not luz_sugestoes %}
+  <p class="vazio">Ainda sem contrato de luz registado. Regista o operador atual e a data desde quando — a partir daí, cada mudança
+    (feita por ti ou pela {{ luz_gestor }}) fica no histórico.</p>
+  {% endif %}
+
+  {% if luz_sugestoes %}
+  <div class="aviso-alerta separado" style="padding: .8rem 1rem; border-radius: var(--raio-m)">
+    <p class="sem-margem">Os débitos de luz atribuídos a esta casa mostram este histórico de operadores:</p>
+    <ul>{% for s in luz_sugestoes %}<li><strong>{{ s.comercializador }}</strong> — {{ s.n }} débito(s) de {{ s.de | data }} a {{ s.ate | data }}{% if s.referencia %} · ref. {{ s.referencia }}{% endif %}</li>{% endfor %}</ul>
+    {% if pode_editar %}
+    <form method="post" action="/patrimonio/{{ b.id }}/luz/historico" class="acoes-form">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
+      <label>Gerido por (o atual) <input name="gestor" value="{{ luz_gestor }}" maxlength="60"></label>
+      <button class="primario">Criar o histórico a partir dos débitos</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if pode_editar %}
+  <details class="separado" {% if not luz_atual and not luz_sugestoes %}open{% endif %}>
+    <summary class="ligacao"><strong>{{ 'Mudar de operador…' if luz_atual else 'Registar o contrato atual…' }}</strong></summary>
+    <form method="post" action="/patrimonio/{{ b.id }}/luz/mudar" class="formulario separado" style="max-width: 760px">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
+      <label>{{ 'Data da mudança (o novo operador começa neste dia)' if luz_atual else 'Desde' }} <input type="date" name="data" required></label>
+      {{ campos(luz_atual, novo=true) }}
+      {% if luz_atual %}<p class="nota sem-margem">O contrato com {{ luz_atual.comercializador }} acaba na véspera. O novo herda o gestor, a tarifa, o preço, a
+        potência e o CPE que deixares em branco; a referência e o texto do débito são do novo operador.</p>{% endif %}
+      <div class="acoes-form"><button class="primario">{{ 'Registar a mudança' if luz_atual else 'Registar contrato' }}</button></div>
+    </form>
+  </details>
+  {% endif %}
+
+  {% if luz_periodos %}
+  <h3 class="separado">Histórico de operadores</h3>
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th>Período</th><th>Operador</th><th>Contrato</th><th class="num">Débitos</th><th class="num">Pago</th><th class="num">Média/mês</th><th class="num">kWh</th><th class="num">€/kWh</th>{% if pode_editar %}<th></th>{% endif %}</tr></thead>
+    <tbody>
+    {% for p in luz_periodos %}{% set c = p.contrato %}
+    <tr>
+      <td class="sem-quebra">{{ c.inicio | data }} – {{ c.fim | data if c.fim else 'em vigor' }}<br><span class="nota">{{ p.dias }} dias</span></td>
+      <td><strong>{{ c.comercializador }}</strong>{% if c.gestor %}<br><span class="nota">gerido por {{ c.gestor }}</span>{% endif %}
+        {% if c.motivo %}<br><span class="nota">{{ c.motivo }}</span>{% endif %}</td>
+      <td class="nota">{{ c.tarifa_rotulo }}{{ ' · ' if c.tarifa_rotulo and c.preco_rotulo }}{{ c.preco_rotulo }}{% if c.potencia %}<br>{{ c.potencia }}{% endif %}{% if c.referencia %}<br>ref. {{ c.referencia }}{% endif %}</td>
+      <td class="num">{{ p.debitos | length }}</td>
+      <td class="num">{{ p.total | eur if p.debitos else '—' }}</td>
+      <td class="num">{{ p.media_mes | eur if p.meses else '—' }}</td>
+      <td class="num">{{ '{:,}'.format(p.kwh).replace(',', '.') if p.kwh else '—' }}</td>
+      <td class="num">{{ ('%.3f' % p.eur_kwh).replace('.', ',') if p.eur_kwh else '—' }}</td>
+      {% if pode_editar %}
+      <td class="sem-quebra"><details><summary class="ligacao">Editar</summary>
+        <form method="post" action="/patrimonio/{{ b.id }}/luz/{{ c.id }}" class="formulario" style="min-width: 320px">
+          <input type="hidden" name="csrf" value="{{ csrf_token }}">
+          <div class="linha">
+            <label>Início <input type="date" name="inicio" value="{{ c.inicio.isoformat() }}" required></label>
+            <label>Fim <input type="date" name="fim" value="{{ c.fim.isoformat() if c.fim else '' }}"></label>
+          </div>
+          {{ campos(c) }}
+          <div class="acoes-form"><button class="primario">Guardar</button>
+            <button name="acao" value="apagar" onclick="return confirm('Apagar este contrato do histórico?')">Apagar</button></div>
+        </form></details></td>
+      {% endif %}
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  <p class="nota sem-margem">Os débitos com o texto do operador (e a referência, se houver) entre o início e {{ luz_janela }} dias depois do fim de cada
+    contrato contam para esse período — a última fatura chega depois da mudança — e vão para esta casa (despesas e
+    <a href="/relatorios/fornecedores?entidade={{ b.entidade_id }}">comparação de fornecedores</a>). O €/kWh é aproximado: pago no período ÷ consumo
+    lido pela E-Redes.</p>
+  {% endif %}
+
+  <h3 class="separado">Contador (E-Redes)</h3>
+  {% if luz_contadores %}
+  <ul class="sem-margem">{% for ct in luz_contadores %}
+    <li><strong>{{ ct.cpe }}</strong>{% if ct.morada %} · {{ ct.morada }}{% endif %} · {{ ct.leituras | length }} leituras
+      {% if pode_editar %}<form method="post" action="/patrimonio/{{ b.id }}/luz/contador" style="display: inline">
+        <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="contador" value="{{ ct.id }}">
+        <button class="ligacao" name="acao" value="desligar">desligar</button></form>{% endif %}</li>
+  {% endfor %}</ul>
+  {% else %}<p class="nota sem-margem">Nenhum contador ligado a esta casa.{% endif %}
+  {% if pode_editar and luz_contadores_livres %}
+  <form method="post" action="/patrimonio/{{ b.id }}/luz/contador" class="acoes-form">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <select name="contador" aria-label="Contador">{% for ct in luz_contadores_livres %}<option value="{{ ct.id }}">{{ ct.cpe }}{{ ' · ' ~ ct.morada if ct.morada }}</option>{% endfor %}</select>
+    <button>Ligar a esta casa</button>
+  </form>
+  {% endif %}
+  {% if not luz_contadores %}<p class="nota sem-margem">As leituras importam-se em <a href="/relatorios/fornecedores?entidade={{ b.entidade_id }}#consumos">Comparar fornecedores</a> (Excel do Balcão Digital da E-Redes).</p>{% endif %}
+</section>
