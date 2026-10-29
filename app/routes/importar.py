@@ -222,6 +222,9 @@ def mostrar_previa(request: Request, db: Session, u: Utilizador, conta: Conta, n
     erros = [erro_sub] if erro_sub else []
     if extrato.moeda != conta.moeda:
         erros.append(f"O extrato está em {extrato.moeda} e a conta em {conta.moeda}.")
+    if not conta.entidade.tem_banco(conta.instituicao_id):
+        avisos.append(f"O {conta.instituicao.nome} não faz parte do perfil de importação de «{conta.entidade.nome}» "
+                      "(Administração › Entidades).")
     if conta.instituicao.parser and conta.instituicao.parser != extrato.parser.split("_")[0]:
         avisos.append(f"O ficheiro parece ser do {extrato.banco}, mas a conta é do {conta.instituicao.nome}. "
                       "Confirma que escolheste a conta certa.")

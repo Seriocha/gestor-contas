@@ -31,8 +31,12 @@ def _opcoes(db: Session, entidade_id: int, conta_id: int | None = None) -> dict:
         select(Utilizador).join(Permissao).where(Permissao.entidade_id == entidade_id, Utilizador.ativo)
         .order_by(Utilizador.nome)
     ).all()
+    ent = db.get(Entidade, entidade_id)
+    atual = db.get(Conta, conta_id).instituicao_id if conta_id else None
     return {
-        "instituicoes": db.scalars(select(Instituicao).where(Instituicao.ativa).order_by(Instituicao.nome)).all(),
+        # os bancos do perfil de importação da entidade (vazio = todos) e o da própria conta
+        "instituicoes": [i for i in db.scalars(select(Instituicao).where(Instituicao.ativa).order_by(Instituicao.nome))
+                         if not ent or ent.tem_banco(i.id) or i.id == atual],
         "tipos": TIPOS_CONTA,
         "tipos_taxa": TIPOS_TAXA,
         "pagadoras": pagadoras,

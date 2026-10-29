@@ -66,8 +66,17 @@ def ficheiros(raiz: Path) -> list[tuple[str, Path]]:
     return out
 
 
+def fonte_de(pasta: str) -> str:
+    """«paperless» para os extratos vindos do Paperless, «pasta» para os da pasta partilhada."""
+    from .extratos import PASTA_PAPERLESS
+    return "paperless" if pasta == PASTA_PAPERLESS else "pasta"
+
+
 def _candidatas(db: Session, extrato: Extrato, pasta: str) -> list[Conta]:
-    contas = db.scalars(select(Conta).where(Conta.ativa).join(Instituicao)).all()
+    # só as contas das entidades cujo perfil de importação inclui esta fonte e este banco
+    fonte = fonte_de(pasta)
+    contas = [c for c in db.scalars(select(Conta).where(Conta.ativa).join(Instituicao)).all()
+              if c.entidade.tem_fonte(fonte) and c.entidade.tem_banco(c.instituicao_id)]
     chave_parser = (extrato.parser or "").split("_")[0]
     p = _norm(pasta)
     por_banco = [c for c in contas if (c.instituicao.parser and c.instituicao.parser == chave_parser)

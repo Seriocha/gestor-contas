@@ -1079,6 +1079,7 @@ body { padding-bottom: var(--altura-moldura); }
 .mm-botao { flex: none; min-height: 0; padding: .3rem .7rem; font-size: .8rem; }
 .moldura-mensagens[data-tipo="vazio"] .mm-ultima { color: var(--suave); font-weight: 400; }
 .moldura-mensagens[data-tipo="vazio"] #mm-limpar { display: none; }
+.sem-menu .moldura-mensagens[data-tipo="vazio"] { display: none; }   /* login: sem barra vazia */
 .moldura-mensagens[data-tipo="ok"] { border-top-color: var(--ok-texto); }
 .moldura-mensagens[data-tipo="ok"] .mm-barra { background: var(--ok-fundo); color: var(--ok-texto); }
 .moldura-mensagens[data-tipo="alerta"] { border-top-color: var(--alerta-texto); }

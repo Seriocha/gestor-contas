@@ -6,7 +6,7 @@
 <section class="cartao">
   <h2>Editar «{{ e.nome }}»</h2>
   {% if erros %}<div class="aviso aviso-erro"><ul>{% for x in erros %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
-  <form method="post" class="formulario estreito">
+  <form method="post" class="formulario" style="max-width: 760px">
     <input type="hidden" name="csrf" value="{{ csrf_token }}">
     <label>Nome <input name="nome" value="{{ v.nome }}" required maxlength="100"></label>
     <label>Descrição <input name="descricao" value="{{ v.descricao }}"></label>
@@ -23,6 +23,38 @@
     <fieldset><legend>Esta entidade tem</legend>
       {% for k, r in modulos.items() %}<label class="opcao"><input type="checkbox" name="modulos" value="{{ k }}" {% if k in v.modulos %}checked{% endif %}> {{ r }}</label>{% endfor %}
       <p class="nota">O que não estiver marcado deixa de aparecer nos ecrãs desta entidade (os dados que já existam ficam guardados).</p>
+    </fieldset>
+
+    <input type="hidden" name="contas_presentes" value="1">
+    <fieldset id="contas-grupo"><legend>Contas bancárias deste grupo</legend>
+      <p class="nota sem-margem">Marcadas: as contas que fazem parte de «{{ e.nome }}» (só quem tem acesso a esta entidade as vê). Marcar uma conta
+        de outra entidade passa-a para esta, com os movimentos e as importações; desmarcar uma desta entidade passa-a para a
+        entidade escolhida em baixo. Os movimentos ligados a casas ou carros da entidade antiga deixam de o estar.</p>
+      <div class="rolar"><table class="tabela compacta">
+        <thead><tr><th></th><th>Conta</th><th>Banco</th><th>Está em</th></tr></thead>
+        <tbody>
+        {% for c in todas_contas %}
+        <tr class="{{ '' if c.ativa else 'arquivada' }}">
+          <td><input type="checkbox" name="contas" value="{{ c.id }}" aria-label="Incluir {{ c.nome }}" {% if c.id in v.contas %}checked{% endif %}></td>
+          <td><strong>{{ c.nome }}</strong>{% if not c.ativa %} <span class="nota">(inativa)</span>{% endif %}<br><span class="nota">{{ c.tipo_rotulo }} · {{ c.moeda }}</span></td>
+          <td>{{ c.instituicao.nome }}</td>
+          <td class="nota">{{ 'esta entidade' if c.entidade_id == e.id else c.entidade.nome }}</td>
+        </tr>
+        {% else %}<tr><td colspan="4" class="vazio">Ainda não há contas.</td></tr>{% endfor %}
+        </tbody>
+      </table></div>
+      <label>As contas desmarcadas desta entidade passam para
+        <select name="destino"><option value="">—</option>{% for x in outras_entidades %}<option value="{{ x.id }}">{{ x.nome }}</option>{% endfor %}</select></label>
+    </fieldset>
+
+    <input type="hidden" name="perfil_presente" value="1">
+    <fieldset><legend>Perfil de importação</legend>
+      <p class="nota sem-margem"><strong>Bancos</strong> (cada um com o seu importador): os que este grupo usa. Só estes aparecem ao criar uma conta e
+        em Importar › Tarefas. Nenhum marcado = todos.</p>
+      {% for i in instituicoes %}<label class="opcao"><input type="checkbox" name="bancos" value="{{ i.id }}" {% if i.id in v.bancos %}checked{% endif %}> {{ i.nome }}{% if not i.parser %} <span class="nota">(sem importador: movimentos à mão)</span>{% endif %}</label>{% endfor %}
+      <p class="nota sem-margem separado"><strong>Fontes automáticas</strong>: de onde podem vir extratos para as contas deste grupo. Sem a fonte, um
+        extrato que chegue por ela não é associado a estas contas (escolhe-se a conta à mão).</p>
+      {% for k, r in fontes.items() %}<label class="opcao"><input type="checkbox" name="fontes" value="{{ k }}" {% if k in v.fontes %}checked{% endif %}> {{ r }}</label>{% endfor %}
     </fieldset>
     <div class="acoes-form"><button class="primario">Guardar</button><a href="/admin/entidades">Cancelar</a></div>
   </form>

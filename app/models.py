@@ -57,6 +57,8 @@ class Utilizador(Base):
 
 TIPOS_ENTIDADE = {"pessoal": "Pessoal", "heranca": "Herança"}
 # Módulos que cada entidade usa (Administração › Entidades): os ecrãs só mostram o que a entidade tem.
+FONTES_EXTRATOS = {"pasta": "Pasta partilhada da NAS (extratos largados na pasta)",
+                   "paperless": "Paperless (extratos digitalizados ou recebidos por mail)"}
 MODULOS = {"imoveis": "Casas e propriedades", "viaturas": "Viaturas (carros, Via Verde, abastecimentos)",
            "subscricoes": "Subscrições e assinaturas", "viagens": "Viagens",
            "saude": "Saúde (perfis e dados do Google Health)",
@@ -93,6 +95,10 @@ class Entidade(Base):
     quota_futura_nota: Mapped[str | None] = mapped_column(String(100))
     modulos: Mapped[str] = mapped_column(String(120), default="imoveis,viaturas,subscricoes,viagens,saude",
                                          server_default="imoveis,viaturas,subscricoes,viagens")
+    # Perfil de importação do grupo: os bancos (instituições, cada uma com o seu importador) que fazem parte dele —
+    # ids separados por vírgulas, vazio = todos — e as fontes automáticas de extratos (pasta da NAS, Paperless).
+    bancos: Mapped[str] = mapped_column(String(300), default="", server_default="")
+    fontes: Mapped[str] = mapped_column(String(40), default="pasta,paperless", server_default="pasta,paperless")
 
     contas: Mapped[list["Conta"]] = relationship(back_populates="entidade")
 
@@ -126,6 +132,17 @@ class Entidade(Base):
 
     def tem(self, modulo: str) -> bool:
         return modulo in (self.modulos or "").split(",")
+
+    @property
+    def ids_bancos(self) -> set[int]:
+        """Os bancos incluídos (vazio = todos)."""
+        return {int(x) for x in (self.bancos or "").split(",") if x.strip().isdigit()}
+
+    def tem_banco(self, instituicao_id: int | None) -> bool:
+        return not self.ids_bancos or instituicao_id in self.ids_bancos
+
+    def tem_fonte(self, fonte: str) -> bool:
+        return fonte in (self.fontes or "").split(",")
 
 
 class Permissao(Base):

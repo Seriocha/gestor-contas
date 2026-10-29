@@ -100,8 +100,11 @@ class Banco:
 
 
 def do_ciclo(db: Session, entidade_id: int, inicio: date) -> list[Banco]:
-    contas = db.scalars(select(Conta).where(Conta.entidade_id == entidade_id, Conta.ativa)
-                        .options(selectinload(Conta.instituicao)).order_by(Conta.nome)).all()
+    from .models import Entidade
+    ent = db.get(Entidade, entidade_id)
+    contas = [c for c in db.scalars(select(Conta).where(Conta.entidade_id == entidade_id, Conta.ativa)
+                                    .options(selectinload(Conta.instituicao)).order_by(Conta.nome))
+              if not ent or ent.tem_banco(c.instituicao_id)]          # só os bancos do perfil de importação
     ids = [c.id for c in contas]
     ult_mov = dict(db.execute(select(Movimento.conta_id, func.max(Movimento.criado_em))
                               .where(Movimento.conta_id.in_(ids)).group_by(Movimento.conta_id)).all()) if ids else {}

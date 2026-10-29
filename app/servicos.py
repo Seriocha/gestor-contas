@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from .models import Conta, Importacao, Movimento, Utilizador
@@ -239,6 +239,33 @@ def escolher_subconta(extrato: Extrato, conta: Conta) -> tuple[str | None, list[
               "usa «Importar todas as contas» ou importa o mesmo ficheiro na conta correspondente."] \
         if outras else []
     return None, avisos
+
+
+# ---------------------------------------------------------------- contas: mudar de entidade (grupo)
+
+def mudar_entidade(db: Session, conta: Conta, entidade_id: int) -> str | None:
+    """Passa a conta (com os movimentos e as importações) para outra entidade. Os movimentos ligados a casas ou carros
+    da entidade antiga deixam de o estar (cada entidade tem os seus bens) e a atribuição corre nas duas. Devolve um
+    erro, ou None."""
+    from . import patrimonio
+    from .models import Bem
+    if conta.entidade_id == entidade_id:
+        return None
+    if db.scalar(select(Conta).where(Conta.entidade_id == entidade_id, Conta.nome == conta.nome, Conta.id != conta.id)):
+        return f"«{conta.nome}»: já existe uma conta com esse nome na entidade de destino."
+    antiga = conta.entidade_id
+    bens_antigos = select(Bem.id).where(Bem.entidade_id == antiga)
+    db.execute(update(Movimento).where(Movimento.conta_id == conta.id, Movimento.bem_id.in_(bens_antigos))
+               .values(bem_id=None, bem_manual=False))
+    if conta.conta_pagamento and conta.conta_pagamento.entidade_id != entidade_id:
+        conta.conta_pagamento_id = None             # a conta que paga o cartão tem de ser do mesmo grupo
+    for c in db.scalars(select(Conta).where(Conta.conta_pagamento_id == conta.id, Conta.entidade_id != entidade_id)):
+        c.conta_pagamento_id = None
+    conta.entidade_id = entidade_id
+    db.flush()
+    for eid in (antiga, entidade_id):
+        patrimonio.atribuir(db, eid)
+    return None
 
 
 # ---------------------------------------------------------------- transferências entre contas próprias

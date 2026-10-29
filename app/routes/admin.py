@@ -10,7 +10,8 @@ from .. import preferencias
 from .. import backup as bk
 from ..backup import fazer_backup, ultimo_backup
 from ..deps import auditar, exigir_admin, flash, get_db, render
-from ..models import MODULOS, PAPEIS, PAPEIS_ROTULO, TIPOS_ENTIDADE, Auditoria, Entidade, Permissao, Utilizador
+from ..models import (FONTES_EXTRATOS, MODULOS, PAPEIS, PAPEIS_ROTULO, TIPOS_ENTIDADE, Auditoria, Conta, Entidade,
+                      Instituicao, Permissao, Utilizador)
 from ..seguranca import hash_password, ler_form, validar_password_nova
 
 router = APIRouter(prefix="/admin")
@@ -293,9 +294,47 @@ def _ler_entidade(form, db: Session, atual: Entidade | None) -> tuple[dict, list
                 erros.append("A parte no 2.º cenário é inválida (ex.: 1/2 ou 50).")
     # Os módulos só mudam quando o formulário os traz (marca «modulos_presentes»); senão ficam como estão.
     modulos = [m for m in form.getlist("modulos") if m in MODULOS] if form.get("modulos_presentes") else None
+    extra = {"modulos": ",".join(modulos)} if modulos is not None else {}
+    if form.get("perfil_presente"):              # perfil de importação: bancos (nenhum marcado = todos) e fontes
+        ids = sorted({int(x) for x in form.getlist("bancos") if str(x).isdigit()})
+        extra["bancos"] = ",".join(map(str, ids))
+        extra["fontes"] = ",".join(f for f in FONTES_EXTRATOS if f in form.getlist("fontes"))
     return {"nome": v["nome"][:100], "descricao": v["descricao"] or None, "tipo": tipo, "quota": quota,
             "quota_futura": futura, "quota_futura_nota": (v["quota_futura_nota"][:100] or None) if futura else None,
-            **({"modulos": ",".join(modulos)} if modulos is not None else {})}, erros
+            **extra}, erros
+
+
+def _ctx_entidade(db: Session, e: Entidade) -> dict:
+    """Contas de todas as entidades (para incluir/retirar deste grupo), bancos e fontes do perfil de importação."""
+    contas = db.scalars(select(Conta).options(selectinload(Conta.entidade), selectinload(Conta.instituicao))
+                        .order_by(Conta.ativa.desc(), Conta.nome)).all()
+    return {"todas_contas": sorted(contas, key=lambda c: (c.entidade_id != e.id, c.entidade.nome, not c.ativa, c.nome)),
+            "instituicoes": db.scalars(select(Instituicao).where(Instituicao.ativa).order_by(Instituicao.nome)).all(),
+            "fontes": FONTES_EXTRATOS, "outras_entidades": [x for x in _entidades(db) if x.id != e.id],
+            "tipos": TIPOS_ENTIDADE, "modulos": MODULOS}
+
+
+def _aplicar_contas(db: Session, e: Entidade, form) -> tuple[list[str], list[str]]:
+    """Contas marcadas passam para esta entidade; as desta entidade desmarcadas vão para o destino escolhido.
+    Devolve (resumo das mudanças, erros)."""
+    from .. import servicos
+    if not form.get("contas_presentes"):
+        return [], []
+    marcadas = {int(x) for x in form.getlist("contas") if str(x).isdigit()}
+    proprias = list(db.scalars(select(Conta).where(Conta.entidade_id == e.id)))
+    retirar = [c for c in proprias if c.id not in marcadas]
+    destino = db.get(Entidade, int(form["destino"])) if str(form.get("destino", "")).isdigit() else None
+    if retirar and (not destino or destino.id == e.id):
+        return [], [f"Escolhe para que entidade vão as contas retiradas ({', '.join(c.nome for c in retirar)})."]
+    feito, erros = [], []
+    for c in db.scalars(select(Conta).where(Conta.id.in_(marcadas), Conta.entidade_id != e.id)) if marcadas else []:
+        origem = c.entidade.nome
+        erro = servicos.mudar_entidade(db, c, e.id)
+        (erros.append(erro) if erro else feito.append(f"{c.nome} ({origem} → {e.nome})"))
+    for c in retirar:
+        erro = servicos.mudar_entidade(db, c, destino.id)
+        (erros.append(erro) if erro else feito.append(f"{c.nome} ({e.nome} → {destino.nome})"))
+    return feito, erros
 
 
 def _percentagem(txt: str) -> float | None:
@@ -318,8 +357,9 @@ def editar_entidade_form(request: Request, eid: int, admin: Utilizador = Depends
     e = db.get(Entidade, eid) or _404()
     v = {"nome": e.nome, "descricao": e.descricao or "", "tipo": e.tipo or "pessoal", "quota": e.quota_txt,
          "quota_futura": e.quota_futura_txt, "quota_futura_nota": e.quota_futura_nota or "",
-         "modulos": (e.modulos or "").split(",")}
-    return render(request, "admin/entidade_form.html", e=e, v=v, tipos=TIPOS_ENTIDADE, modulos=MODULOS, erros=[])
+         "modulos": (e.modulos or "").split(","), "bancos": e.ids_bancos, "fontes": (e.fontes or "").split(","),
+         "contas": {c.id for c in e.contas}}
+    return render(request, "admin/entidade_form.html", e=e, v=v, erros=[], **_ctx_entidade(db, e))
 
 
 @router.post("/entidades/{eid}")
@@ -328,18 +368,30 @@ async def editar_entidade(request: Request, eid: int, admin: Utilizador = Depend
     e = db.get(Entidade, eid) or _404()
     form = await ler_form(request)
     dados, erros = _ler_entidade(form, db, e)
-    if erros:
+
+    def de_novo(erros):
         v = {k: str(form.get(k, "")) for k in ("nome", "descricao", "tipo", "quota", "quota_futura", "quota_futura_nota")}
         v["modulos"] = form.getlist("modulos")
-        return render(request, "admin/entidade_form.html", status_code=400, e=e, v=v, tipos=TIPOS_ENTIDADE,
-                      modulos=MODULOS, erros=erros)
+        v["bancos"] = {int(x) for x in form.getlist("bancos") if str(x).isdigit()}
+        v["fontes"] = form.getlist("fontes")
+        v["contas"] = {int(x) for x in form.getlist("contas") if str(x).isdigit()}
+        return render(request, "admin/entidade_form.html", status_code=400, e=e, v=v, erros=erros, **_ctx_entidade(db, e))
+    if erros:
+        return de_novo(erros)
     antes = f"{e.nome} ({e.tipo}{', %g%%' % e.quota if e.quota else ''})"
     for k, val in dados.items():
         setattr(e, k, val)
+    mudancas, erros = _aplicar_contas(db, e, form)
+    if erros:
+        db.rollback()
+        return de_novo(erros)
     auditar(db, admin, "entidade_editada", f"{e.id}: {antes} → {e.nome} ({e.tipo}{', %g%%' % e.quota if e.quota else ''}"
-                                           f"{', futura %g%%' % e.quota_futura if e.quota_futura else ''}; módulos {e.modulos})")
+                                           f"{', futura %g%%' % e.quota_futura if e.quota_futura else ''}; módulos {e.modulos}; "
+                                           f"bancos {e.bancos or 'todos'}; fontes {e.fontes or 'nenhuma'})")
+    for m in mudancas:
+        auditar(db, admin, "conta_mudou_entidade", m)
     db.commit()
-    flash(request, f"Entidade «{e.nome}» guardada.")
+    flash(request, f"Entidade «{e.nome}» guardada." + (f" Contas movidas: {'; '.join(mudancas)}." if mudancas else ""))
     return RedirectResponse("/admin/entidades", status_code=303)
 
 
