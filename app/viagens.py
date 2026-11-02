@@ -200,7 +200,7 @@ def candidatos(db: Session, v: Viagem) -> list[Sugestao]:
         if len(meses.get(p, ())) >= 3 and not reserva:
             pts -= 2
             razoes.append("despesa habitual")
-        if modelo.valor_min and abs(m.montante) < modelo.valor_min:
+        if modelo.valor_min and abs(m.em_euros) < modelo.valor_min:
             pts -= 1
             razoes.append("valor baixo")
         if pts >= SUGERIR:
@@ -308,15 +308,15 @@ def resumo(db: Session, v: Viagem) -> Resumo:
                           .options(selectinload(Movimento.conta),
                                    selectinload(Movimento.categoria).selectinload(Categoria.pai))
                           .order_by(Movimento.data_mov, Movimento.id)).all()
-    total = -sum(m.montante for m in movs)
-    antes = -sum(m.montante for m in movs if m.data_mov < v.data_ini)
+    total = -sum(m.em_euros for m in movs)
+    antes = -sum(m.em_euros for m in movs if m.data_mov < v.data_ini)
     cats, cores, contas = Counter(), {}, Counter()
     for m in movs:
         raiz = m.categoria.raiz if m.categoria else None
         nome = raiz.nome if raiz else "Sem categoria"
-        cats[nome] -= m.montante
+        cats[nome] -= m.em_euros
         cores[nome] = raiz.cor_efetiva if raiz else "#b4b2a9"
-        contas[m.conta.nome] -= m.montante
+        contas[m.conta.nome] -= m.em_euros
     return Resumo(movs, total, antes, [(n, cores[n], x) for n, x in cats.most_common()],
                   contas.most_common(), total / max(v.dias, 1), total / max(v.pessoas or 1, 1))
 

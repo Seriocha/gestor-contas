@@ -391,6 +391,8 @@ class Movimento(Base):
     montante: Mapped[int] = mapped_column(BigInteger)  # cêntimos, negativo = saída
     moeda: Mapped[str] = mapped_column(String(3), default="EUR")
     saldo_apos: Mapped[int | None] = mapped_column(BigInteger)  # saldo dado pelo banco
+    # Noutra moeda: o valor em euros (cêntimos) dado pelo próprio extrato; é o que conta nos relatórios.
+    valor_eur: Mapped[int | None] = mapped_column(BigInteger)
     notas: Mapped[str | None] = mapped_column(Text)
     hash_dedup: Mapped[str] = mapped_column(String(64))
     criado_em: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, server_default=func.now())
@@ -417,6 +419,11 @@ class Movimento(Base):
     categoria: Mapped["Categoria | None"] = relationship()
     etiquetas: Mapped[list["Etiqueta"]] = relationship(secondary="movimento_etiqueta")
     bem: Mapped["Bem | None"] = relationship(lazy="selectin")
+
+    @property
+    def em_euros(self) -> int:
+        """O valor nos totais: noutra moeda sem valor em euros conhecido não conta (somar KRW a euros seria pior)."""
+        return self.montante if self.moeda == "EUR" else (self.valor_eur or 0)
 
 
 NATUREZAS = {"DESPESA": "Despesa", "RECEITA": "Receita"}

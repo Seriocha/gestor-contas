@@ -171,7 +171,7 @@ def classificar(m: Movimento) -> tuple[str, int]:
         natureza = m.categoria.natureza
     else:
         natureza = "RECEITA" if m.montante > 0 else "DESPESA"
-    return natureza, (m.montante if natureza == "RECEITA" else -m.montante)
+    return natureza, (m.em_euros if natureza == "RECEITA" else -m.em_euros)
 
 
 @dataclass
@@ -330,7 +330,7 @@ class HistoricoConta:
             _, self.movs, self.datas, self.com_saldo, self.acumulados = guardado
             return
         self.movs = db.execute(
-            select(Movimento.data_mov, Movimento.montante, Movimento.saldo_apos)
+            select(Movimento.data_mov, Movimento.montante, Movimento.saldo_apos, Movimento.valor_eur)
             .where(Movimento.conta_id == conta.id)
             .order_by(Movimento.data_mov, Movimento.ordem, Movimento.id)).all()
         self.datas = [m.data_mov for m in self.movs]
@@ -360,17 +360,29 @@ class HistoricoConta:
             return None
         return self.conta.saldo_inicial + (self.acumulados[i - 1] if i else 0)
 
+    def saldo_eur_em(self, d: date) -> int | None:
+        """O saldo em euros: noutra moeda, à taxa do último movimento até à data (ou do 1.º a seguir), a única que
+        a app conhece. Sem nenhuma taxa, None: a conta não entra nos totais."""
+        s = self.saldo_em(d)
+        if s is None or self.conta.moeda == "EUR":
+            return s
+        i = bisect.bisect_right(self.datas, d)
+        for m in [*reversed(self.movs[:i]), *self.movs[i:]]:
+            if m.valor_eur is not None and m.montante:
+                return round(s * m.valor_eur / m.montante)
+        return None
+
 
 def patrimonio(db: Session, entidade_id: int, datas: list[date]) -> dict:
-    """Ativos, passivos e património líquido (EUR) em cada data, e o detalhe
-    por conta na última data."""
-    contas = [c for c in contas_da_entidade(db, entidade_id) if c.moeda == "EUR"]
+    """Ativos, passivos e património líquido (EUR) em cada data, e o detalhe por conta na última data. As contas
+    noutras moedas contam em euros, à taxa do último movimento (saldo_eur_em)."""
+    contas = contas_da_entidade(db, entidade_id)
     hist = [HistoricoConta(db, c) for c in contas]
     serie = []
     for d in datas:
         ativos = passivos = 0
         for h in hist:
-            s = h.saldo_em(d)
+            s = h.saldo_eur_em(d)
             if s is None:
                 continue
             if h.conta.tipo in PASSIVOS:
@@ -381,7 +393,7 @@ def patrimonio(db: Session, entidade_id: int, datas: list[date]) -> dict:
     ultimo = datas[-1]
     detalhe = []
     for h in hist:
-        s = h.saldo_em(ultimo)
+        s = h.saldo_eur_em(ultimo)
         if s is not None and (h.conta.ativa or s):
             detalhe.append((h.conta, s))
     return {"serie": serie, "contas": detalhe}
@@ -432,12 +444,12 @@ def variacao_patrimonio(db: Session, entidade_id: int, ini: date, fim: date, lim
     corte = inicio_analise(db, entidade_id)
     if corte and ini < corte:
         ini = min(corte, fim)
-    contas = [c for c in contas_da_entidade(db, entidade_id) if c.moeda == "EUR"]
+    contas = contas_da_entidade(db, entidade_id)
     variacoes = []
     for c in contas:
         h = HistoricoConta(db, c)
-        s_ini, s_fim = h.saldo_em(ini - _td(days=1)) or 0, h.saldo_em(fim) or 0
-        soma = sum(m.montante for m in h.movs if ini <= m.data_mov <= fim and
+        s_ini, s_fim = h.saldo_eur_em(ini - _td(days=1)) or 0, h.saldo_eur_em(fim) or 0
+        soma = sum((m.montante if c.moeda == "EUR" else (m.valor_eur or 0)) for m in h.movs if ini <= m.data_mov <= fim and
                    (not c.data_saldo_inicial or m.data_mov > c.data_saldo_inicial or h.com_saldo))
         if s_ini or s_fim or soma:
             v = VariacaoConta(c, s_ini, s_fim, soma)
@@ -451,7 +463,7 @@ def variacao_patrimonio(db: Session, entidade_id: int, ini: date, fim: date, lim
                       .order_by(func.abs(Movimento.montante).desc(), Movimento.data_mov).limit(limite)).all()
     reportaveis = [m for m in movs if not m.transferencia and not m.excluido]
     return VariacaoPatrimonio(ini=ini, fim=fim, contas=variacoes, movimentos=movs, resumo=resumir(reportaveis),
-                              transferencias=sum(abs(m.montante) for m in movs if m.transferencia) // 2)
+                              transferencias=sum(abs(m.em_euros) for m in movs if m.transferencia) // 2)
 
 
 COR_PREVISTA = "#9cc0ea"   # receitas previstas (ainda não recebidas)

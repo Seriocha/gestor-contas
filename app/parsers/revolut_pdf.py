@@ -19,9 +19,8 @@ Decisões:
   - O saldo de cada linha não desconta impostos/comissões (já estão no valor), por
     isso não viram movimentos à parte.
   - Câmbios, carregamentos e envios para poupanças/investimento são transferências.
-  - Subcontas: («Atual», moeda) na moeda original; («Atual», «EUR») só a conta em euros;
-    («Todas as moedas», «EUR») = euros + as outras moedas convertidas pelo valor em
-    euros do próprio extrato (a descrição guarda o valor original); («Poupança <nome>», «EUR»)
+  - Subcontas: («Atual», moeda): cada operação só na conta da sua moeda, com o valor em euros do
+    próprio extrato (MovimentoBruto.valor_eur, é o que conta nos relatórios); («Poupança <nome>», «EUR»)
     para cada cofre; («Depósito», «EUR») os juros da Conta reforçada.
 
 O parser trabalha sobre as palavras de cada página com a sua posição (x, topo),
@@ -46,6 +45,8 @@ DESCRICAO_PROPRIA = re.compile(r"CONTA DE INVESTIMENTO|POUPAN|CONTA REFOR|SUBCON
 COLUNAS = {"descricao": 125, "categoria": 257, "montante": 342, "saldo": 384, "imposto": 427, "outros": 469,
            "comissoes": 505}
 TOTAIS = ("Total",)
+# O PDF cola às vezes a moeda do montante ao saldo seguinte («-12,00 CHF217,44»): é o saldo, na coluna errada.
+SALDO_COLADO = re.compile(r"^(?:[A-Z]{3}|[$¥£])(-?\d[\d.,]*)$")
 PERIODO = re.compile(r"^(\d{1,2} de [a-zç]{3}\.? de \d{4}) - (\d{1,2} de [a-zç]{3}\.? de \d{4})$", re.IGNORECASE)
 SALDO_RESUMO = re.compile(r"Saldo disponível (inicial|final) (-?[\d.,]+)")
 # «Rótulo 12,34€» (vários por linha); só os rótulos de rendimentos/impostos contam para o resumo fiscal
@@ -70,9 +71,8 @@ class Parser:
         "colunas": "Data, Descrição, Categoria, Dinheiro a entrar/sair, Saldo, Imposto retido, Outros impostos, Comissões",
         "ordem": "Mais antigo primeiro, uma tabela por conta e moeda",
         "saldo": True,
-        "destino": "Carteira digital (todas as moedas convertidas a EUR), conta numa moeda, Poupança (cofre ou juros); "
-                   "ou todas as contas de uma vez («Importar todas as contas»)",
-        "notas": "Moedas estrangeiras convertidas pelo valor em euros do próprio extrato; câmbios, carregamentos e "
+        "destino": "Uma conta por moeda, Poupança (cofre ou juros); ou todas de uma vez («Importar todas as contas»)",
+        "notas": "Cada operação fica na conta da sua moeda, com o valor em euros do próprio extrato; câmbios, carregamentos e "
                  "envios para poupança/investimento são transferências; a Conta reforçada só traz os juros. "
                  "Serve o extrato do ano fiscal (1 de janeiro até hoje, todas as contas): os saldos de cada conta "
                  "são conferidos com as páginas de resumo e os rendimentos e impostos (juros, dividendos, fundos, "
@@ -255,15 +255,12 @@ def interpretar(paginas: list[list[dict]]) -> Extrato:
         mov = _operacao(linhas, moeda_, col_)
         if mov is None:
             continue
-        nativo, euros = mov
-        subcontas.setdefault((seccao_, moeda_), []).append(nativo)
-        if seccao_ == "Atual":
-            subcontas.setdefault(("Todas as moedas", "EUR"), []).append(euros)
+        subcontas.setdefault((seccao_, moeda_), []).append(mov)
     if juros:
         subcontas[("Depósito", "EUR")] = juros
     for chave, movs in subcontas.items():
         movs.sort(key=lambda m: m.data_mov)   # estável: mantém a ordem do extrato dentro do dia
-    principal = subcontas.get(("Todas as moedas", "EUR")) or next(iter(subcontas.values()), [])
+    principal = subcontas.get(("Atual", "EUR")) or next(iter(subcontas.values()), [])
     ext = Extrato(parser=Parser.chave, banco=Parser.banco, movimentos=list(principal), subcontas=dict(subcontas))
     ext.dedup_dias = 4   # o PDF usa a data de conclusão; o CSV a de início (até ~3 dias antes)
     if periodo and all(periodo):
@@ -298,11 +295,15 @@ def _fmt(cent: int) -> str:
 
 
 def _operacao(linhas: list[list[dict]], moeda: str, col: dict):
-    """(movimento na moeda original, movimento em euros) de uma operação."""
+    """O movimento de uma operação, na moeda da conta (noutra moeda, com o valor em euros do extrato)."""
     partes = {k: [] for k in ("data", "descricao", "categoria", "montante", "saldo", "imposto", "outros", "comissoes")}
     for linha in linhas:
         for w in linha:
-            partes[_coluna(w["x0"], col)].append(w["text"])
+            coluna, colado = _coluna(w["x0"], col), SALDO_COLADO.match(w["text"])
+            if coluna == "montante" and colado:
+                partes["saldo"].append(colado.group(1))
+            else:
+                partes[coluna].append(w["text"])
     data = _data(" ".join(partes["data"][:5]))
     if not data:
         return None
@@ -315,21 +316,14 @@ def _operacao(linhas: list[list[dict]], moeda: str, col: dict):
         return None
     if moeda == "EUR":
         montante, saldo = primeiro(partes["montante"], True), primeiro(partes["saldo"], True)
-        montante_eur, saldo_eur = montante, saldo
+        montante_eur = None
     else:
         montante, saldo = primeiro(partes["montante"], False), primeiro(partes["saldo"], False)
-        montante_eur, saldo_eur = primeiro(partes["montante"], True), primeiro(partes["saldo"], True)
+        montante_eur = primeiro(partes["montante"], True)
     if montante is None:
         return None
     transferencia = categoria.upper() in TRANSFERENCIA_CATEGORIAS or bool(DESCRICAO_PROPRIA.search(descricao))
-    nativo = MovimentoBruto(data, None, descricao, montante, saldo, transferencia=transferencia)
-    if moeda == "EUR":
-        euros = MovimentoBruto(data, None, descricao, montante, saldo, transferencia=transferencia)
-    else:
-        original = f"{montante / 100:,.2f}".replace(",", " ").replace(".", ",").replace(" ", ".").rstrip("0").rstrip(",")
-        euros = MovimentoBruto(data, None, f"{descricao} ({original} {moeda})",
-                               montante_eur if montante_eur is not None else 0, None, transferencia=transferencia)
-    return nativo, euros
+    return MovimentoBruto(data, None, descricao, montante, saldo, transferencia=transferencia, valor_eur=montante_eur)
 
 
 def ler_pdf(conteudo: bytes) -> Extrato | None:

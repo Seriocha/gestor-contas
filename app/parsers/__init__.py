@@ -28,6 +28,7 @@ class MovimentoBruto:
     montante: int            # cêntimos
     saldo: int | None = None  # saldo após o movimento, se o banco o der
     transferencia: bool = False  # o banco diz que é movimento entre contas próprias (ex.: carregamento Revolut)
+    valor_eur: int | None = None  # noutra moeda: o valor em euros dado pelo extrato
 
 
 @dataclass

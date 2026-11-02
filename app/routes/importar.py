@@ -503,7 +503,11 @@ async def todas_confirmar(request: Request, u: Utilizador = Depends(utilizador_a
     feitas = []
     for l in linhas:
         conta = l["conta"]
-        if not conta or not l["n_novos"]:
+        if not conta:
+            continue
+        if not l["n_novos"]:              # nada de novo, mas os já gravados podem ganhar o valor em euros
+            ext = _subconta_para(extrato, (l["produto"], l["moeda"]), conta)
+            servicos.preencher_valor_eur(db, conta, servicos.preparar(db, conta, ext))
             continue
         exigir_papel(db, u, conta.entidade_id, "editar")
         ext = _subconta_para(extrato, (l["produto"], l["moeda"]), conta)

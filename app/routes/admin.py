@@ -404,8 +404,24 @@ def importadores(request: Request, admin: Utilizador = Depends(exigir_admin), db
     for parser, n, ultima in db.execute(select(Importacao.parser, func.count(), func.max(Importacao.criado_em))
                                         .where(Importacao.estado == "confirmada").group_by(Importacao.parser)):
         uso[parser] = {"n": n, "ultima": ultima}
+    from .. import revolut_moedas
     return render(request, "admin/importadores.html", importadores=todos(), uso=uso,
-                  inativos=preferencias.importadores_inativos(request.app.state.prefs))
+                  inativos=preferencias.importadores_inativos(request.app.state.prefs),
+                  repetidos=revolut_moedas.previa(db))
+
+
+@router.post("/importadores/revolut-repetidos")
+async def revolut_repetidos(request: Request, admin: Utilizador = Depends(exigir_admin), db: Session = Depends(get_db)):
+    """Junta as compras repetidas na conta em euros e na da moeda (com um backup antes)."""
+    from .. import revolut_moedas
+    await ler_form(request)
+    fazer_backup(request.app.state.defs)
+    n = revolut_moedas.aplicar(db)
+    auditar(db, admin, "revolut_repetidos", f"{n} cópias em euros retiradas")
+    db.commit()
+    flash(request, f"{n} movimento(s) repetido(s) retirado(s) da conta em euros: cada compra fica na conta da sua moeda, "
+                   "com o valor em euros. Backup feito antes.")
+    return RedirectResponse("/admin/importadores", status_code=303)
 
 
 @router.post("/importadores/estado")

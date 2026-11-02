@@ -91,7 +91,7 @@ def test_interpretar():
     e = interpretar(paginas_ficticias())
     from app.parsers import verificar_saldos
     assert verificar_saldos(e.subcontas[("Atual", "EUR")]) == [] and verificar_saldos(e.subcontas[("Atual", "KRW")]) == []
-    assert set(e.subcontas) == {("Atual", "EUR"), ("Atual", "KRW"), ("Todas as moedas", "EUR"), ("Depósito", "EUR")}
+    assert set(e.subcontas) == {("Atual", "EUR"), ("Atual", "KRW"), ("Depósito", "EUR")}
     eur = e.subcontas[("Atual", "EUR")]
     assert [(m.data_mov, m.montante, m.saldo) for m in eur][:2] == [(date(2026, 1, 5), -812, 27511),
                                                                      (date(2026, 1, 6), 2000, 29511)]
@@ -99,12 +99,9 @@ def test_interpretar():
     assert all(m.transferencia for m in eur if "Conversão" in m.descricao or "Carregamento" in m.descricao)
     krw = e.subcontas[("Atual", "KRW")]
     assert [(m.montante, m.saldo) for m in krw] == [(3341900, 3341900), (-2061200, 1280700)]
-    todas = e.subcontas[("Todas as moedas", "EUR")]
-    keta = next(m for m in todas if m.descricao.startswith("K-ETA"))
-    assert keta.descricao == "K-ETA (-20.612 KRW)" and keta.montante == -1224 and keta.saldo is None
-    assert next(m for m in todas if m.descricao == "Conversão cambial para KRW (33.419 KRW)").montante == 1966
+    assert [m.valor_eur for m in krw] == [1966, -1224] and all(m.valor_eur is None for m in eur)
     assert [(m.data_mov, m.montante) for m in e.subcontas[("Depósito", "EUR")]] == [(date(2026, 8, 10), 1)]
-    assert e.dedup_dias == 4 and e.movimentos == todas
+    assert e.dedup_dias == 4 and e.movimentos == eur
     assert not any("Bitcoin" in m.descricao for v in e.subcontas.values() for m in v)   # cripto fica de fora
 
 
@@ -124,7 +121,7 @@ PDF = b"%PDF-1.7 ficticio"
 
 def test_importar_pdf_nas_tres_contas(admin, tmp_path):
     previa, r = _importar(admin, "consolidated-statement.pdf", PDF, conta_id="1")
-    assert r.status_code == 303 and "Importar 6 movimentos" in previa.text      # 4 em euros + 2 convertidos
+    assert r.status_code == 303 and "Importar 4 movimentos" in previa.text      # só os em euros
     previa, r = _importar(admin, "consolidated-statement.pdf", PDF, conta_id="2")
     assert "Importar 2 movimentos" in previa.text
     previa, r = _importar(admin, "consolidated-statement.pdf", PDF, conta_id="3")
@@ -141,7 +138,7 @@ def test_nao_duplica_o_que_veio_do_csv(admin, app=None):
     previa, r = _importar(admin, "revolut.csv", csv.encode(), conta_id="1")
     assert r.status_code == 303
     previa, _ = _importar(admin, "consolidated-statement.pdf", PDF, conta_id="1")
-    assert "Importar 5 movimentos" in previa.text and previa.text.count("já existe") == 1
+    assert "Importar 3 movimentos" in previa.text and previa.text.count("já existe") == 1
 
 
 def test_comissao_separada_no_csv_e_data_de_conclusao(admin):
@@ -151,7 +148,7 @@ def test_comissao_separada_no_csv_e_data_de_conclusao(admin):
            "Carregamento,Atual,2026-01-26 10:00:00,2026-01-29 10:00:00,Carregamento de FULANO,252.50,2.50,EUR,CONCLUÍDA,545.11\n")
     _importar(admin, "revolut.csv", csv.encode(), conta_id="1")
     previa, _ = _importar(admin, "consolidated-statement.pdf", PDF, conta_id="1")
-    assert previa.text.count("já existe") == 1 and "Importar 5 movimentos" in previa.text
+    assert previa.text.count("já existe") == 1 and "Importar 3 movimentos" in previa.text
 
 
 def test_resumos_do_ano_fiscal():
@@ -188,22 +185,22 @@ def test_importar_todas_as_contas(admin):
     pagina = admin.get(href)
     assert pagina.status_code == 200
     t = pagina.text
-    # sugestões: «Todas as moedas» → Revolut (EUR), KRW → Revolut KRW, Depósito → Revolut reforçada; AED sem movimentos
-    assert re.search(r'name="sub_1".*?<option value="1" selected', t, re.S)          # Todas as moedas
-    assert re.search(r'name="sub_2".*?<option value="2" selected', t, re.S)          # Atual KRW
-    assert re.search(r'name="sub_3".*?<option value="3" selected', t, re.S)          # Depósito
+    # sugestões: Atual EUR → Revolut, KRW → Revolut KRW, Depósito → Revolut reforçada; AED sem movimentos
+    assert re.search(r'name="sub_0".*?<option value="1" selected', t, re.S)
+    assert re.search(r'name="sub_1".*?<option value="2" selected', t, re.S)
+    assert re.search(r'name="sub_2".*?<option value="3" selected', t, re.S)
     assert "sem movimentos no período" in t and "AED" in t
     dados = {"csrf": _csrf(pagina), "sha": re.search(r'name="sha" value="([0-9a-f]+)"', t).group(1),
-             "nome": "consolidated-statement.pdf", "conta": "1", "sub_0": "", "sub_1": "1", "sub_2": "2", "sub_3": "3"}
+             "nome": "consolidated-statement.pdf", "conta": "1", "sub_0": "1", "sub_1": "2", "sub_2": "3"}
     # a mesma conta em duas subcontas não pode
-    r = admin.post("/importar/todas", data={**dados, "sub_0": "1"})
+    r = admin.post("/importar/todas", data={**dados, "sub_2": "1"})
     assert r.status_code == 400 and "A mesma conta foi escolhida" in r.text
     r = admin.post("/importar/todas", data=dados, follow_redirects=False)
     assert r.status_code == 303
     with admin.app.state.SessionLocal() as db:
         from sqlalchemy import func, select
         n = dict(db.execute(select(Movimento.conta_id, func.count()).group_by(Movimento.conta_id)).all())
-    assert n == {1: 6, 2: 2, 3: 1}
+    assert n == {1: 4, 2: 2, 3: 1}
     # outra vez: nada de novo
     r = admin.post("/importar/todas", data={**dados, "csrf": _csrf(admin.get(href))}, follow_redirects=True)
     assert "Nada de novo para importar" in r.text
@@ -227,9 +224,9 @@ def test_todas_as_contas_so_sugere_contas_do_banco(admin, monkeypatch):
                                       re.search(rf'name="sub_{i}".*?</select>', pagina.text, re.S).group(0))
 
     assert "ActivoBank (" not in pagina.text                       # outro banco nem aparece nas opções
-    assert selecionada(1).group(1) == "1"                          # Todas as moedas → a conta Revolut
-    assert selecionada(3).group(1) == "3"                          # juros → a reforçada, não o cofre Férias
+    assert selecionada(0).group(1) == "1"                          # euros → a conta Revolut
+    assert selecionada(2).group(1) == "3"                          # juros → a reforçada, não o cofre Férias
     dados = {"csrf": _csrf(pagina), "sha": re.search(r'name="sha" value="([0-9a-f]+)"', pagina.text).group(1),
-             "nome": "consolidated-statement.pdf", "conta": "1", "sub_1": "4"}
+             "nome": "consolidated-statement.pdf", "conta": "1", "sub_0": "4"}
     r = admin.post("/importar/todas", data=dados)                  # nem à força: a conta de outro banco não conta
     assert r.status_code == 400 and "Escolhe a conta" in r.text

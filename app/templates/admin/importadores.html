@@ -38,6 +38,32 @@
   </table>
   </div>
 </section>
+{% if repetidos.pares or repetidos.sem_conta or repetidos.sem_par %}
+<section class="cartao" id="revolut-repetidos">
+  <h2>Revolut: compras repetidas em duas contas</h2>
+  {% if repetidos.pares %}
+  <p class="nota">{{ repetidos.pares | length }} movimento(s) estão na conta em euros (convertidos) e também na conta da moeda
+    ({% for m, n in repetidos.por_moeda.items() %}{{ m }}: {{ n }}{{ ', ' if not loop.last }}{% endfor %}). Ao corrigir, cada um fica só na conta da moeda, com o valor
+    em euros. A categoria, as notas e as ligações da cópia passam para esse movimento; é feito um backup antes.</p>
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th>Data</th><th>Sai da conta em euros</th><th class="num">Valor</th><th>Fica</th><th class="num">Valor</th></tr></thead>
+    {% for copia, nativo in repetidos.pares[:8] %}
+    <tr><td>{{ copia.data_mov | data }}</td><td>{{ copia.descricao_original }}</td><td class="num">{{ copia.montante | eur }}</td>
+      <td>{{ nativo.conta.nome }}</td><td class="num">{{ nativo.montante | eur(nativo.moeda) }}</td></tr>
+    {% endfor %}
+  </table></div>
+  <form method="post" action="/admin/importadores/revolut-repetidos" class="acoes-form" onsubmit="return confirm('Fazer backup e retirar da conta em euros os {{ repetidos.pares | length }} movimentos repetidos?')">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="primario">Corrigir os {{ repetidos.pares | length }} repetidos</button>
+  </form>
+  {% endif %}
+  {% if repetidos.sem_conta or repetidos.sem_par %}
+  <p class="nota sem-margem">Ficam na conta em euros, para não se perder a despesa:
+    {% for m, n in repetidos.sem_conta.items() %}{{ n }} em {{ m }} (sem conta nessa moeda){{ ', ' if not loop.last or repetidos.sem_par }}{% endfor %}
+    {% for m, n in repetidos.sem_par.items() %}{{ n }} em {{ m }} (sem movimento igual na conta da moeda){{ ', ' if not loop.last }}{% endfor %}.
+    Cria a conta ou importa o extrato nela e volta aqui.</p>
+  {% endif %}
+</section>
+{% endif %}
 <section class="cartao">
   <h2>Sem importador</h2>
   <p class="nota sem-margem">Contas de depósitos a prazo, fundos e Certificados de Aforro não têm extrato para importar:

@@ -7,9 +7,9 @@
 
 <section class="cartao">
   <p class="nota">{{ extrato.banco }} · <strong>{{ nome }}</strong>{% if extrato.periodo %} · {{ extrato.periodo[0] | data }} a {{ extrato.periodo[1] | data }}{% endif %}.
-    Cada subconta do ficheiro vai para a conta escolhida (só contas desta entidade, deste banco e na mesma moeda). «Todas as moedas»
-    é a conta em euros com as outras moedas convertidas pelo próprio extrato; as contas noutras moedas recebem os
-    movimentos na moeda original. Os movimentos que já existem são ignorados.</p>
+    Cada subconta do ficheiro vai para a conta escolhida (só contas desta entidade, deste banco e na mesma moeda). Cada operação
+    fica só na conta da sua moeda e conta nos relatórios pelo valor em euros do próprio extrato: sem conta numa moeda, as
+    operações dessa moeda não entram. Os movimentos que já existem são ignorados.</p>
   <form method="post" action="/importar/todas">
     <input type="hidden" name="csrf" value="{{ csrf_token }}">
     <input type="hidden" name="sha" value="{{ sha }}">

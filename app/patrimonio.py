@@ -184,7 +184,7 @@ def por_bem(db: Session, entidade_id: int, movs: list[Movimento]) -> list[tuple[
         if m.id in partes:
             r += [(m, bid, -v) for bid, v in partes[m.id].items()]
         else:
-            r.append((m, m.bem_id, m.montante))
+            r.append((m, m.bem_id, m.em_euros))
     return r
 
 
@@ -193,7 +193,7 @@ def custos(db: Session, b: Bem, ini: date, fim: date) -> Custos:
               if bid == b.id]
     movs = [m for m, _ in linhas]
     c = Custos(movimentos=sorted(movs, key=lambda m: (m.data_mov, m.id), reverse=True))
-    c.partes = {m.id: v for m, v in linhas if v != m.montante}
+    c.partes = {m.id: v for m, v in linhas if v != m.em_euros}
     cats, meses = defaultdict(int), defaultdict(int)
     cores = {}
     for m, v in linhas:
@@ -308,7 +308,7 @@ def resumo(db: Session, entidade_id: int, hoje: date) -> dict:
         "pendentes": [l for l in ativos if l.pendente],
         "oficina": [l for l in ativos if l.manutencao and l.manutencao.precisa_oficina],
         "ler_km": [l for l in ativos if l.manutencao and l.manutencao.lembrar_km],
-        "sem_bem": len(sem_bem), "sem_bem_total": -sum(m.montante for m in sem_bem),
+        "sem_bem": len(sem_bem), "sem_bem_total": -sum(m.em_euros for m in sem_bem),
         "desde": ini,
     }
 

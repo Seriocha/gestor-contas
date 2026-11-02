@@ -235,7 +235,7 @@ class Estado:
 def estado(db: Session, s: Subscricao, hoje: date) -> Estado:
     pagos = pagamentos(db, s, hoje)
     e = Estado(s, pagos, proxima_data(s, hoje), "em dia")
-    e.total_pago = -sum(m.montante for m in pagos)
+    e.total_pago = -sum(m.em_euros for m in pagos)
     fim = min(hoje, s.data_fim) if s.data_fim else hoje
     e.meses = max(0, (fim.year - s.data_inicio.year) * 12 + fim.month - s.data_inicio.month
                   - (1 if fim.day < s.data_inicio.day else 0))   # meses completos
@@ -243,8 +243,8 @@ def estado(db: Session, s: Subscricao, hoje: date) -> Estado:
         e.fidelizada_dias = (s.fim_fidelizacao - hoje).days
     if pagos:
         e.ultimo = pagos[-1]
-        if abs(abs(e.ultimo.montante) - s.valor) > max(s.valor * 0.02, 1):
-            e.valor_mudou = -e.ultimo.montante
+        if abs(abs(e.ultimo.em_euros) - s.valor) > max(s.valor * 0.02, 1):
+            e.valor_mudou = -e.ultimo.em_euros
     if s.data_fim and s.data_fim < hoje:
         e.situacao = "terminada"
         return e
@@ -342,7 +342,7 @@ def detetar(db: Session, entidade_id: int, hoje: date, meses: int = 18) -> list[
             por_mes[(m.data_mov.year, m.data_mov.month)].append(m)
         n_meses = len(por_mes)
         primeiros = [sorted(v, key=lambda m: m.data_mov)[0] for _, v in sorted(por_mes.items())]
-        valores = [abs(m.montante) for m in primeiros]
+        valores = [abs(m.em_euros) for m in primeiros]
         if cat:
             if n_meses < 2:
                 continue
@@ -359,7 +359,7 @@ def detetar(db: Session, entidade_id: int, hoje: date, meses: int = 18) -> list[
             cat_id = cats.most_common(1)[0][0] if cats else None
         meses_per = PERIODICIDADES[per][1]
         out.append(Sugestao(
-            nome=cat[1] if cat else chave.title(), padrao=padrao, valor=abs(ultimo.montante), periodicidade=per,
+            nome=cat[1] if cat else chave.title(), padrao=padrao, valor=abs(ultimo.em_euros), periodicidade=per,
             dia=Counter(d.day for d in datas).most_common(1)[0][0], inicio=datas[0], ultima=datas[-1],
             conta_id=conta_id, conta_nome=contas[conta_id].nome, categoria_id=cat_id, n=len(primeiros),
             fonte="catálogo" if cat else "recorrente", servico=cat[0] if cat else None,

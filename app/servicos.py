@@ -1,7 +1,7 @@
 """Regras de negócio da importação de movimentos e dos saldos das contas."""
 import hashlib
 import re
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
@@ -65,6 +65,8 @@ class LinhaPrevia:
     hash_dedup: str
     duplicado: bool
     transferencia: bool = False
+    valor_eur: int | None = None
+    existente_id: int | None = None    # já gravado sem saldo: a mesma linha, a completar
 
 
 def preparar(db: Session, conta: Conta, extrato: Extrato) -> list[LinhaPrevia]:
@@ -91,6 +93,7 @@ def preparar(db: Session, conta: Conta, extrato: Extrato) -> list[LinhaPrevia]:
             data_mov=m.data_mov, data_valor=m.data_valor, descricao=m.descricao, descricao_norm=norm,
             montante=m.montante, saldo=m.saldo, ordem=por_dia[m.data_mov],
             hash_dedup=hashlib.sha256(bruto.encode()).hexdigest(), duplicado=False, transferencia=m.transferencia,
+            valor_eur=m.valor_eur,
         ))
     existentes = set(db.scalars(select(Movimento.hash_dedup).where(
         Movimento.conta_id == conta.id, Movimento.hash_dedup.in_([l.hash_dedup for l in linhas]))))
@@ -118,6 +121,16 @@ def preparar(db: Session, conta: Conta, extrato: Extrato) -> list[LinhaPrevia]:
                 if par:
                     usados.add(par.id)
                     l.duplicado = True
+    if extrato.dedup_dias and linhas:
+        # A mesma linha gravada antes sem saldo (o PDF colava-o à moeda e não se lia): o hash mudou, mas não é nova.
+        sem_saldo = defaultdict(list)
+        for mid, d, mt, norm in db.execute(select(Movimento.id, Movimento.data_mov, Movimento.montante, Movimento.descricao_norm)
+                                           .where(Movimento.conta_id == conta.id, Movimento.saldo_apos.is_(None))).all():
+            sem_saldo[(d, mt, norm)].append(mid)
+        for l in linhas:
+            ids = sem_saldo.get((l.data_mov, l.montante, l.descricao_norm[:500]))
+            if not l.duplicado and l.saldo is not None and ids:
+                l.duplicado, l.existente_id = True, ids.pop(0)
     if extrato.cartao and linhas:
         # Os extratos de cartão vêm em formatos diferentes (Extracto / Consulta Movimentos) que descrevem
         # a mesma compra com textos diferentes: no cartão, a mesma data e o mesmo valor já na conta contam
@@ -133,6 +146,19 @@ def preparar(db: Session, conta: Conta, extrato: Extrato) -> list[LinhaPrevia]:
                 l.duplicado = True
                 na_conta[(l.data_mov, l.montante)] -= 1
     return linhas
+
+
+def preencher_valor_eur(db: Session, conta: Conta, linhas: list[LinhaPrevia]) -> int:
+    """Movimentos já gravados de um extrato reimportado ganham o valor em euros e o saldo, se ainda não os tinham."""
+    n = 0
+    for l in linhas:
+        if l.existente_id:
+            n += db.execute(update(Movimento).where(Movimento.id == l.existente_id)
+                            .values(saldo_apos=l.saldo, valor_eur=l.valor_eur)).rowcount
+        elif l.duplicado and l.valor_eur is not None:
+            n += db.execute(update(Movimento).where(Movimento.conta_id == conta.id, Movimento.hash_dedup == l.hash_dedup,
+                                                    Movimento.valor_eur.is_(None)).values(valor_eur=l.valor_eur)).rowcount
+    return n
 
 
 def confirmar(db: Session, conta: Conta, extrato: Extrato, nome: str, sha: str,
@@ -153,10 +179,11 @@ def confirmar(db: Session, conta: Conta, extrato: Extrato, nome: str, sha: str,
     movs = [Movimento(
         conta_id=conta.id, importacao_id=imp.id, data_mov=l.data_mov, data_valor=l.data_valor,
         ordem=l.ordem, descricao_original=l.descricao[:500], descricao_norm=l.descricao_norm[:500],
-        montante=l.montante, moeda=conta.moeda, saldo_apos=l.saldo, hash_dedup=l.hash_dedup,
+        montante=l.montante, moeda=conta.moeda, saldo_apos=l.saldo, valor_eur=l.valor_eur, hash_dedup=l.hash_dedup,
         transferencia=l.transferencia, qualificado_por="regra" if l.transferencia else None,
     ) for l in novas]
     db.add_all(movs)
+    preencher_valor_eur(db, conta, linhas)
     # Nas contas de empréstimo a qualificação é própria (prestação/juros/encargos), não pelas regras gerais.
     if investimentos.e_investimento(conta):
         # Carteira: juros, rendimentos e impostos são ganho/perda do investimento (não passam pelas regras gerais).
