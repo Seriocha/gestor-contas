@@ -404,7 +404,28 @@ def importadores(request: Request, admin: Utilizador = Depends(exigir_admin), db
     for parser, n, ultima in db.execute(select(Importacao.parser, func.count(), func.max(Importacao.criado_em))
                                         .where(Importacao.estado == "confirmada").group_by(Importacao.parser)):
         uso[parser] = {"n": n, "ultima": ultima}
-    return render(request, "admin/importadores.html", importadores=todos(), uso=uso)
+    return render(request, "admin/importadores.html", importadores=todos(), uso=uso,
+                  inativos=preferencias.importadores_inativos(request.app.state.prefs))
+
+
+@router.post("/importadores/estado")
+async def importador_estado(request: Request, admin: Utilizador = Depends(exigir_admin), db: Session = Depends(get_db)):
+    """Liga ou desliga um importador: um ficheiro de um importador inativo é recusado, venha de onde vier."""
+    from ..parsers import todos
+    form = await ler_form(request)
+    chave = str(form.get("chave", ""))
+    p = next((x for x in todos() if x.chave == chave), None)
+    if not p:
+        raise HTTPException(status_code=404, detail="Não encontrado.")
+    ativar = form.get("ativo") == "1"
+    inativos = preferencias.importadores_inativos(request.app.state.prefs)
+    inativos = inativos - {chave} if ativar else inativos | {chave}
+    preferencias.gravar(db, "importadores_inativos", ",".join(sorted(inativos)))
+    auditar(db, admin, "importador_estado", f"{chave}: {'ativo' if ativar else 'inativo'}")
+    db.commit()
+    request.app.state.prefs = preferencias.carregar(db)
+    flash(request, f"Importador «{p.banco}» ({p.FICHA['ficheiro']}): {'ativo' if ativar else 'inativo'}.")
+    return RedirectResponse("/admin/importadores", status_code=303)
 
 
 @router.post("/preferencias")

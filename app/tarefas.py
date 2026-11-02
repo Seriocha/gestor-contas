@@ -13,7 +13,7 @@ from datetime import date, datetime
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from . import parsers
+from . import parsers, preferencias
 from .models import Conta, Importacao, Movimento
 from .relatorios import fim_do_mes, somar_meses
 
@@ -112,12 +112,17 @@ def do_ciclo(db: Session, entidade_id: int, inicio: date) -> list[Banco]:
                               .where(Importacao.conta_id.in_(ids), Importacao.estado == "confirmada")
                               .group_by(Importacao.conta_id)).all()) if ids else {}
     fichas = {p.chave: p.FICHA for p in parsers.todos()}
+    inativos = preferencias.importadores_inativos(preferencias.carregar(db))
     corte = datetime.combine(inicio, datetime.min.time())
     bancos: dict[str, Banco] = {}
     for c in contas:
         chave = parser_da_conta(c)
+        desligado = chave in inativos
+        if desligado:                    # o formato consolidado do mesmo banco, se estiver ativo
+            chave = next((k for k in (f"{chave}_pdf", f"{chave}_consolidado") if k in fichas and k not in inativos), None)
         ficha = fichas.get(chave) if chave else None
-        nota = None if ficha else MANUAL.get(c.tipo, "Sem importador para esta conta: insere os movimentos à mão ou acerta o saldo.")
+        nota = None if ficha else ("O importador desta conta está inativo (Administração › Importadores)." if desligado else
+                                   MANUAL.get(c.tipo, "Sem importador para esta conta: insere os movimentos à mão ou acerta o saldo."))
         if c.tipo == "EMPRESTIMO" and not ficha:
             continue   # empréstimos de outros bancos: as prestações vêm na conta à ordem
         datas = [d for d in (ult_mov.get(c.id), ult_imp.get(c.id)) if d]

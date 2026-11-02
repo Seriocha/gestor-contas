@@ -178,23 +178,42 @@ def todos() -> list:
             creditoagricola.Parser, big.Parser, revolut_consolidado.Parser, revolut.Parser]
 
 
-def ler_extrato(nome: str, conteudo: bytes) -> Extrato:
+class ImportadorInativo(FormatoDesconhecido):
+    """O ficheiro foi reconhecido, mas o seu importador está desligado (Administração › Importadores)."""
+
+
+def _recusar_inativo(chave: str, inativos) -> None:
+    if chave not in inativos:
+        return
+    lista = todos()
+    p = next(x for x in lista if x.chave == chave)
+    familia = chave.split("_")[0]
+    ativos = [f"{x.banco}: {x.FICHA['ficheiro']}" for x in lista if x.chave.split("_")[0] == familia and x.chave not in inativos]
+    raise ImportadorInativo(f"O importador «{p.banco}» ({p.FICHA['ficheiro']}) está inativo (Administração › Importadores)."
+                            + (f" Usa: {'; '.join(ativos)}." if ativos else ""))
+
+
+def ler_extrato(nome: str, conteudo: bytes, inativos=()) -> Extrato:
+    """`inativos`: chaves dos importadores desligados — um ficheiro de um deles é recusado (ImportadorInativo)."""
     if conteudo[:5] == b"%PDF-":
         from . import revolut_pdf, santander_pdf
         extrato = santander_pdf.ler_pdf(conteudo)
         if extrato is not None:
+            _recusar_inativo(extrato.parser, inativos)
             extrato.avisos += verificar_saldos(extrato.movimentos)
             return extrato
         extrato = revolut_pdf.ler_pdf(conteudo)
         if extrato is None:
             raise FormatoDesconhecido("PDF não reconhecido: importam-se o «Extrato Consolidado» mensal do Santander "
                                       "e o «Extrato personalizado» consolidado da Revolut.")
+        _recusar_inativo(extrato.parser, inativos)
         for chave, movs in (extrato.subcontas or {}).items():
             extrato.avisos += [f"{chave[0]} {chave[1]}: {a}" for a in verificar_saldos(movs)]
         return extrato
     linhas = ler_linhas(nome, conteudo)
     for parser in todos():
         if parser.detetar(linhas):
+            _recusar_inativo(parser.chave, inativos)
             extrato = parser.ler(linhas)
             if extrato.subcontas:
                 for chave, movs in extrato.subcontas.items():
@@ -205,4 +224,4 @@ def ler_extrato(nome: str, conteudo: bytes) -> Extrato:
                 extrato.movimentos = para_cronologico(extrato.movimentos)
                 extrato.avisos += verificar_saldos(extrato.movimentos)
             return extrato
-    raise FormatoDesconhecido("Formato de extrato não reconhecido. Bancos suportados: Santander (conta, cartão de crédito, cartão refeição e empréstimo), ActivoBank, Crédito Agrícola, Banco BiG, Santander (extrato consolidado em PDF), Revolut (CSV ou PDF consolidado). Vê os formatos em Administração › Importadores.")
+    raise FormatoDesconhecido("Formato de extrato não reconhecido. Bancos suportados: Santander (conta, cartão de crédito, cartão refeição e empréstimo), ActivoBank, Crédito Agrícola, Banco BiG, Santander (extrato consolidado em PDF), Revolut (PDF consolidado). Vê os formatos em Administração › Importadores.")

@@ -7,7 +7,7 @@
 
 <section class="cartao">
   <p class="nota">{{ extrato.banco }} · <strong>{{ nome }}</strong>{% if extrato.periodo %} · {{ extrato.periodo[0] | data }} a {{ extrato.periodo[1] | data }}{% endif %}.
-    Cada subconta do ficheiro vai para a conta escolhida (só contas desta entidade na mesma moeda). «Todas as moedas»
+    Cada subconta do ficheiro vai para a conta escolhida (só contas desta entidade, deste banco e na mesma moeda). «Todas as moedas»
     é a conta em euros com as outras moedas convertidas pelo próprio extrato; as contas noutras moedas recebem os
     movimentos na moeda original. Os movimentos que já existem são ignorados.</p>
   <form method="post" action="/importar/todas">
@@ -30,7 +30,7 @@
             <option value="">— não importar</option>
             {% for c in l.contas %}<option value="{{ c.id }}" {% if l.conta and l.conta.id == c.id %}selected{% endif %}>{{ c.nome }} ({{ c.instituicao.nome }})</option>{% endfor %}
           </select>
-          {% else %}<span class="nota">Sem contas em {{ l.moeda }} — cria-a em Contas.</span>{% endif %}</td>
+          {% else %}<span class="nota">Sem conta {{ extrato.banco.split(' (')[0] }} em {{ l.moeda }} — cria-a em Contas.</span>{% endif %}</td>
         <td class="num">{{ l.n_novos if l.n_novos is not none else '—' }}</td>
       </tr>
       {% endfor %}

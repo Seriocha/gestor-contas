@@ -7,11 +7,11 @@ from sqlalchemy.orm import Session, selectinload
 
 from datetime import date
 
-from .. import investimentos, recibos_envio, servicos, tarefas
+from .. import investimentos, preferencias, recibos_envio, servicos, tarefas
 from ..deps import (IntOpcional, auditar, entidade_escolhida, entidades_visiveis, exigir_papel, flash, get_db, papel_em,
                     render, utilizador_atual)
 from ..models import PAPEIS, Conta, Importacao, ImportacaoPendente, Utilizador
-from ..parsers import FormatoDesconhecido, ler_extrato
+from ..parsers import FormatoDesconhecido, ImportadorInativo, ler_extrato
 from ..seguranca import ler_form
 
 router = APIRouter(prefix="/importar")
@@ -206,7 +206,7 @@ def mostrar_previa(request: Request, db: Session, u: Utilizador, conta: Conta, n
         filename = nome
     ficheiro = _F()
     try:
-        extrato = ler_extrato(ficheiro.filename, conteudo)
+        extrato = ler_extrato(ficheiro.filename, conteudo, preferencias.importadores_inativos(request.app.state.prefs))
     except FormatoDesconhecido as e:
         return _pagina(request, db, u, 400, erro=str(e), conta_id=conta.id)
     except Exception as e:  # ficheiro corrompido / colunas com valores inesperados
@@ -299,7 +299,10 @@ async def confirmar_cartao(request: Request, u: Utilizador = Depends(utilizador_
         raise HTTPException(status_code=404, detail="Não encontrado.")
     exigir_papel(db, u, conta.entidade_id, "editar")
     try:
-        extrato = ler_extrato(nome, servicos.ler_upload(request.app.state.defs.data_dir, sha))
+        extrato = _ler_guardado(request, nome, sha)
+    except ImportadorInativo as e:
+        flash(request, str(e), "erro")
+        return RedirectResponse("/importar", status_code=303)
     except (FileNotFoundError, FormatoDesconhecido):
         flash(request, "O ficheiro já não está disponível. Volta a carregá-lo.", "erro")
         return RedirectResponse("/importar", status_code=303)
@@ -341,7 +344,10 @@ async def confirmar(request: Request, u: Utilizador = Depends(utilizador_atual),
         raise HTTPException(status_code=404, detail="Não encontrado.")
     exigir_papel(db, u, conta.entidade_id, "editar")
     try:
-        extrato = ler_extrato(nome, servicos.ler_upload(request.app.state.defs.data_dir, sha))
+        extrato = _ler_guardado(request, nome, sha)
+    except ImportadorInativo as e:
+        flash(request, str(e), "erro")
+        return RedirectResponse("/importar", status_code=303)
     except (FileNotFoundError, FormatoDesconhecido):
         flash(request, "O ficheiro da pré-visualização já não está disponível. Volta a carregá-lo.", "erro")
         return RedirectResponse("/importar", status_code=303)
@@ -402,12 +408,19 @@ def _subconta_para(extrato, chave: tuple, conta: Conta):
 
 
 def _linhas_todas(db: Session, u: Utilizador, extrato, conta_base: Conta, escolhas: dict | None = None):
-    """Uma linha por subconta do ficheiro, com as contas possíveis (mesma entidade e moeda) e a sugerida: a conta
-    para a qual a importação normal escolheria essa subconta."""
-    contas = [c for c in _contas_editaveis(db, u) if c.entidade_id == conta_base.entidade_id]
+    """Uma linha por subconta do ficheiro, com as contas possíveis (mesma entidade, banco do extrato e moeda) e a
+    sugerida: a conta para a qual a importação normal escolheria essa subconta. Um cofre com nome próprio não fica com
+    os juros da Conta reforçada («Depósito»), mesmo sem movimentos no período."""
+    banco = extrato.parser.split("_")[0]
+    contas = [c for c in _contas_editaveis(db, u) if c.entidade_id == conta_base.entidade_id
+              and c.instituicao.parser == banco]
+    cofres = [p[len("Poupança "):].lower() for p, _ in [*extrato.subcontas, *(extrato.saldos_resumo or {})]
+              if p.startswith("Poupança ")]
     sugestao: dict = {}
     for c in sorted(contas, key=lambda c: (c.id != conta_base.id, c.nome)):
         chave = servicos.chave_subconta(extrato, c)
+        if chave[0] == "Depósito" and any(x in c.nome.lower() for x in cofres):
+            continue
         if chave in extrato.subcontas and chave not in sugestao:
             sugestao[chave] = c
     linhas = []
@@ -430,7 +443,8 @@ def _linhas_todas(db: Session, u: Utilizador, extrato, conta_base: Conta, escolh
 
 
 def _ler_guardado(request: Request, nome: str, sha: str):
-    return ler_extrato(nome, servicos.ler_upload(request.app.state.defs.data_dir, sha))
+    return ler_extrato(nome, servicos.ler_upload(request.app.state.defs.data_dir, sha),
+                       preferencias.importadores_inativos(request.app.state.prefs))
 
 
 @router.get("/todas")
@@ -443,6 +457,9 @@ def todas_form(request: Request, sha: str, nome: str, conta: int, u: Utilizador 
     exigir_papel(db, u, base.entidade_id, "editar")
     try:
         extrato = _ler_guardado(request, nome, sha)
+    except ImportadorInativo as e:
+        flash(request, str(e), "erro")
+        return RedirectResponse("/importar", status_code=303)
     except (FileNotFoundError, FormatoDesconhecido):
         flash(request, "O ficheiro já não está disponível. Volta a carregá-lo.", "erro")
         return RedirectResponse("/importar", status_code=303)
@@ -463,6 +480,9 @@ async def todas_confirmar(request: Request, u: Utilizador = Depends(utilizador_a
     exigir_papel(db, u, base.entidade_id, "editar")
     try:
         extrato = _ler_guardado(request, nome, sha)
+    except ImportadorInativo as e:
+        flash(request, str(e), "erro")
+        return RedirectResponse("/importar", status_code=303)
     except (FileNotFoundError, FormatoDesconhecido):
         flash(request, "O ficheiro já não está disponível. Volta a carregá-lo.", "erro")
         return RedirectResponse("/importar", status_code=303)

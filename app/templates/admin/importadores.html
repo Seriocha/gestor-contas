@@ -9,15 +9,22 @@
     <a class="botao" href="/importar">Importar extrato</a>
   </div>
   <p class="nota">Cada importador reconhece sozinho o seu formato pelo cabeçalho do ficheiro (o primeiro que reconhecer ganha, por esta ordem).
-    Movimentos repetidos são ignorados; com saldo, a cadeia de saldos é verificada linha a linha.</p>
+    Movimentos repetidos são ignorados; com saldo, a cadeia de saldos é verificada linha a linha.
+    Um importador inativo recusa os ficheiros do seu formato, à mão, na pasta da NAS ou no Paperless; o que já foi importado fica.</p>
   <div class="rolar">
   <table class="tabela tabela-importadores">
-    <thead><tr><th>Banco</th><th>Extrato e conta de destino</th><th>Ficheiro e onde exportar</th><th>Colunas reconhecidas</th>
+    <thead><tr><th>Estado</th><th>Banco</th><th>Extrato e conta de destino</th><th>Ficheiro e onde exportar</th><th>Colunas reconhecidas</th>
       <th>Ordem e saldo</th><th>Particularidades</th><th class="num">Importações</th></tr></thead>
     <tbody>
     {% for p in importadores %}
     {% set u = uso.get(p.chave) %}
-    <tr>
+    {% set ativo = p.chave not in inativos %}
+    <tr class="{{ '' if ativo else 'arquivada' }}">
+      <td class="sem-quebra"><span class="etiqueta {{ 'etiqueta-ok' if ativo else '' }}">{{ 'ativo' if ativo else 'inativo' }}</span>
+        <form method="post" action="/admin/importadores/estado" class="separado">
+          <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="chave" value="{{ p.chave }}">
+          <button class="pequeno" name="ativo" value="{{ '0' if ativo else '1' }}">{{ 'Inativar' if ativo else 'Ativar' }}</button>
+        </form></td>
       <td><strong>{{ p.banco }}</strong><br><code>{{ p.chave }}</code></td>
       <td>{{ p.FICHA.extrato }}<br><span class="nota">→ {{ p.FICHA.destino }}</span></td>
       <td><strong>{{ p.FICHA.ficheiro }}</strong><br><span class="nota">{{ p.FICHA.onde }}</span></td>

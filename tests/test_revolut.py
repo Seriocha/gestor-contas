@@ -8,6 +8,14 @@ from app.parsers import ler_extrato
 from tests.test_app import PW, _post
 from tests.test_importacao import _importar, xls_santander, xlsx_activobank
 
+
+@pytest.fixture(autouse=True)
+def _importadores_ativos(monkeypatch):
+    """Estes testes cobrem os formatos da Revolut que estão inativos por omissão."""
+    from app import preferencias
+    monkeypatch.setitem(preferencias.OMISSAO, "importadores_inativos", "")
+
+
 CAB = "Tipo,Produto,Data de início,Data de Conclusão,Descrição,Montante,Comissão,Moeda,Estado,Saldo"
 LINHAS = [
     "Carregamento,Atual,2026-03-27 10:00:00,2026-03-27 10:00:01,Carregamento com cartão *0267,1000.00,0.00,EUR,CONCLUÍDA,1000.00",

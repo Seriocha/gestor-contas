@@ -18,7 +18,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import servicos
+from . import preferencias, servicos
 from .models import Conta, ImportacaoPendente, Instituicao
 from .parsers import Extrato, FormatoDesconhecido, ler_extrato
 
@@ -154,7 +154,7 @@ def resumo_para(db: Session, p: ImportacaoPendente, extrato: Extrato) -> None:
 def analisar(db: Session, p: ImportacaoPendente, conteudo: bytes, data_dir: Path) -> None:
     """Lê o extrato de um pendente (da pasta ou do Paperless): formato, conta detetada, período e movimentos novos."""
     try:
-        extrato = ler_extrato(p.ficheiro, conteudo)
+        extrato = ler_extrato(p.ficheiro, conteudo, preferencias.importadores_inativos(preferencias.carregar(db)))
     except FormatoDesconhecido as e:
         p.estado, p.erro = "erro", str(e)[:500]
     except Exception as e:  # ficheiro corrompido / colunas inesperadas

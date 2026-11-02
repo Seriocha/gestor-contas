@@ -17,6 +17,13 @@ E = "�"
 EURO = "€".encode("utf-8").decode("cp1252")          # «â‚¬», como no ficheiro da Revolut
 
 
+@pytest.fixture(autouse=True)
+def _importadores_ativos(monkeypatch):
+    """Estes testes cobrem os formatos da Revolut que estão inativos por omissão."""
+    from app import preferencias
+    monkeypatch.setitem(preferencias.OMISSAO, "importadores_inativos", "")
+
+
 def _eur(v: str) -> str:
     return v + EURO
 

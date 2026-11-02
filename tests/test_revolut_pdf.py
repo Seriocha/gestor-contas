@@ -134,6 +134,7 @@ def test_importar_pdf_nas_tres_contas(admin, tmp_path):
 
 
 def test_nao_duplica_o_que_veio_do_csv(admin, app=None):
+    admin.app.state.prefs["importadores_inativos"] = ""          # o CSV antigo, importado antes do PDF
     # o mesmo «Amazon» importado antes pelo CSV, com a data de início um dia antes e o mesmo saldo
     csv = ("Tipo,Produto,Data de início,Data de Conclusão,Descrição,Montante,Comissão,Moeda,Estado,Saldo\n"
            "Pagamento com cartão,Atual,2026-01-04 20:00:00,2026-01-05 09:00:00,Amazon,-8.12,0.00,EUR,CONCLUÍDA,275.11\n")
@@ -144,6 +145,7 @@ def test_nao_duplica_o_que_veio_do_csv(admin, app=None):
 
 
 def test_comissao_separada_no_csv_e_data_de_conclusao(admin):
+    admin.app.state.prefs["importadores_inativos"] = ""          # o CSV antigo, importado antes do PDF
     # CSV: carregamento bruto 252,50 e comissão −2,50 em linha à parte (saldo final 545,11), 3 dias antes da data do PDF
     csv = ("Tipo,Produto,Data de início,Data de Conclusão,Descrição,Montante,Comissão,Moeda,Estado,Saldo\n"
            "Carregamento,Atual,2026-01-26 10:00:00,2026-01-29 10:00:00,Carregamento de FULANO,252.50,2.50,EUR,CONCLUÍDA,545.11\n")
@@ -205,3 +207,29 @@ def test_importar_todas_as_contas(admin):
     # outra vez: nada de novo
     r = admin.post("/importar/todas", data={**dados, "csrf": _csrf(admin.get(href))}, follow_redirects=True)
     assert "Nada de novo para importar" in r.text
+
+
+def test_todas_as_contas_so_sugere_contas_do_banco(admin, monkeypatch):
+    import re
+    _post(admin, "/contas/nova?entidade=1", nome="ActivoBank", tipo="ORDEM", moeda="EUR", instituicao_id="2")     # 4
+    _post(admin, "/contas/nova?entidade=1", nome="Poupança Férias", tipo="POUPANCA", moeda="EUR", instituicao_id="5")  # 5
+
+    def ler(conteudo):
+        e = interpretar(paginas_ficticias())
+        e.saldos_resumo[("Poupança Férias", "EUR")] = {"inicial": 0, "final": 0}      # cofre sem movimentos
+        return e
+    monkeypatch.setattr(revolut_pdf, "ler_pdf", ler)
+    previa = admin.post("/importar", data={"csrf": _csrf(admin.get("/importar")), "conta_id": "1"},
+                        files={"ficheiro": ("consolidated-statement.pdf", PDF)})
+    href = re.search(r'href="(/importar/todas\?[^"]+)"', previa.text).group(1).replace("&amp;", "&")
+    pagina = admin.get(href)
+    selecionada = lambda i: re.search(r'<option value="(\d+)" selected',
+                                      re.search(rf'name="sub_{i}".*?</select>', pagina.text, re.S).group(0))
+
+    assert "ActivoBank (" not in pagina.text                       # outro banco nem aparece nas opções
+    assert selecionada(1).group(1) == "1"                          # Todas as moedas → a conta Revolut
+    assert selecionada(3).group(1) == "3"                          # juros → a reforçada, não o cofre Férias
+    dados = {"csrf": _csrf(pagina), "sha": re.search(r'name="sha" value="([0-9a-f]+)"', pagina.text).group(1),
+             "nome": "consolidated-statement.pdf", "conta": "1", "sub_1": "4"}
+    r = admin.post("/importar/todas", data=dados)                  # nem à força: a conta de outro banco não conta
+    assert r.status_code == 400 and "Escolhe a conta" in r.text

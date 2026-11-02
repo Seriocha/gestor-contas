@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from . import paperless, servicos
+from . import paperless, preferencias, servicos
 from .models import Conta, Importacao, ImportacaoPendente, Movimento, Utilizador
 from .parsers import FormatoDesconhecido, ler_extrato
 
@@ -172,10 +172,11 @@ def validar_todos(db: Session, u: Utilizador, defs, token: str | None, ids: list
     q = select(ImportacaoPendente).where(ImportacaoPendente.estado == "pendente", ImportacaoPendente.conta_id.is_not(None))
     if ids is not None:
         q = q.where(ImportacaoPendente.id.in_(ids))
+    inativos = preferencias.importadores_inativos(preferencias.carregar(db))
     for p in db.scalars(q.order_by(ImportacaoPendente.data_ini, ImportacaoPendente.id)).all():
         conta = db.get(Conta, p.conta_id)
         try:
-            extrato = ler_extrato(p.ficheiro, servicos.ler_upload(defs.data_dir, p.sha256))
+            extrato = ler_extrato(p.ficheiro, servicos.ler_upload(defs.data_dir, p.sha256), inativos)
         except (FileNotFoundError, FormatoDesconhecido) as e:
             res.saltados.append((p, f"não foi possível ler ({e})"))
             continue

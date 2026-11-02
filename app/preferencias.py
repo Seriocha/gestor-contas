@@ -44,6 +44,8 @@ OMISSAO = {
     # «Tudo pago até» (AAAA-MM-DD, declarado pelo utilizador) e a partir de quando os documentos ficam «por validar».
     "lar_pago_ate": "",
     "lar_validar_desde": "",
+    # Importadores inativos (Administração › Importadores): chaves separadas por vírgulas. Revolut: só o PDF consolidado.
+    "importadores_inativos": "revolut,revolut_consolidado",
 }
 
 
@@ -61,6 +63,10 @@ def gravar(db: Session, chave: str, valor: str) -> None:
         d.valor = valor
     else:
         db.add(Definicao(chave=chave, valor=valor))
+
+
+def importadores_inativos(prefs: dict) -> set[str]:
+    return {x for x in (prefs.get("importadores_inativos") or "").split(",") if x}
 
 
 def ligada(prefs: dict, chave: str) -> bool:
