@@ -172,3 +172,11 @@ def test_ver_debitos_da_proposta_e_atribuir_a_mao(app, admin):
     with app.state.SessionLocal() as db:
         assert not db.get(Movimento, edp[0]).bem_manual
         assert fo.analisar(db, 1, admin.luz, [], HOJE).atribuicao[edp[0]] == ("Póvoa", "contrato")
+
+
+def test_posto_eni_nao_e_a_plenitude():
+    """«ENI» sozinho é o posto de combustível; a luz e o gás da Eni vêm como Plenitude (antes «Eni Gás e Luz»)."""
+    from app.fornecedores import fornecedor_de
+    assert fornecedor_de("COMPRA 1234 ENI SACAVEM", []) != "Plenitude"
+    assert fornecedor_de("DD ENI PLENITUDE 123456789", []) == "Plenitude"
+    assert fornecedor_de("DÉBITO DIRETO ENI GÁS E LUZ", []) == "Plenitude"

@@ -74,6 +74,25 @@ def test_ler_formato_real():
         eredes.ler(b"isto nao e um excel")
 
 
+def test_mesmo_dia_duas_vezes(app, admin):
+    """O Excel real trouxe 27/10 duas vezes (valores diferentes): fica a leitura mais alta e a importação não falha."""
+    wb = openpyxl.load_workbook(io.BytesIO(xlsx(date(2026, 10, 26), date(2026, 10, 28))))
+    ws = wb.active
+    ws.insert_rows(11)
+    for j, v in enumerate(["27/10/2026", "Real", "Operador de Rede de Distribuição", "Válida", "Energia consumida",
+                           "1012", "203", "499"], start=1):
+        ws.cell(11, j, v)
+    buf = io.BytesIO()
+    wb.save(buf)
+    f = eredes.ler(buf.getvalue())
+    assert [(d.day, v) for d, v, _ in f.leituras] == [
+        (28, {"Vazio": 1020, "Ponta": 204, "Cheias": 510}), (27, {"Vazio": 1012, "Ponta": 203, "Cheias": 505}),
+        (26, {"Vazio": 1000, "Ponta": 200, "Cheias": 500})]
+    r = admin.post("/relatorios/fornecedores/leituras", data={"csrf": _csrf(admin.get("/relatorios")), "entidade": "1"},
+                   files={"ficheiro": ("L.xlsx", buf.getvalue())})
+    assert "3 leituras novas" in r.text
+
+
 def test_importar_ligar_a_casa_e_consumo(app, admin):
     voltar = f"/relatorios/fornecedores?entidade=1&categoria={admin.luz}"
     r = admin.post("/relatorios/fornecedores/leituras", data={"csrf": _csrf(admin.get("/relatorios")), "entidade": "1", "voltar": voltar},

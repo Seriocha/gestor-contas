@@ -27,9 +27,10 @@ from .relatorios import ids_categoria, somar_meses
 from .sugestoes import padrao_de
 
 # Comercializadores portugueses (luz e gás) e operadores — o nome que aparece no extrato
+# («ENI» sozinho é o posto de combustível: a Plenitude só pelo nome ou pelo antigo «Eni Gás e Luz»)
 CONHECIDOS = [("EDP", r"\bEDP\b"), ("G9", r"\bG9\b"), ("Galp", r"GALP"), ("Endesa", r"ENDESA"), ("Iberdrola", r"IBERDROLA"),
               ("Goldenergy", r"GOLD ?ENERGY"), ("Luzboa", r"LUZBOA"), ("Repsol", r"REPSOL"), ("SU Eletricidade", r"SU ELETRICIDADE"),
-              ("Plenitude", r"PLENITUDE|\bENI\b"), ("Coopérnico", r"COOPERNICO"), ("MEO Energia", r"MEO ENERGIA"),
+              ("Plenitude", r"PLENITUDE|\bENI G[AÁ]S"), ("Coopérnico", r"COOPERNICO"), ("MEO Energia", r"MEO ENERGIA"),
               ("Muon", r"\bMUON\b"), ("YES Energy", r"YES ENERGY"), ("Ezu", r"\bEZU\b"), ("Audax", r"AUDAX"),
               ("Manie", r"\bMANIE\b"),
               ("Vodafone", r"VODAFONE"), ("MEO", r"\bMEO\b"), ("NOS", r"\bNOS\b"), ("Digi", r"\bDIGI\b"),

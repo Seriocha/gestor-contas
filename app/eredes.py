@@ -4,6 +4,7 @@ Formato observado (2026-10): folha «Leituras»; no topo «Morada», «CPE», «
   Data da Leitura | Tipo de Leitura | Origem | Estado | (Energia consumida) | <períodos: Vazio, Ponta, Cheias …>
 com uma linha por dia (mais recente primeiro), as datas em texto dd/mm/aaaa e os valores ACUMULADOS do contador (kWh,
 em texto). O consumo de um dia é a diferença entre duas leituras seguidas; conta no dia da leitura anterior.
+Às vezes o mesmo dia vem duas vezes (2026-11: duas leituras a 27/10, uma delas mais alta): fica a mais alta.
 
 A E-Redes não tem API para clientes (o Balcão Digital usa uma API interna com reCAPTCHA no login): os consumos entram
 por este Excel, exportado à mão no Balcão Digital (Consumos › exportar). Importar o mesmo período outra vez atualiza.
@@ -59,6 +60,7 @@ def ler(conteudo: bytes) -> Ficheiro:
         raise FormatoInvalido("Não encontrei as colunas dos períodos (Vazio, Ponta, Cheias…).")
     f = Ficheiro(cpe, str(topo.get("morada") or "").strip() or None, str(topo.get("numero do contador") or "").strip() or None,
                  [n for _, n in cols])
+    por_dia = {}
     for r in linhas[cab + 1:]:
         if not r or not r[0]:
             continue
@@ -77,8 +79,16 @@ def ler(conteudo: bytes) -> Ficheiro:
                 valores[nome] = int(float(str(v).replace(",", ".").strip()))
             except (TypeError, ValueError):
                 continue
-        if valores:
-            f.leituras.append((d, valores, str(r[1]).strip() if len(r) > 1 and r[1] else None))
+        if not valores:
+            continue
+        tipo = str(r[1]).strip() if len(r) > 1 and r[1] else None
+        if d in por_dia:         # o mesmo dia outra vez: os valores são acumulados, fica a leitura mais alta
+            antes = por_dia[d]
+            valores = {p: max(antes[1].get(p, 0), valores.get(p, 0)) for p in antes[1] | valores}
+            f.leituras[f.leituras.index(antes)] = por_dia[d] = (d, valores, antes[2])
+        else:
+            por_dia[d] = (d, valores, tipo)
+            f.leituras.append(por_dia[d])
     if not f.leituras:
         raise FormatoInvalido("O ficheiro não tem leituras.")
     return f
