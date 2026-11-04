@@ -44,6 +44,10 @@ OMISSAO = {
     # «Tudo pago até» (AAAA-MM-DD, declarado pelo utilizador) e a partir de quando os documentos ficam «por validar».
     "lar_pago_ate": "",
     "lar_validar_desde": "",
+    # Gestão do Lar › Farmácia Nova: dia em que se passou a pagar a farmácia diretamente (as faturas anteriores são da
+    # Santa Casa) e o texto que identifica, na descrição do débito, um pagamento à farmácia.
+    "lar_farm_desde": "",
+    "lar_farm_texto": "farmacia",
     # Importadores inativos (Administração › Importadores): chaves separadas por vírgulas. Revolut: só o PDF consolidado.
     "importadores_inativos": "revolut,revolut_consolidado",
 }

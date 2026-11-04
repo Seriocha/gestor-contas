@@ -62,7 +62,7 @@ FONTES_EXTRATOS = {"pasta": "Pasta partilhada da NAS (extratos largados na pasta
 MODULOS = {"imoveis": "Casas e propriedades", "viaturas": "Viaturas (carros, Via Verde, abastecimentos)",
            "subscricoes": "Subscrições e assinaturas", "viagens": "Viagens",
            "saude": "Saúde (perfis e dados do Google Health)",
-           "lar": "Lar (Santa Casa) — conciliação; ligado nas heranças"}
+           "lar": "Gestão do Lar (Santa Casa e Farmácia Nova) — conciliação; ligado nas heranças"}
 
 
 def fracao(pct: float | None) -> str:

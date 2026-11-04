@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_abas.html" import abas_lar with context %}
 {% block titulo %}Lar · conciliação{% endblock %}
 {% macro validacao(v, info=none) -%}
 {% if v == 'validado' %}<span class="etiqueta etiqueta-ok" title="{{ info.por ~ ' · ' ~ info.em.strftime('%d/%m/%Y') ~ (' · ' ~ info.nota if info.nota else '') if info else '' }}">validado</span>
@@ -9,6 +10,7 @@
 {% block conteudo %}
 <div class="titulo-acoes"><h1>Lar · conciliação</h1>
   {% if c %}<a class="botao" href="/lar?renovar=1">Ler de novo do Paperless</a>{% endif %}</div>
+{% if not sem_modulo %}{{ abas_lar() }}{% endif %}
 <p class="nota">Faturas da farmácia ↔ notas de lançamento de medicamentos da Santa Casa ↔ cartas de aviso ↔ recibos ↔
   pagamentos na conta{% if entidade %} da entidade <strong>{{ entidade.nome }}</strong>{% endif %}. Tudo lido do Paperless
   (o texto de cada documento); nada é alterado.</p>

@@ -161,7 +161,7 @@ def test_pagina_lar(tmp_path, falso):
     assert r.status_code == 200, r.text
     assert "Lar · conciliação" in r.text and "2 faturas da farmácia" in r.text and "certo" in r.text and "soma de faturas" in r.text
     # regularização gravada pela migração 0044: pago até 31/10/2026, validar desde 01/01/2026
-    assert "tudo pago até 31/10/2026" in r.text and "FT 2026/5319" in r.text and "Lar (Santa Casa)" in r.text
+    assert "tudo pago até 31/10/2026" in r.text and "FT 2026/5319" in r.text and "Gestão do Lar" in r.text
     assert "por validar" in r.text and "Validar o mês" in r.text and "novembro 2026" in r.text
     from tests.test_app import _csrf
     r = c.post("/lar/config", data={"csrf": _csrf(r), "entidade": "", "santa_casa": "Santa Casa STC", "farmacia": ""},

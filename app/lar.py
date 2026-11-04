@@ -466,8 +466,10 @@ class Conciliacao:
 
 def conciliar(farmacia_docs: list[tuple[int, str]], santa_casa_docs: list[tuple[int, str]], movimentos: list,
               hoje: date | None = None, pago_ate: date | None = None, validar_desde: date | None = None,
-              validados: dict | None = None) -> Conciliacao:
-    """`pago_ate`: tudo até essa data está pago (declarado pelo utilizador) — não há alertas de «por pagar».
+              validados: dict | None = None, farmacia_ate: date | None = None) -> Conciliacao:
+    """`farmacia_ate`: a partir deste dia a farmácia é paga diretamente (Gestão do Lar › Farmácia Nova): as faturas
+    dessa data em diante já não se procuram nos lançamentos da Santa Casa.
+    `pago_ate`: tudo até essa data está pago (declarado pelo utilizador) — não há alertas de «por pagar».
     `validar_desde`: os documentos anteriores ficam «regularizados»; os seguintes ficam «por validar» até o utilizador
     os validar um a um (`validados`: chave → {em, por, nota}); documentos regularizados ou validados não dão alertas."""
     hoje = hoje or date.today()
@@ -481,7 +483,8 @@ def conciliar(farmacia_docs: list[tuple[int, str]], santa_casa_docs: list[tuple[
         if d and d < validar_desde:
             return "regularizado"
         return "por validar"
-    faturas = [f for item in farmacia_docs if (f := ler_farmacia(item[0], item[1]))]
+    faturas = [f for item in farmacia_docs if (f := ler_farmacia(item[0], item[1]))
+               and (farmacia_ate is None or f.data < farmacia_ate)]
     vistos_f = {}
     for f in faturas:                                 # o mesmo documento importado duas vezes
         vistos_f.setdefault(f.numero, f)

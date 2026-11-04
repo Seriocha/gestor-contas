@@ -49,3 +49,9 @@
           ('/importar/recibos', 'Recibos (Paperless)', c == '/importar/recibos', 0),
           ('/importar/historico', 'Histórico', c == '/importar/historico', 0)]) }}
 {%- endmacro %}
+
+{% macro abas_lar() -%}
+{% set c = request.url.path %}
+{{ _abas([('/lar', 'Santa Casa', c == '/lar', 0),
+          ('/lar/farmacia', 'Farmácia Nova', c.startswith('/lar/farmacia'), 0)]) }}
+{%- endmacro %}

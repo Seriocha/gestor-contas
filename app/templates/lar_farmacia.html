@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% from "_abas.html" import abas_lar with context %}
+{% block titulo %}Gestão do Lar · Farmácia Nova{% endblock %}
+{% macro doc(pid, texto) -%}{% if pid and link %}<a href="{{ link }}/documents/{{ pid }}/details" target="_blank" rel="noopener">{{ texto }}</a>{% else %}{{ texto }}{% endif %}{%- endmacro %}
+{% macro mov(m) -%}<a href="/movimentos/{{ m.id }}/detalhe">{{ m.data_mov | data }} · {{ m.descricao_original|truncate(32) }}</a>{%- endmacro %}
+{% macro estado(e) -%}
+{% if e == 'pago' %}<span class="etiqueta etiqueta-ok">pago</span>
+{% elif e == 'pago no ato' %}<span class="etiqueta etiqueta-ok" title="fatura-recibo: paga ao balcão">pago no ato</span>
+{% elif e == 'recibo em falta' %}<span class="etiqueta etiqueta-cor" title="há débito no banco com este valor, mas a farmácia ainda não mandou o recibo">pago · recibo em falta</span>
+{% elif e == 'recibo sem débito' %}<span class="etiqueta etiqueta-cor" title="a farmácia passou recibo, mas não há débito igual na conta">recibo · sem débito no banco</span>
+{% else %}<span class="etiqueta etiqueta-erro">por pagar</span>{% endif %}
+{%- endmacro %}
+{% block conteudo %}
+<div class="titulo-acoes"><h1>Gestão do Lar · Farmácia Nova</h1>
+  {% if a %}<a class="botao" href="/lar/farmacia?renovar=1">Ler de novo do Paperless</a>{% endif %}</div>
+{% if not sem_modulo %}{{ abas_lar() }}{% endif %}
+<p class="nota">A farmácia passou a ser paga diretamente: faturas e recibos da farmácia (Paperless) ↔ pagamentos na conta
+  {% if entidade %} da entidade <strong>{{ entidade.nome }}</strong>{% endif %}. Cada recibo liga-se às faturas que lista e ao
+  débito com o mesmo valor; os débitos à farmácia sem recibo ligam-se à fatura com o mesmo valor ou às faturas que, somadas,
+  dão o valor. Nada é alterado no Paperless nem nos movimentos.</p>
+
+{% if sem_modulo %}<section class="cartao"><p class="vazio sem-margem">A Gestão do Lar faz parte das heranças: só aparece nas
+  entidades de herança (ou noutra entidade com o módulo «Lar» ligado em Administração › Entidades).</p></section>
+{% elif not paperless_cfg %}<section class="cartao"><p class="vazio sem-margem">O Paperless não está configurado.</p></section>
+{% elif not token_ok %}<section class="cartao"><p class="vazio sem-margem">Guarda o teu token do Paperless em <a href="/perfil#paperless">Perfil</a>.</p></section>
+{% endif %}
+{% for e in erros %}<div class="aviso aviso-erro">{{ e }}</div>{% endfor %}
+
+{% if a %}
+<section class="cartao">
+  <h2>Resumo <span class="nota">· {{ a.n_faturas }} fatura{{ 's' if a.n_faturas != 1 }} · {{ a.n_recibos }} recibo{{ 's' if a.n_recibos != 1 }}</span></h2>
+  {% if not desde %}
+  <div class="aviso aviso-erro">Falta a data em que passaste a pagar a farmácia diretamente: sem ela entram também as faturas
+    que eram pagas pela Santa Casa. Preenche-a em <a href="#configurar">Configurar</a>.</div>
+  {% endif %}
+  <p class="pp-resumo">
+    {% if desde %}<span class="nota">pagamento direto desde {{ desde | data }}{% if a.n_antes %} · {{ a.n_antes }} fatura{{ 's' if a.n_antes != 1 }} anterior{{ 'es' if a.n_antes != 1 }} fica{{ 'm' if a.n_antes != 1 }} na Santa Casa{% endif %}</span>{% endif %}
+    {% if a.por_pagar %}<span class="etiqueta etiqueta-erro">{{ a.por_pagar|length }} por pagar · {{ a.em_aberto | eur }}</span>
+    {% elif a.faturas %}<span class="etiqueta etiqueta-ok">nada por pagar</span>{% endif %}
+  </p>
+  {% if a.alertas %}
+  <ul class="pp-lista">{% for t in a.alertas %}<li class="pp-problema">⚠ {{ t }}</li>{% endfor %}</ul>
+  {% elif a.faturas or a.pagamentos %}<p class="sem-margem"><span class="etiqueta etiqueta-ok">tudo bate certo</span></p>
+  {% else %}<p class="vazio sem-margem">Ainda não há faturas da farmácia {{ 'desde ' ~ (desde | data) if desde else '' }} no Paperless.</p>{% endif %}
+</section>
+
+{% if a.meses %}
+<section class="cartao">
+  <h2>Por mês <span class="nota">· pela data da fatura</span></h2>
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th>Mês</th><th class="num">Faturas</th><th class="num">Faturado</th><th class="num">Pago</th><th class="num">Em aberto</th></tr></thead>
+    {% for m in a.meses %}
+    <tr><td>{{ m.mes.strftime('%m/%Y') }}</td><td class="num">{{ m.faturas }}</td><td class="num">{{ m.faturado | eur }}</td>
+      <td class="num">{{ m.pago | eur }}</td>
+      <td class="num">{% if m.em_aberto %}<span class="pp-problema">{{ m.em_aberto | eur }}</span>{% else %}—{% endif %}</td></tr>
+    {% endfor %}
+  </table></div>
+</section>
+{% endif %}
+
+<section class="cartao" id="pagamentos">
+  <h2>Pagamentos <span class="nota">· recibo ↔ débito na conta ↔ faturas</span></h2>
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th>Recibo da farmácia</th><th>Débito na conta</th><th class="num">Valor</th><th>Faturas pagas</th><th>Resultado</th></tr></thead>
+    {% for p in a.pagamentos %}
+    <tr>
+      <td class="nota sem-quebra">{% if p.recibo %}{{ doc(p.recibo.pid, p.recibo.numero) }}<br>{{ p.recibo.data | data }}{% if p.recibo.meio %} · {{ p.recibo.meio | lower }}{% endif %}{% else %}—{% endif %}</td>
+      <td class="nota">{% if p.movimento %}{{ mov(p.movimento) }}{% else %}<span class="pp-problema">sem débito igual</span>{% endif %}</td>
+      <td class="num">{{ p.valor | eur }}</td>
+      <td class="nota">{% for f in p.faturas %}<div class="sem-quebra">{{ doc(f.pid, f.numero) }} · {{ f.data | data }} · <strong>{{ f.total | eur }}</strong></div>{% else %}—{% endfor %}</td>
+      <td>{% if p.ok %}<span class="etiqueta etiqueta-ok">certo</span> <span class="nota">{{ p.metodo }}</span>
+        {% else %}{% for x in p.problemas() %}<div class="nota pp-problema">· {{ x }}</div>{% endfor %}{% endif %}</td>
+    </tr>
+    {% else %}<tr><td colspan="5" class="vazio">Ainda não há recibos nem pagamentos à farmácia.</td></tr>{% endfor %}
+  </table></div>
+  <p class="nota">Um débito conta como pagamento à farmácia quando a descrição tem «{{ texto_banco }}» ou quando tem o valor
+    de um recibo. Muda o texto em <a href="#configurar">Configurar</a>.</p>
+</section>
+
+<section class="cartao" id="faturas">
+  <h2>Faturas <span class="nota">· {{ a.faturas|length }}</span></h2>
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th>Fatura</th><th class="num">Valor</th><th>Produtos</th><th>Recibo</th><th>Pagamento</th><th>Estado</th></tr></thead>
+    {% for f in a.faturas %}
+    <tr>
+      <td class="nota sem-quebra">{{ doc(f.pid, f.numero) }}<br>{{ f.data | data }}</td>
+      <td class="num">{{ f.total | eur }}</td>
+      <td class="nota">{{ f.itens|map('first')|join(' · ') or '—' }}</td>
+      <td class="nota sem-quebra">{% if f.recibo %}{{ doc(f.recibo.pid, f.recibo.numero) }}<br>{{ f.recibo.data | data }}{% elif f.no_ato %}fatura-recibo{% else %}—{% endif %}</td>
+      <td class="nota">{% if f.pagamento and f.pagamento.movimento %}{{ mov(f.pagamento.movimento) }}{% else %}—{% endif %}</td>
+      <td>{{ estado(f.estado()) }}{% if not f.paga and (hoje - f.data).days > 0 %}<br><span class="nota">há {{ (hoje - f.data).days }} dias</span>{% endif %}</td>
+    </tr>
+    {% else %}<tr><td colspan="6" class="vazio">Sem faturas no intervalo.</td></tr>{% endfor %}
+  </table></div>
+</section>
+
+{% if a.nao_lidos %}
+<section class="cartao" id="nao-lidos">
+  <h2>Documentos da farmácia que o Gestor não leu <span class="nota">· {{ a.nao_lidos|length }}</span></h2>
+  <p class="nota">Estão no Paperless com o correspondente da farmácia, mas o texto não tem o formato de uma fatura, fatura-recibo
+    ou recibo. Se for um recibo, abre-o e vê o separador <strong>Conteúdo</strong>: se o texto estiver bem, manda-me esse texto
+    para eu ajustar a leitura; se estiver estragado, usa «Refazer OCR» no Paperless.</p>
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th>Documento</th><th>Início do texto</th></tr></thead>
+    {% for pid, inicio in a.nao_lidos[:40] %}<tr><td>{{ doc(pid, '#' ~ pid) }}</td><td class="nota">{{ inicio }}</td></tr>{% endfor %}
+  </table></div>
+</section>
+{% endif %}
+{% endif %}
+
+{% if token_ok and not sem_modulo %}
+<section class="cartao" id="configurar">
+  <details {% if erros or not desde %}open{% endif %}><summary><strong>Configurar</strong></summary>
+  <form method="post" action="/lar/farmacia/config" class="formulario estreito" style="margin-top: 1rem">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <label>Pagamento direto desde <input type="date" name="desde" value="{{ prefs.lar_farm_desde }}">
+      <span class="nota">as faturas a partir deste dia saem da conciliação da Santa Casa e entram aqui</span></label>
+    <label>Correspondente da farmácia no Paperless
+      <select name="farmacia"><option value="">— detetar pelo nome</option>{% for x in correspondentes %}<option {% if prefs.lar_corr_farmacia == x.name %}selected{% endif %}>{{ x.name }}</option>{% endfor %}</select></label>
+    <label>Texto do pagamento no banco <input name="texto_banco" maxlength="60" value="{{ prefs.lar_farm_texto }}">
+      <span class="nota">parte da descrição do débito que identifica um pagamento à farmácia (acentos e maiúsculas não contam)</span></label>
+    <p class="nota">A entidade com os movimentos é a mesma do separador Santa Casa{% if entidade %} ({{ entidade.nome }}){% endif %}.</p>
+    <button class="primario">Guardar</button>
+  </form>
+  </details>
+</section>
+{% endif %}
+{% endblock %}
