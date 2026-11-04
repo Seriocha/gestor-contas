@@ -12,7 +12,7 @@ set -e
 
 BASE="/share/Container/paperless"
 REDE="nas-apps"
-IMAGEM="ghcr.io/paperless-ngx/paperless-ngx:latest"
+IMAGEM="${IMAGEM:-ghcr.io/paperless-ngx/paperless-ngx:latest}"   # outra versão: IMAGEM=ghcr.io/paperless-ngx/paperless-ngx:2.20.15 sh $0
 IP_NAS="${IP_NAS:-192.168.1.232}"
 
 mkdir -p "$BASE/data" "$BASE/media" "$BASE/export" "$BASE/consume" "$BASE/redis"
@@ -34,10 +34,17 @@ PAPERLESS_OCR_LANGUAGE=por+eng
 PAPERLESS_DATE_ORDER=DMY
 PAPERLESS_CONSUMER_RECURSIVE=true
 PAPERLESS_CONSUMER_SUBDIRS_AS_TAGS=true
+PAPERLESS_CONSUMER_DELETE_DUPLICATES=true
 PAPERLESS_FILENAME_FORMAT={{ created_year }}/{{ correspondent }}/{{ title }}
 EOF
   chmod 600 "$CONF"
   echo "Configuração criada em $CONF"
+fi
+# opções acrescentadas depois da 1.ª instalação: juntar ao paperless.conf existente se ainda lá não estiverem
+if ! grep -q '^PAPERLESS_CONSUMER_DELETE_DUPLICATES=' "$CONF"; then
+  [ -n "$(tail -c 1 "$CONF")" ] && echo >> "$CONF"   # editado à mão sem \n no fim: não colar à última linha
+  echo 'PAPERLESS_CONSUMER_DELETE_DUPLICATES=true' >> "$CONF"
+  echo "Acrescentado PAPERLESS_CONSUMER_DELETE_DUPLICATES=true a $CONF"
 fi
 
 docker network inspect "$REDE" >/dev/null 2>&1 || docker network create "$REDE"
