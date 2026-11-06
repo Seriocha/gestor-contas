@@ -154,40 +154,33 @@ def mapa(empregador: str, docs: list[Doc]) -> Mapa:
     return out
 
 
-def documentos(token: str) -> list[tuple[str, Doc]]:
-    """(empregador, Doc) de cada recibo de vencimento visível com o token."""
-    tipos = recibos._ids("document_types", token)
-    if recibos.TIPO not in tipos:
-        raise paperless.ErroPaperless(f"Não há o tipo de documento «{recibos.TIPO}» no Paperless (Administração › Paperless).")
+def documentos(token: str, tipo: str = recibos.TIPO, correspondente: str | None = None) -> list[tuple[str, Doc]]:
+    """(empregador, Doc) de cada recibo visível com o token (deste tipo de documento e, se indicado, deste empregador)."""
+    tipo_id, corr_id = recibos.filtro(token, tipo, correspondente)
     campos = recibos._ids("custom_fields", token)
     c_periodo, c_liquido = campos.get(recibos.CAMPOS["periodo"]), campos.get(recibos.CAMPOS["liquido"])
     nomes = paperless._nomes("/api/correspondents/", token)
-    out, pagina = [], 1
-    while True:
-        r = paperless._pedido("/api/documents/", {"document_type__id": tipos[recibos.TIPO], "page_size": 100, "page": pagina,
-                                                  "fields": "id,title,content,custom_fields,correspondent"}, token=token)
-        for d in r.get("results", []):
-            valores = {c["field"]: c.get("value") for c in d.get("custom_fields") or []}
-            texto = d.get("content") or ""
-            per, do_texto = periodo_de(valores.get(c_periodo)), False
-            liquido = recibos.de_monetario(valores.get(c_liquido)) if valores.get(c_liquido) not in (None, "") else None
-            if not per or liquido is None:
-                lido = recibos.extrair(texto)
-                if not per and lido.periodo:
-                    per, do_texto = lido.periodo, True
-                if liquido is None:
-                    liquido = lido.liquido
-            emp = nomes.get(d.get("correspondent")) or SEM_EMPREGADOR
-            out.append((emp, Doc(d["id"], d.get("title") or "", per, do_texto, liquido, subsidios(texto))))
-        if not r.get("next"):
-            return out
-        pagina += 1
+    out = []
+    for d in recibos._documentos(tipo_id, token, corr_id, fields="id,title,content,custom_fields,correspondent"):
+        valores = {c["field"]: c.get("value") for c in d.get("custom_fields") or []}
+        texto = d.get("content") or ""
+        per, do_texto = periodo_de(valores.get(c_periodo)), False
+        liquido = recibos.de_monetario(valores.get(c_liquido)) if valores.get(c_liquido) not in (None, "") else None
+        if not per or liquido is None:
+            lido = recibos.extrair(texto)
+            if not per and lido.periodo:
+                per, do_texto = lido.periodo, True
+            if liquido is None:
+                liquido = lido.liquido
+        emp = nomes.get(d.get("correspondent")) or SEM_EMPREGADOR
+        out.append((emp, Doc(d["id"], d.get("title") or "", per, do_texto, liquido, subsidios(texto))))
+    return out
 
 
-def mapas(token: str) -> list[Mapa]:
+def mapas(token: str, tipo: str = recibos.TIPO, correspondente: str | None = None) -> list[Mapa]:
     """Um mapa por empregador, por ordem alfabética (os sem correspondente no fim)."""
     grupos: dict[str, list[Doc]] = {}
-    for emp, d in documentos(token):
+    for emp, d in documentos(token, tipo, correspondente):
         grupos.setdefault(emp, []).append(d)
     return [mapa(e, grupos[e]) for e in sorted(grupos, key=lambda e: (e == SEM_EMPREGADOR, e.lower()))]
 

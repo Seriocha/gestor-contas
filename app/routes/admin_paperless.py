@@ -610,3 +610,81 @@ def auditoria(request: Request, lote: str = "", documento: str = "", admin: Util
     nomes_regras = {r.id: r.nome for r in db.scalars(select(RegraDocumento))}
     return render(request, "admin/paperless_auditoria.html", registo=db.scalars(q.limit(300)).all(), lote=lote,
                   documento=documento, nomes_regras=nomes_regras, **ctx)
+
+
+# ------------------------------------------------------------------ recibos de vencimento: ligações
+def _ctx_recibos(request: Request, db: Session, admin: Utilizador, **extra) -> dict:
+    """As ligações e, para ajudar a escrever, os tipos de documento e correspondentes que o token do topo vê."""
+    from ..models import Entidade, LigacaoRecibos
+    ctx, token = _token(request, db, admin)
+    tipos, correspondentes = [], []
+    if token:
+        tipos = sorted(n for n in paperless._nomes("/api/document_types/", token).values() if n)
+        correspondentes = sorted(n for n in paperless._nomes("/api/correspondents/", token).values() if n)
+    ligacoes = db.scalars(select(LigacaoRecibos).order_by(LigacaoRecibos.nome, LigacaoRecibos.id)).all()
+    entidades = db.scalars(select(Entidade).order_by(Entidade.nome)).all()
+    return {**ctx, "ligacoes": ligacoes, "entidades": entidades, "tipos_doc": tipos, "correspondentes": correspondentes,
+            **extra}
+
+
+@router.get("/recibos")
+def recibos_ligacoes(request: Request, admin: Utilizador = Depends(exigir_admin), db: Session = Depends(get_db)):
+    return render(request, "admin/paperless_recibos.html", **_ctx_recibos(request, db, admin))
+
+
+@router.post("/recibos")
+async def recibos_ligacao_gravar(request: Request, admin: Utilizador = Depends(exigir_admin),
+                                 db: Session = Depends(get_db)):
+    """Criar ou alterar uma ligação (id no formulário = alterar)."""
+    from .. import recibos
+    from ..models import Entidade, LigacaoRecibos
+    form = await ler_form(request)
+    lid = _int(form.get("id"))
+    lig = db.get(LigacaoRecibos, lid) if lid else LigacaoRecibos()
+    if lig is None:
+        return RedirectResponse("/admin/paperless/recibos", status_code=303)
+    nome = str(form.get("nome", "")).strip()[:80]
+    dono = db.get(Utilizador, _int(form.get("utilizador"), 0) or 0)
+    eid = _int(form.get("entidade"))
+    entidade = db.get(Entidade, eid) if eid else None
+    tipo = str(form.get("tipo_documento", "")).strip()[:128] or recibos.TIPO
+    corr = str(form.get("correspondente", "")).strip()[:128] or None
+    erros = [m for c, m in ((nome, "Dá um nome à ligação."), (dono, "Escolhe a pessoa (o token do Paperless)."),
+                            (not eid or entidade, "Entidade inexistente.")) if not c]
+    if erros:
+        return render(request, "admin/paperless_recibos.html", status_code=400,
+                      **_ctx_recibos(request, db, admin, erros_lig=erros, editar=lig if lid else None))
+    lig.nome, lig.utilizador_id, lig.entidade_id = nome, dono.id, entidade.id if entidade else None
+    lig.tipo_documento, lig.correspondente, lig.ativo = tipo, corr, bool(form.get("ativo")) or not lid
+    if not lid:
+        db.add(lig)
+    db.flush()
+    auditar(db, admin, "recibos_ligacao", f"{'alterada' if lid else 'criada'} #{lig.id} «{nome}» ({tipo}"
+                                          f"{' · ' + corr if corr else ''})")
+    db.commit()
+    flash(request, f"Ligação «{nome}» {'alterada' if lid else 'criada'}.")
+    return RedirectResponse("/admin/paperless/recibos", status_code=303)
+
+
+@router.get("/recibos/{lid}")
+def recibos_ligacao_editar(request: Request, lid: int, admin: Utilizador = Depends(exigir_admin),
+                           db: Session = Depends(get_db)):
+    from ..models import LigacaoRecibos
+    lig = db.get(LigacaoRecibos, lid)
+    if lig is None:
+        return RedirectResponse("/admin/paperless/recibos", status_code=303)
+    return render(request, "admin/paperless_recibos.html", **_ctx_recibos(request, db, admin, editar=lig))
+
+
+@router.post("/recibos/{lid}/apagar")
+async def recibos_ligacao_apagar(request: Request, lid: int, admin: Utilizador = Depends(exigir_admin),
+                                 db: Session = Depends(get_db)):
+    from ..models import LigacaoRecibos
+    await ler_form(request)
+    lig = db.get(LigacaoRecibos, lid)
+    if lig is not None:
+        auditar(db, admin, "recibos_ligacao", f"apagada #{lig.id} «{lig.nome}»")
+        db.delete(lig)
+        db.commit()
+        flash(request, f"Ligação «{lig.nome}» apagada (os documentos no Paperless não mudam).")
+    return RedirectResponse("/admin/paperless/recibos", status_code=303)

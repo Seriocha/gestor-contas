@@ -4,7 +4,8 @@
 <nav class="separadores" aria-label="Paperless">
   {% for href, rotulo in [('/admin/paperless/regras', 'Regras'), ('/admin/paperless/revisao', 'Revisão'),
                           ('/admin/paperless/reclassificar', 'Reclassificar'), ('/admin/paperless/auditoria', 'Auditoria'),
-                          ('/admin/paperless', 'Circuitos'), ('/admin/paperless/correspondentes', 'Correspondentes'),
+                          ('/admin/paperless', 'Circuitos'), ('/admin/paperless/recibos', 'Recibos'),
+                          ('/admin/paperless/correspondentes', 'Correspondentes'),
                           ('/admin/paperless/fluxos', 'Fluxos de trabalho'), ('/admin/paperless/email', 'Email'),
                           ('/admin/paperless/manutencao', 'Manutenção')] %}
   <a href="{{ href }}" {% if c == href or (href == '/admin/paperless/regras' and c.startswith('/admin/paperless/regras')) %}class="ativo" aria-current="page"{% endif %}>{{ rotulo }}{% if href.endswith('/revisao') and n_rever is defined and n_rever %} <span class="contador">{{ n_rever }}</span>{% endif %}</a>

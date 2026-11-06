@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block titulo %}Paperless · recibos de vencimento{% endblock %}
+{% block conteudo %}
+<h1>Administração</h1>
+{% include "admin/_paperless_topo.html" %}
+<section class="cartao">
+  <h2>Recibos de vencimento <span class="nota">· {{ ligacoes | length }} ligaç{{ 'ões' if ligacoes | length != 1 else 'ão' }}</span></h2>
+  <p class="nota">Onde estão os recibos de cada pessoa no Paperless. Cada ligação diz o <strong>token</strong> usado (a pessoa
+    dona dos documentos — só ela os vê), o <strong>tipo de documento</strong>, o <strong>empregador</strong> (correspondente;
+    vazio = todos) e a <strong>entidade</strong> do Gestor onde se procuram os créditos do vencimento (vazio = todas as que
+    quem corre pode editar). Importar › Recibos (Paperless) usa estas ligações para os valores e para os períodos.</p>
+  {% if ligacoes %}
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th>Nome</th><th>Pessoa (token)</th><th>Tipo de documento</th><th>Empregador</th><th>Entidade</th><th>Estado</th><th></th></tr></thead>
+    {% for l in ligacoes %}
+    <tr><td><strong>{{ l.nome }}</strong></td><td>{{ l.utilizador.nome }}</td><td>{{ l.tipo_documento }}</td>
+      <td>{{ l.correspondente or '— todos' }}</td><td>{{ l.entidade.nome if l.entidade else '— todas' }}</td>
+      <td><span class="etiqueta {{ 'etiqueta-ok' if l.ativo }}">{{ 'ativa' if l.ativo else 'inativa' }}</span></td>
+      <td class="acoes"><a href="/admin/paperless/recibos/{{ l.id }}#ligacao">Editar</a>
+        <form method="post" action="/admin/paperless/recibos/{{ l.id }}/apagar" onsubmit="return confirm('Apagar esta ligação?')">
+          <input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="ligacao perigo-texto">Apagar</button></form></td></tr>
+    {% endfor %}
+  </table></div>
+  {% else %}<p class="vazio">Ainda não há ligações: Importar › Recibos usa a pessoa escolhida, o tipo «Recibo de vencimento» e todos os empregadores.</p>{% endif %}
+</section>
+
+{% for e in erros_lig or [] %}<div class="aviso aviso-erro">{{ e }}</div>{% endfor %}
+
+{% set l = editar %}
+<section class="cartao" id="ligacao">
+  <h2>{{ 'Alterar «' ~ l.nome ~ '»' if l and l.id else 'Nova ligação' }}</h2>
+  <form method="post" action="/admin/paperless/recibos" class="formulario" style="max-width: 40rem">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    {% if l and l.id %}<input type="hidden" name="id" value="{{ l.id }}">{% endif %}
+    <label>Nome <input name="nome" value="{{ l.nome if l else '' }}" maxlength="80" required placeholder="ex.: Vencimento Sérgio"></label>
+    <div class="linha">
+      <label>Pessoa (token do Paperless)
+        <select name="utilizador" required>{% for x, tem in utilizadores %}<option value="{{ x.id }}" {% if l and l.utilizador_id == x.id %}selected{% endif %}>{{ x.nome }}{{ '' if tem else ' (sem token)' }}</option>{% endfor %}</select></label>
+      <label>Entidade (créditos do vencimento)
+        <select name="entidade"><option value="">— todas as que pode editar</option>{% for e in entidades %}<option value="{{ e.id }}" {% if l and l.entidade_id == e.id %}selected{% endif %}>{{ e.nome }}</option>{% endfor %}</select></label>
+    </div>
+    <div class="linha">
+      <label>Tipo de documento <input name="tipo_documento" list="tipos-doc" value="{{ l.tipo_documento if l else 'Recibo de vencimento' }}" maxlength="128" required></label>
+      <label>Empregador (correspondente) <input name="correspondente" list="correspondentes" value="{{ (l.correspondente or '') if l else '' }}" maxlength="128" placeholder="vazio = todos"></label>
+    </div>
+    <datalist id="tipos-doc">{% for n in tipos_doc %}<option value="{{ n }}">{% endfor %}</datalist>
+    <datalist id="correspondentes">{% for n in correspondentes %}<option value="{{ n }}">{% endfor %}</datalist>
+    <p class="nota sem-margem">Os nomes têm de ser iguais aos do Paperless{{ ' (as sugestões vêm do token escolhido no topo)' if tipos_doc }}.</p>
+    {% if l and l.id %}<label class="opcao"><input type="checkbox" name="ativo" value="1" {% if l.ativo %}checked{% endif %}> Ativa</label>{% endif %}
+    <div class="acoes-form">
+      {% if l and l.id %}<a href="/admin/paperless/recibos">Cancelar</a>{% endif %}
+      <button class="primario">{{ 'Gravar' if l and l.id else 'Criar ligação' }}</button>
+    </div>
+  </form>
+</section>
+{% endblock %}

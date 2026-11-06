@@ -1,6 +1,17 @@
 {% extends "base.html" %}
 {% from "_abas.html" import abas_importar with context %}
 {% block titulo %}Recibos para o Paperless{% endblock %}
+{% macro escolher_recibos() %}
+{%- if ligacoes %}
+      <label>Recibos de
+        <select name="ligacao">{% for l in ligacoes %}<option value="{{ l.id }}" {% if l.id == lig_id %}selected{% endif %}>{{ l.nome }} · {{ l.tipo_documento }}{{ ' · ' ~ l.correspondente if l.correspondente }}</option>{% endfor %}</select>
+        <span class="nota">ligações em Administração › Paperless › Recibos</span></label>
+{%- else %}
+      <label>Recibos de
+        <select name="utilizador">{% for x, tem in utilizadores %}<option value="{{ x.id }}" {% if x.id == uid %}selected{% endif %} {% if not tem %}disabled{% endif %}>{{ x.nome }}{{ '' if tem else ' (sem token)' }}</option>{% endfor %}</select>
+        <span class="nota">tipo «Recibo de vencimento», todos os empregadores — configura as ligações em Administração › Paperless › Recibos</span></label>
+{%- endif %}
+{% endmacro %}
 {% block conteudo %}
 <div class="titulo-acoes"><h1>Importar</h1></div>
 {{ abas_importar() }}
@@ -60,8 +71,7 @@
     texto do recibo. SF / SN = subsídio de férias / de Natal pago nesse recibo.</p>
   <form method="get" action="/importar/recibos/periodos#periodos" class="formulario" style="max-width: 40rem">
     <div class="linha">
-      <label>Recibos de
-        <select name="utilizador">{% for x, tem in utilizadores %}<option value="{{ x.id }}" {% if x.id == uid %}selected{% endif %} {% if not tem %}disabled{% endif %}>{{ x.nome }}{{ '' if tem else ' (sem token)' }}</option>{% endfor %}</select></label>
+      {{ escolher_recibos() }}
     </div>
     <div class="acoes-form"><button class="primario">Ver os períodos</button></div>
   </form>
@@ -113,8 +123,7 @@
   <form method="post" action="/importar/recibos/valores#valores" class="formulario" style="max-width: 40rem">
     <input type="hidden" name="csrf" value="{{ csrf_token }}">
     <div class="linha">
-      <label>Recibos de
-        <select name="utilizador">{% for x, tem in utilizadores %}<option value="{{ x.id }}" {% if x.id == uid %}selected{% endif %} {% if not tem %}disabled{% endif %}>{{ x.nome }}{{ '' if tem else ' (sem token)' }}</option>{% endfor %}</select></label>
+      {{ escolher_recibos() }}
       <label>Janela (dias) <input type="number" name="dias" min="1" max="31" value="{{ dias or 12 }}">
         <span class="nota">antes e depois do fim do mês</span></label>
     </div>

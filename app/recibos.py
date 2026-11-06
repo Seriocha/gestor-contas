@@ -160,11 +160,14 @@ def _ids(endpoint: str, token: str) -> dict[str, int]:
     return {x["name"]: x["id"] for x in r.get("results", [])}
 
 
-def _documentos(tipo_id: int, token: str) -> list[dict]:
+def _documentos(tipo_id: int, token: str, correspondente_id: int | None = None,
+                fields: str = "id,title,content,custom_fields,tags,created") -> list[dict]:
+    params = {"document_type__id": tipo_id, "page_size": 50, "fields": fields}
+    if correspondente_id is not None:
+        params["correspondent__id"] = correspondente_id
     out, pagina = [], 1
     while True:
-        r = paperless._pedido("/api/documents/", {"document_type__id": tipo_id, "page_size": 50, "page": pagina,
-                                                  "fields": "id,title,content,custom_fields,tags,created"}, token=token)
+        r = paperless._pedido("/api/documents/", {**params, "page": pagina}, token=token)
         out += r.get("results", [])
         if not r.get("next"):
             return out
@@ -180,11 +183,24 @@ def _etiqueta_rever(token: str, ensaio: bool) -> int | None:
     return paperless.enviar("POST", "/api/tags/", {"name": ETIQUETA_REVER, "matching_algorithm": 0, "match": ""}, token=token)["id"]
 
 
-def processar(token: str, *, ensaio: bool = False, forcar: bool = False) -> list[Linha]:
-    """Extrai e grava os valores de todos os recibos visíveis com este token. Devolve uma linha por documento."""
+def filtro(token: str, tipo: str = TIPO, correspondente: str | None = None) -> tuple[int, int | None]:
+    """(id do tipo de documento, id do correspondente ou None = todos), pelos nomes; ErroPaperless se não existirem."""
     tipos = _ids("document_types", token)
-    if TIPO not in tipos:
-        raise paperless.ErroPaperless(f"Não há o tipo de documento «{TIPO}» no Paperless (Administração › Paperless).")
+    if tipo not in tipos:
+        raise paperless.ErroPaperless(f"Não há o tipo de documento «{tipo}» no Paperless (Administração › Paperless).")
+    if not correspondente:
+        return tipos[tipo], None
+    corr = _ids("correspondents", token)
+    if correspondente not in corr:
+        raise paperless.ErroPaperless(f"Não há o correspondente «{correspondente}» no Paperless.")
+    return tipos[tipo], corr[correspondente]
+
+
+def processar(token: str, *, ensaio: bool = False, forcar: bool = False, tipo: str = TIPO,
+              correspondente: str | None = None) -> list[Linha]:
+    """Extrai e grava os valores dos recibos visíveis com este token (do tipo de documento e, se indicado, só do
+    correspondente/empregador). Devolve uma linha por documento."""
+    tipo_id, corr_id = filtro(token, tipo, correspondente)
     campos = _ids("custom_fields", token)
     em_falta = [n for n in CAMPOS.values() if n not in campos]
     if em_falta:
@@ -192,7 +208,7 @@ def processar(token: str, *, ensaio: bool = False, forcar: bool = False) -> list
     id_campo = {k: campos[n] for k, n in CAMPOS.items()}
     rever = None
     out = []
-    for d in _documentos(tipos[TIPO], token):
+    for d in _documentos(tipo_id, token, corr_id):
         linha = Linha(d["id"], d.get("title") or "")
         out.append(linha)
         atuais = {c["field"]: c.get("value") for c in d.get("custom_fields") or []}

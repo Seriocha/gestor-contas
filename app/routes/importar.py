@@ -10,7 +10,7 @@ from datetime import date
 from .. import investimentos, preferencias, recibos_envio, servicos, tarefas
 from ..deps import (IntOpcional, auditar, entidade_escolhida, entidades_visiveis, exigir_papel, flash, get_db, papel_em,
                     render, utilizador_atual)
-from ..models import PAPEIS, Conta, Importacao, ImportacaoPendente, Utilizador
+from ..models import PAPEIS, Conta, Importacao, ImportacaoPendente, LigacaoRecibos, Utilizador
 from ..parsers import FormatoDesconhecido, ImportadorInativo, ler_extrato
 from ..seguranca import ler_form
 
@@ -90,7 +90,8 @@ def tarefas_do_mes(request: Request, entidade: IntOpcional = None, u: Utilizador
 
 
 def _recibos_ctx(request: Request, db: Session, u: Utilizador, **extra) -> dict:
-    """Quem pode enviar: o próprio (com token) e, para administradores, qualquer utilizador com token."""
+    """Quem pode enviar: o próprio (com token) e, para administradores, qualquer utilizador com token. As ligações
+    (Administração › Paperless › Recibos) dizem onde estão os recibos de cada pessoa."""
     from .. import paperless
     segredo = request.app.state.defs.secret_key
     if u.is_admin:
@@ -98,7 +99,40 @@ def _recibos_ctx(request: Request, db: Session, u: Utilizador, **extra) -> dict:
     else:
         candidatos = [u]
     return {"paperless_cfg": paperless.configurado(), "max_ficheiros": recibos_envio.MAX_FICHEIROS,
-            "utilizadores": [(x, bool(paperless.token_de(x, segredo))) for x in candidatos], **extra}
+            "utilizadores": [(x, bool(paperless.token_de(x, segredo))) for x in candidatos],
+            "ligacoes": _ligacoes_recibos(db, u), **extra}
+
+
+def _ligacoes_recibos(db: Session, u: Utilizador) -> list[LigacaoRecibos]:
+    """As ligações ativas que este utilizador pode usar: todas (administrador) ou as dos seus recibos."""
+    q = select(LigacaoRecibos).where(LigacaoRecibos.ativo).order_by(LigacaoRecibos.nome)
+    if not u.is_admin:
+        q = q.where(LigacaoRecibos.utilizador_id == u.id)
+    return list(db.scalars(q))
+
+
+def _alvo_recibos(request: Request, db: Session, u: Utilizador, ligacao, utilizador):
+    """(dono do token, token, ligação ou None). Com ligação: a pessoa, o tipo de documento, o empregador e a entidade
+    vêm dela; sem ligação (ainda nenhuma configurada): a pessoa escolhida, o tipo «Recibo de vencimento» e todos os
+    empregadores."""
+    from .. import paperless
+    lig = None
+    if str(ligacao or "").isdigit():
+        lig = db.get(LigacaoRecibos, int(ligacao))
+        if not lig or not lig.ativo or (lig.utilizador_id != u.id and not u.is_admin):
+            raise HTTPException(status_code=403, detail="Sem permissão para esta operação.")
+        dono = lig.utilizador
+    else:
+        uid = int(utilizador) if str(utilizador or "").isdigit() else u.id
+        if uid != u.id and not u.is_admin:
+            raise HTTPException(status_code=403, detail="Sem permissão para esta operação.")
+        dono = db.get(Utilizador, uid) or u
+    return dono, paperless.token_de(dono, request.app.state.defs.secret_key), lig
+
+
+def _filtro_recibos(lig: LigacaoRecibos | None) -> dict:
+    from .. import recibos
+    return {"tipo": lig.tipo_documento if lig else recibos.TIPO, "correspondente": (lig.correspondente or None) if lig else None}
 
 
 @router.get("/recibos")
@@ -140,15 +174,11 @@ async def recibos_enviar(request: Request, u: Utilizador = Depends(utilizador_at
 
 
 @router.get("/recibos/periodos")
-def recibos_periodos(request: Request, utilizador: IntOpcional = None, u: Utilizador = Depends(utilizador_atual),
-                     db: Session = Depends(get_db)):
+def recibos_periodos(request: Request, utilizador: IntOpcional = None, ligacao: IntOpcional = None,
+                     u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
     """Que meses já estão no Paperless: uma grelha ano × mês por empregador (em falta, repetidos, subsídios)."""
     from .. import paperless, recibos_periodos as rp
-    uid = utilizador or u.id
-    if uid != u.id and not u.is_admin:
-        raise HTTPException(status_code=403, detail="Sem permissão para esta operação.")
-    dono = db.get(Utilizador, uid) or u
-    token = paperless.token_de(dono, request.app.state.defs.secret_key)
+    dono, token, lig = _alvo_recibos(request, db, u, ligacao, utilizador)
     erro, mapas = None, None
     if not paperless.configurado():
         erro = "O Paperless não está configurado."
@@ -156,12 +186,12 @@ def recibos_periodos(request: Request, utilizador: IntOpcional = None, u: Utiliz
         erro = f"{dono.nome} não tem token do Paperless (Perfil, ou Administração › Utilizadores › Ligações)."
     else:
         try:
-            mapas = rp.mapas(token)
+            mapas = rp.mapas(token, **_filtro_recibos(lig))
         except paperless.ErroPaperless as e:
             erro = str(e)
     return render(request, "importar/recibos.html", status_code=400 if erro else 200,
-                  **_recibos_ctx(request, db, u, resultados=None, mapas=mapas, erro_periodos=erro, dono=dono, uid=uid,
-                                 meses_desde=rp.meses_desde))
+                  **_recibos_ctx(request, db, u, resultados=None, mapas=mapas, erro_periodos=erro, dono=dono, uid=dono.id,
+                                 lig_id=lig.id if lig else None, meses_desde=rp.meses_desde))
 
 
 @router.post("/recibos/valores")
@@ -170,11 +200,7 @@ async def recibos_valores(request: Request, u: Utilizador = Depends(utilizador_a
     ao crédito do vencimento (valor igual ao Líquido, perto do fim do mês)."""
     from .. import paperless, recibos
     form = await ler_form(request)
-    uid = int(form["utilizador"]) if str(form.get("utilizador", "")).isdigit() else u.id
-    if uid != u.id and not u.is_admin:
-        raise HTTPException(status_code=403, detail="Sem permissão para esta operação.")
-    dono = db.get(Utilizador, uid) or u
-    token = paperless.token_de(dono, request.app.state.defs.secret_key)
+    dono, token, lig = _alvo_recibos(request, db, u, form.get("ligacao"), form.get("utilizador"))
     ensaio, forcar = form.get("acao") != "gravar", form.get("forcar") == "sim"
     dias = int(form["dias"]) if str(form.get("dias", "")).isdigit() else 12
     dias = max(1, min(dias, 31))
@@ -183,12 +209,14 @@ async def recibos_valores(request: Request, u: Utilizador = Depends(utilizador_a
         erro = f"{dono.nome} não tem token do Paperless (Perfil, ou Administração › Utilizadores › Ligações)."
     else:
         try:
-            linhas = sorted(recibos.processar(token, ensaio=ensaio, forcar=forcar),
+            linhas = sorted(recibos.processar(token, ensaio=ensaio, forcar=forcar, **_filtro_recibos(lig)),
                             key=lambda x: (x.recibo.periodo or "", x.id), reverse=True)
         except paperless.ErroPaperless as e:
             erro = str(e)
     if linhas is not None:
         ids = [e.id for e, papel in entidades_visiveis(db, u) if PAPEIS[papel] >= PAPEIS["editar"]]
+        if lig and lig.entidade_id:
+            ids = [i for i in ids if i == lig.entidade_id]          # só os créditos na entidade da ligação
         recibos.ligar(db, ids, linhas, u, dias_antes=dias, dias_depois=dias, ensaio=ensaio)
         if not ensaio:
             n = sum(1 for x in linhas if x.resultado == "gravado")
@@ -198,7 +226,7 @@ async def recibos_valores(request: Request, u: Utilizador = Depends(utilizador_a
             db.commit()
     return render(request, "importar/recibos.html", status_code=400 if erro else 200,
                   **_recibos_ctx(request, db, u, resultados=None, linhas=linhas, ensaio=ensaio, forcar=forcar, dias=dias,
-                                 erro_valores=erro, uid=uid))
+                                 erro_valores=erro, uid=dono.id, lig_id=lig.id if lig else None))
 
 
 @router.get("")

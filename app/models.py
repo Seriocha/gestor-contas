@@ -1418,3 +1418,21 @@ class LarValidacao(Base):
     em: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
     utilizador: Mapped[Utilizador | None] = relationship()
+
+
+class LigacaoRecibos(Base):
+    """Onde estão os recibos de vencimento de uma pessoa no Paperless (Administração › Paperless › Recibos): o token
+    de quem (o dono dos documentos), o tipo de documento, o empregador (correspondente; vazio = todos) e a entidade do
+    Gestor onde se procuram os créditos do vencimento. Importar › Recibos usa estas ligações."""
+    __tablename__ = "ligacao_recibos"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    nome: Mapped[str] = mapped_column(String(80))
+    utilizador_id: Mapped[int] = mapped_column(ForeignKey("utilizador.id", ondelete="CASCADE"))
+    entidade_id: Mapped[int | None] = mapped_column(ForeignKey("entidade.id", ondelete="SET NULL"))
+    tipo_documento: Mapped[str] = mapped_column(String(128), default="Recibo de vencimento")
+    correspondente: Mapped[str | None] = mapped_column(String(128))
+    ativo: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    utilizador: Mapped[Utilizador] = relationship()
+    entidade: Mapped[Entidade | None] = relationship()
