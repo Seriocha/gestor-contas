@@ -1105,3 +1105,16 @@ body { padding-bottom: var(--altura-moldura); }
   .com-menu .conteudo { padding-bottom: calc(var(--altura-abas) + var(--altura-moldura) + 28px + env(safe-area-inset-bottom)); }
   .mm-titulo { display: none; }
 }
+
+/* Importar › Recibos: grelha ano × mês dos recibos no Paperless */
+.grelha-recibos { border-collapse: collapse; font-size: .84rem; }
+.grelha-recibos th, .grelha-recibos td { border: 1px solid var(--linha); padding: .3rem .35rem; text-align: center; min-width: 3.2rem; }
+.grelha-recibos th[scope=row] { text-align: left; min-width: 3rem; }
+.grelha-recibos td.r-ok { background: var(--ok-fundo); }
+.grelha-recibos td.r-falta { background: var(--erro-fundo); color: var(--erro-texto); font-weight: 700; outline: 2px solid var(--erro-texto); outline-offset: -2px; }
+.grelha-recibos td.r-repetido { background: var(--destaque-suave); color: var(--alerta-texto); font-weight: 650; }
+.grelha-recibos td.r-varios { background: var(--ok-fundo); box-shadow: inset 0 0 0 2px var(--previsto); }
+.grelha-recibos td a { display: inline-block; }
+.grelha-recibos .sub { display: block; font-size: .68rem; font-weight: 700; color: var(--previsto); }
+.grelha-recibos .txt { font-size: .68rem; color: var(--suave); }
+.legenda-recibos { display: flex; flex-wrap: wrap; gap: .4rem; margin: .5rem 0; }

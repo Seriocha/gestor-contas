@@ -52,6 +52,57 @@
 </section>
 {% endif %}
 
+<section class="cartao" id="periodos">
+  <h2>Períodos no Paperless</h2>
+  <p class="nota">Que meses já estão no Paperless: uma grelha ano × mês por empregador, com os recibos do tipo «Recibo de
+    vencimento». Um mês sem recibo entre o primeiro e o último fica <strong>em falta</strong>; dois recibos do mesmo mês
+    com o mesmo Líquido ficam <strong>repetidos</strong>. O período vem do campo «Período» ou, se ainda estiver vazio, do
+    texto do recibo. SF / SN = subsídio de férias / de Natal pago nesse recibo.</p>
+  <form method="get" action="/importar/recibos/periodos#periodos" class="formulario" style="max-width: 40rem">
+    <div class="linha">
+      <label>Recibos de
+        <select name="utilizador">{% for x, tem in utilizadores %}<option value="{{ x.id }}" {% if x.id == uid %}selected{% endif %} {% if not tem %}disabled{% endif %}>{{ x.nome }}{{ '' if tem else ' (sem token)' }}</option>{% endfor %}</select></label>
+    </div>
+    <div class="acoes-form"><button class="primario">Ver os períodos</button></div>
+  </form>
+</section>
+
+{% if erro_periodos %}<div class="aviso aviso-erro">{{ erro_periodos }}</div>{% endif %}
+
+{% if mapas is defined and mapas is not none %}
+{% if not mapas %}<section class="cartao"><p class="vazio sem-margem">Não há recibos do tipo «Recibo de vencimento» visíveis com o token de {{ dono.nome }}.</p></section>{% endif %}
+{% for m in mapas %}
+<section class="cartao mapa-recibos">
+  <h2>{{ m.empregador }} <span class="nota">· {{ dono.nome }} · {{ m.docs | length }} recibo{{ 's' if m.docs | length != 1 }}{% if m.primeiro %} · {{ m.primeiro }} a {{ m.ultimo }}{% endif %}</span></h2>
+  <div class="legenda-recibos">
+    {% if m.em_falta %}<span class="etiqueta etiqueta-erro">{{ m.em_falta | length }} em falta: {{ m.em_falta | map(attribute='periodo') | join(', ') }}</span>
+    {% elif m.primeiro %}<span class="etiqueta etiqueta-ok">sem meses em falta</span>{% endif %}
+    {% if m.repetidos %}<span class="etiqueta etiqueta-cor">{{ m.repetidos | length }} repetido{{ 's' if m.repetidos | length != 1 }}: {{ m.repetidos | map(attribute='periodo') | join(', ') }}</span>{% endif %}
+    {% if m.varios %}<span class="etiqueta">vários recibos (Líquidos diferentes): {{ m.varios | map(attribute='periodo') | join(', ') }}</span>{% endif %}
+    {% if m.do_texto %}<span class="etiqueta">{{ m.do_texto }} com o período lido do texto (falta «Gravar valores»)</span>{% endif %}
+    {% set atraso = meses_desde(m.ultimo) %}{% if atraso and atraso > 1 %}<span class="etiqueta etiqueta-cor">último recibo há {{ atraso }} meses</span>{% endif %}
+  </div>
+  {% if m.anos %}
+  <div class="rolar"><table class="grelha-recibos">
+    <thead><tr><th>Ano</th>{% for n in ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'] %}<th>{{ n }}</th>{% endfor %}</tr></thead>
+    {% for ano, meses in m.anos %}
+    <tr><th scope="row">{{ ano }}</th>
+      {% for x in meses %}
+      <td class="{{ 'r-' ~ x.estado if x.estado }}" title="{{ x.periodo }}{{ {'ok': ' · no Paperless', 'falta': ' · em falta', 'repetido': ' · repetido', 'varios': ' · vários recibos'}.get(x.estado, '') }}">
+        {%- if x.estado == 'falta' %}falta
+        {%- else %}{% for d in x.docs %}<a href="{{ d.link }}" target="_blank" rel="noopener" title="#{{ d.id }} {{ d.titulo }}{{ ' · Líquido ' ~ (d.liquido | eur) if d.liquido is not none }}">#{{ d.id }}</a>{% if d.do_texto %}<span class="txt" title="período lido do texto">*</span>{% endif %}{% if not loop.last %} {% endif %}{% endfor %}{% endif %}
+        {%- if x.subsidios %}<span class="sub">{{ x.siglas }}</span>{% endif -%}
+      </td>
+      {% endfor %}</tr>
+    {% endfor %}
+  </table></div>
+  {% endif %}
+  {% if m.sem_periodo %}<p class="nota">Sem período (nem no campo nem no texto):
+    {% for d in m.sem_periodo %}<a href="{{ d.link }}" target="_blank" rel="noopener">#{{ d.id }} {{ d.titulo }}</a>{{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}
+</section>
+{% endfor %}
+{% endif %}
+
 <section class="cartao" id="valores">
   <h2>Valores dos recibos (Paperless → Gestor)</h2>
   <p class="nota">Lê os recibos do tipo «Recibo de vencimento» que já estão no Paperless, tira Período, Bruto, Descontos,

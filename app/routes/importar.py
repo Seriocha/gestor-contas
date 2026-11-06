@@ -139,6 +139,31 @@ async def recibos_enviar(request: Request, u: Utilizador = Depends(utilizador_at
                   **_recibos_ctx(request, db, u, resultados=resultados, erro=erro, uid=uid))
 
 
+@router.get("/recibos/periodos")
+def recibos_periodos(request: Request, utilizador: IntOpcional = None, u: Utilizador = Depends(utilizador_atual),
+                     db: Session = Depends(get_db)):
+    """Que meses já estão no Paperless: uma grelha ano × mês por empregador (em falta, repetidos, subsídios)."""
+    from .. import paperless, recibos_periodos as rp
+    uid = utilizador or u.id
+    if uid != u.id and not u.is_admin:
+        raise HTTPException(status_code=403, detail="Sem permissão para esta operação.")
+    dono = db.get(Utilizador, uid) or u
+    token = paperless.token_de(dono, request.app.state.defs.secret_key)
+    erro, mapas = None, None
+    if not paperless.configurado():
+        erro = "O Paperless não está configurado."
+    elif not token:
+        erro = f"{dono.nome} não tem token do Paperless (Perfil, ou Administração › Utilizadores › Ligações)."
+    else:
+        try:
+            mapas = rp.mapas(token)
+        except paperless.ErroPaperless as e:
+            erro = str(e)
+    return render(request, "importar/recibos.html", status_code=400 if erro else 200,
+                  **_recibos_ctx(request, db, u, resultados=None, mapas=mapas, erro_periodos=erro, dono=dono, uid=uid,
+                                 meses_desde=rp.meses_desde))
+
+
 @router.post("/recibos/valores")
 async def recibos_valores(request: Request, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
     """Ler os valores dos recibos que já estão no Paperless, gravá-los nos campos personalizados e ligar cada recibo
