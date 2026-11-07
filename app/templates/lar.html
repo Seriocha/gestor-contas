@@ -41,6 +41,62 @@
   {% else %}<p class="sem-margem"><span class="etiqueta etiqueta-ok">tudo bate certo</span></p>{% endif %}
 </section>
 
+{% set MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'] %}
+{% macro estado_tabela(est) -%}
+{% if est == 'bate' %}<span class="etiqueta etiqueta-ok">bate</span>{% elif est == 'falta' %}<span class="etiqueta etiqueta-cor">falta</span>{% else %}<span class="etiqueta etiqueta-erro">diverge</span>{% endif %}
+{%- endmacro %}
+<section class="cartao" id="tabelas">
+  <h2>Conciliação por carta informativa <span class="nota">· {{ c.por_carta|length }} carta{{ 's' if c.por_carta|length != 1 }}</span></h2>
+  <p class="nota">A carta informativa, emitida no início do mês, lista os documentos do mês anterior (e a mensalidade do
+    próprio mês) por pagar. A conciliação parte dela: cada linha da tabela ↔ o PDF da NLD/FT no Paperless ↔ as faturas da
+    Farmácia Nova que esse lançamento cobra (medicamentos, ou FT que não é a mensalidade) ↔ o recibo ou a transferência
+    que a pagou. Depois, os documentos do período que a carta não lista. «Bate»: os valores conferem; «falta»: um
+    documento não está no Paperless ou na carta; «diverge»: os valores não batem.</p>
+  {% for cc in c.por_carta[:24] %}{% set t = cc.tabela %}{% set n = t.contagem() %}
+  <details class="recolher" {% if cc.estado != 'bate' or loop.first %}open{% endif %} style="margin-top:.75rem">
+    <summary><strong>Carta de {{ doc(t.pid, t.numero) }}</strong>
+      <span class="nota">documentos de {{ MESES[cc.mes_ref.month - 1] }} {{ cc.mes_ref.year }} · {{ t.linhas|length }} documento{{ 's' if t.linhas|length != 1 }}
+        · total {{ t.total | eur if t.total is not none else '—' }} · pago {{ cc.pago | eur }}{% if cc.em_aberto %} · em aberto {{ cc.em_aberto | eur }}{% endif %}</span>
+      {{ estado_tabela(cc.estado) }}</summary>
+    {% for x in t.diverge %}<div class="pp-problema">⚠ {{ x }}</div>{% endfor %}
+    {% for x in t.falta %}<div class="nota">· {{ x }}</div>{% endfor %}
+    <div class="rolar"><table class="tabela compacta">
+      <thead><tr><th>Documento</th><th class="num">Na carta</th><th class="num">PDF</th><th>Farmácia</th><th>Pagamento</th><th>Estado</th></tr></thead>
+      {% for l in t.linhas %}
+      <tr><td class="sem-quebra">{{ doc(l.pdf.pid if l.pdf else none, l.chave) }}<br><span class="nota">{{ l.data | data if l.data else '' }}{% if l.pdf %} · {{ l.pdf.descricao }}{% endif %}</span> {{ validacao(l.validacao) }}</td>
+        <td class="num">{{ l.valor | eur if l.valor is not none else '—' }}</td>
+        <td class="num">{{ l.pdf.total | eur if l.pdf else '—' }}</td>
+        <td class="nota">{% if l.farmacia %}{% for f in l.farmacia %}<div class="sem-quebra">{{ doc(f.pid, f.numero) }} · {{ f.data | data }} · {{ f.total | eur }}</div>{% endfor %}{% if l.lancamentos|length > 1 %}<div>repartida por {{ l.lancamentos|join(', ') }}</div>{% endif %}
+          {% elif l.da_farmacia %}—{% else %}<span class="nota">não é da farmácia</span>{% endif %}</td>
+        <td class="nota">{{ cc.pagamento.get(l.chave, '') }}</td>
+        <td class="nota">{{ estado_tabela(l.estado) }}{% for x in l.diverge %}<div class="pp-problema">{{ x }}</div>{% endfor %}{% for x in l.falta %}<div>· {{ x }}</div>{% endfor %}</td></tr>
+      {% endfor %}
+      {% if t.linhas %}<tr><td><strong>Soma</strong></td><td class="num"><strong>{{ t.soma | eur }}</strong></td><td colspan="4"></td></tr>{% endif %}
+    </table></div>
+    {% if cc.fora %}
+    <h3>Do período mas fora da carta <span class="nota">· {{ cc.fora|length }}</span></h3>
+    <ul class="pp-lista">{% for x in cc.fora %}
+      <li>{{ estado_tabela(x.estado) }} <span class="etiqueta">{{ 'Farmácia' if x.origem == 'farmácia' else 'Santa Casa' }}</span>
+        {{ doc(x.pid, x.numero) }} · {{ x.data | data }} · {{ x.valor | eur }} <span class="nota">— {{ x.nota }}</span></li>{% endfor %}</ul>
+    {% endif %}
+    <h3>Pagamentos desta carta <span class="nota">· {{ cc.pagamentos|length }}</span></h3>
+    {% for p in cc.pagamentos %}{% set pn = p.contagem() %}
+    <div class="pp-linha">{{ estado_tabela(p.estado) }} <strong>{{ p.rotulo }} {{ doc(p.pid, p.numero) }}</strong>
+      <span class="nota">{{ p.data | data }} · {{ (p.total or 0) | eur }} · {{ p.linhas|map(attribute='chave')|join(', ') }}
+        · {% if p.movimento %}<a href="/movimentos/{{ p.movimento.id }}/detalhe">débito de {{ p.movimento.data_mov | data }}</a>{% elif entidade %}sem débito igual na conta{% else %}—{% endif %}</span>
+      {% for x in p.diverge %}<div class="pp-problema">⚠ {{ x }}</div>{% endfor %}
+      {% for l in p.linhas if l.estado != 'bate' %}<div class="nota">· {{ l.chave }}: {{ (l.diverge + l.falta)|join('; ') }}</div>{% endfor %}</div>
+    {% else %}<p class="nota sem-margem">{{ 'Ainda sem recibo nem transferência.' if cc.em_aberto else '—' }}</p>{% endfor %}
+  </details>
+  {% else %}<p class="vazio sem-margem">Sem cartas informativas no intervalo.</p>{% endfor %}
+  {% if c.recibos_sem_carta %}
+  <h3>Recibos e transferências sem carta <span class="nota">· {{ c.recibos_sem_carta|length }} · os documentos que pagam não vêm em nenhuma carta</span></h3>
+  <ul class="pp-lista">{% for p in c.recibos_sem_carta[:24] %}
+    <li>{{ estado_tabela(p.estado) }} {{ p.rotulo }} {{ doc(p.pid, p.numero) }} · {{ p.data | data }} · {{ (p.total or 0) | eur }}
+      <span class="nota">— {{ p.linhas|map(attribute='chave')|join(', ') or 'sem documento indicado' }}{% for x in p.diverge %} · {{ x }}{% endfor %}</span></li>{% endfor %}</ul>
+  {% endif %}
+</section>
+
 <section class="cartao">
   <h2>Farmácia <span class="nota">· faturas da farmácia ↔ lançamentos da Santa Casa</span></h2>
   <p class="nota">Para cada fatura da farmácia procura-se, pelo valor, o lançamento da Santa Casa (nota de lançamento ou
@@ -80,7 +136,6 @@
 </section>
 
 {% set so_por_validar = request.query_params.get('ver') == 'por_validar' %}
-{% set MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'] %}
 <section class="cartao" id="documentos">
   <h2>Documentos da Santa Casa{% if c.inicio %} <span class="nota">· desde {{ c.inicio | data }}</span>{% endif %}</h2>
   <p class="nota">Por mês: cada nota de lançamento (NLD) e fatura (FT), se o próprio PDF está no Paperless, em que cartas
@@ -138,39 +193,6 @@
   {% endfor %}
 </section>
 
-{% macro estado_tabela(est) -%}
-{% if est == 'bate' %}<span class="etiqueta etiqueta-ok">bate</span>{% elif est == 'falta' %}<span class="etiqueta etiqueta-cor">falta</span>{% else %}<span class="etiqueta etiqueta-erro">diverge</span>{% endif %}
-{%- endmacro %}
-<section class="cartao" id="tabelas">
-  <h2>Validação pela tabela de documentos <span class="nota">· {{ c.tabelas|length }} cartas e recibos</span></h2>
-  <p class="nota">Cada carta de aviso e cada recibo (regularização, transferência) traz uma tabela com os documentos (NLD e
-    FT) e o valor de cada um. Para cada linha procura-se no Paperless o PDF da NLD/FT e, se o lançamento cobra a farmácia
-    (medicamentos, ou FT que não é a mensalidade), as faturas da Farmácia Nova com esse valor. «Bate»: os valores conferem;
-    «falta»: um documento não está no Paperless; «diverge»: os valores não batem.</p>
-  {% for t in c.tabelas[:36] %}{% set n = t.contagem() %}
-  <details class="recolher" {% if t.estado != 'bate' %}open{% endif %} style="margin-top:.75rem">
-    <summary><strong>{{ t.rotulo }} {{ doc(t.pid, t.numero) }}</strong>
-      <span class="nota">{{ t.data | data }} · {{ t.linhas|length }} documento{{ 's' if t.linhas|length != 1 }} · total {{ t.total | eur if t.total is not none else '—' }}
-        {% if t.origem != 'carta' %} · {% if t.movimento %}débito de {{ t.movimento.data_mov | data }}{% elif entidade %}sem débito igual{% endif %}{% endif %}
-        · {{ n.bate }} bate{{ 'm' if n.bate != 1 }}{% if n.falta %} · {{ n.falta }} com falta{% endif %}{% if n.diverge %} · {{ n.diverge }} diverge{{ 'm' if n.diverge != 1 }}{% endif %}</span>
-      {{ estado_tabela(t.estado) }}</summary>
-    {% for x in t.diverge %}<div class="pp-problema">⚠ {{ x }}</div>{% endfor %}
-    {% for x in t.falta %}<div class="nota">· {{ x }}</div>{% endfor %}
-    <div class="rolar"><table class="tabela compacta">
-      <thead><tr><th>Documento</th><th class="num">Na tabela</th><th class="num">PDF</th><th>Farmácia</th><th>Estado</th></tr></thead>
-      {% for l in t.linhas %}
-      <tr><td class="sem-quebra">{{ doc(l.pdf.pid if l.pdf else none, l.chave) }}<br><span class="nota">{{ l.data | data if l.data else '' }}{% if l.pdf %} · {{ l.pdf.descricao }}{% endif %}</span> {{ validacao(l.validacao) }}</td>
-        <td class="num">{{ l.valor | eur if l.valor is not none else '—' }}</td>
-        <td class="num">{{ l.pdf.total | eur if l.pdf else '—' }}</td>
-        <td class="nota">{% if l.farmacia %}{% for f in l.farmacia %}<div class="sem-quebra">{{ doc(f.pid, f.numero) }} · {{ f.data | data }} · {{ f.total | eur }}</div>{% endfor %}{% if l.lancamentos|length > 1 %}<div>repartida por {{ l.lancamentos|join(', ') }}</div>{% endif %}
-          {% elif l.da_farmacia %}—{% else %}<span class="nota">não é da farmácia</span>{% endif %}</td>
-        <td class="nota">{{ estado_tabela(l.estado) }}{% for x in l.diverge %}<div class="pp-problema">{{ x }}</div>{% endfor %}{% for x in l.falta %}<div>· {{ x }}</div>{% endfor %}</td></tr>
-      {% endfor %}
-      {% if t.linhas %}<tr><td><strong>Soma</strong></td><td class="num"><strong>{{ t.soma | eur }}</strong></td><td colspan="3"></td></tr>{% endif %}
-    </table></div>
-  </details>
-  {% else %}<p class="vazio sem-margem">Sem cartas nem recibos no intervalo.</p>{% endfor %}
-</section>
 
 <div class="grelha-2">
 <section class="cartao">

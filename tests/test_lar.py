@@ -418,4 +418,41 @@ def test_pagina_mostra_validacao_pela_tabela(tmp_path, falso):
     _heranca(app)
     r = c.get("/lar")
     assert r.status_code == 200, r.text
-    assert "Validação pela tabela de documentos" in r.text and "Carta" in r.text and "etiqueta-ok\">bate" in r.text
+    assert "Conciliação por carta informativa" in r.text and "Carta de" in r.text and "documentos de outubro 2026" in r.text
+    assert "etiqueta-ok\">bate" in r.text and "Pagamentos desta carta" in r.text
+
+
+def test_conciliacao_parte_da_carta_do_mes_anterior():
+    """A carta de 02/11 lista os documentos de outubro (e a mensalidade de 01/11); o que é de outubro e não vem na carta
+    fica à vista, e os recibos de depois da carta ficam como pagamentos dela."""
+    fa = [(10, farmacia(1, "10-10-2026", "3,90")), (11, farmacia(2, "25-10-2026", "21,00")),
+          (12, farmacia(3, "20-10-2026", "20,00")), (13, farmacia(4, "28-10-2026", "12,64")),
+          (14, farmacia(5, "29-10-2026", "7,77")),                # outubro, sem lançamento (ainda dentro do prazo)
+          (15, farmacia(6, "05-10-2026", "5,55"))]                # cobrada na NLD 3500, paga antes da carta
+    sc = [(20, nld(3564, "15-10-2026", "3,90")), (21, nld(3768, "31-10-2026", "32,64")),
+          (22, ft(6725, "01-11-2026", "1.367,53")), (23, _carta_outubro()),
+          (26, nld(3500, "07-10-2026", "5,55")),
+          (27, recibo(1490, "20-10-2026", [("NLD", 2026, 3500, "5,55")], "5,55")),
+          (28, nld(3700, "22-10-2026", "9,99", cod="90 - Cabeleireiro")),   # outubro, nem na carta nem pago
+          (24, recibo(1500, "05-11-2026", [("FT", 2026, 6725, "1.367,53"), ("NLD", 2026, 3564, "3,90")], "1371,43")),
+          (29, carta("01-12-2026", [("31-10-2026", "NLD", 2026, 3768, "32,64"), ("30-10-2026", "FT", 2026, 6452, "21,00")],
+                     "53,64"))]
+    c = lar.conciliar(fa, sc, [], hoje=date(2026, 11, 20))
+    assert [cc.tabela.data for cc in c.por_carta] == [date(2026, 12, 1), date(2026, 11, 2)]
+    cc = c.por_carta[1]
+    assert cc.mes_ref == date(2026, 10, 1) and cc.tabela.total == 142507
+    assert [p.numero for p in cc.pagamentos] == ["PB2026/1500"] and cc.pagamentos[0].estado == "bate"
+    assert cc.pago == 137143 and cc.em_aberto == 5364
+    assert cc.pagamento["FT 2026/6725"].startswith("pago · Recibo PB2026/1500")
+    assert cc.pagamento["NLD 2026/3768"] == "por pagar · transitou para a carta de 01/12/2026"
+    fora = {x.numero: x for x in cc.fora}
+    assert fora["NLD 2026/3700"].estado == "falta" and "não está na carta" in fora["NLD 2026/3700"].nota
+    assert fora["NLD 2026/3500"].estado == "bate" and "pago antes da carta" in fora["NLD 2026/3500"].nota
+    assert fora["FT U014/5"].estado == "bate" and "ainda sem lançamento" in fora["FT U014/5"].nota
+    assert fora["FT U014/6"].estado == "bate" and "cobrada em NLD 2026/3500" in fora["FT U014/6"].nota
+    assert "FT U014/1" not in fora and cc.estado == "falta"
+    assert c.por_carta[0].pagamento["NLD 2026/3768"] == "por pagar" and c.recibos_sem_carta[0].numero == "PB2026/1490"
+    assert any("NLD 2026/3700" in t and "não está na carta de 02/11/2026" in t for _, t in c.alertas)
+    # passado o prazo (fim do mês seguinte), a fatura de outubro sem lançamento passa a faltar
+    c = lar.conciliar(fa, sc, [], hoje=date(2026, 12, 15))
+    assert {x.numero: x for x in c.por_carta[1].fora}["FT U014/5"].estado == "falta"

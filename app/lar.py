@@ -581,6 +581,133 @@ def validar_tabelas(cartas: list[Carta], pagamentos: list, docs: list[DocSantaCa
     return sorted(out, key=lambda t: (t.data, t.origem != "carta"), reverse=True)
 
 
+# ------------------------------------------------------------------ conciliação a partir da carta informativa
+def mes_anterior(d: date) -> date:
+    return (d.replace(day=1) - timedelta(days=1)).replace(day=1)
+
+
+@dataclass
+class ForaDaCarta:
+    """Documento do período da carta (Santa Casa ou farmácia) que a carta não lista."""
+    origem: str                     # santa casa | farmácia
+    pid: int | None
+    numero: str
+    data: date
+    valor: int
+    estado: str                     # bate (explicado) | falta
+    nota: str
+
+
+@dataclass
+class ConciliacaoCarta:
+    """A carta informativa, emitida no início do mês, lista os documentos do mês anterior (e a mensalidade do próprio
+    mês) por pagar. A conciliação parte dela: cada linha ↔ PDF ↔ faturas da farmácia ↔ pagamento; os documentos do
+    período que a carta não lista; e os recibos/transferências que a pagam."""
+    tabela: TabelaDocumentos
+    mes_ref: date                   # 1.º dia do mês a que a carta se refere (o anterior ao da carta)
+    pagamentos: list = field(default_factory=list)   # [TabelaDocumentos] recibos/transferências desta carta
+    fora: list = field(default_factory=list)         # [ForaDaCarta]
+    pagamento: dict = field(default_factory=dict)    # chave → texto («pago · REC … de dd/mm», «transitou…», «por pagar»)
+    pagos: set = field(default_factory=set)          # chaves pagas (recibo ou transferência)
+
+    @property
+    def carta(self):
+        return self.tabela
+
+    @property
+    def pago(self) -> int:
+        return sum(l.referencia or 0 for l in self.tabela.linhas if l.chave in self.pagos)
+
+    @property
+    def em_aberto(self) -> int:
+        return sum(l.referencia or 0 for l in self.tabela.linhas if l.chave not in self.pagos)
+
+    @property
+    def estado(self) -> str:
+        est = self.tabela.estado
+        if est == "diverge" or any(p.estado == "diverge" for p in self.pagamentos):
+            return "diverge"
+        if est == "falta" or any(f.estado == "falta" for f in self.fora):
+            return "falta"
+        return "bate"
+
+
+def conciliar_cartas(tabelas: list[TabelaDocumentos], docs: list[DocSantaCasa], est: list[EstadoDoc],
+                     faturas: list[FaturaFarmacia], ligacoes: list[Ligacao], hoje: date) -> tuple[list, list]:
+    """Agrupa tudo por carta informativa. Devolve (conciliações por carta, recibos que não pagam nenhuma carta)."""
+    cartas = sorted([t for t in tabelas if t.origem == "carta"], key=lambda t: t.data)
+    recibos = [t for t in tabelas if t.origem != "carta"]
+    por_est = {e.chave: e for e in est}
+    lig_f = {f.numero: l for l in ligacoes for f in l.faturas}
+    chaves_carta = [(t, {l.chave for l in t.linhas}) for t in cartas]
+    out = {id(t): ConciliacaoCarta(t, mes_anterior(t.data)) for t in cartas}
+    sem_carta = []
+    for r in recibos:                    # cada recibo vai para a carta mais recente (até à data dele) que lista os documentos
+        destino = set()
+        for l in r.linhas:
+            cands = [t for t, ks in chaves_carta if l.chave in ks and t.data <= r.data]
+            if cands:
+                destino.add(id(cands[-1]))
+        for i in destino:
+            out[i].pagamentos.append(r)
+        if not destino:
+            sem_carta.append(r)
+    for i, (t, ks) in enumerate(chaves_carta):
+        cc = out[id(t)]
+        seguinte = chaves_carta[i + 1] if i + 1 < len(chaves_carta) else None
+        for l in t.linhas:
+            e = por_est.get(l.chave)
+            pag = e and (e.recibo or e.transferencia)
+            if pag:
+                cc.pagos.add(l.chave)
+                cc.pagamento[l.chave] = (f"{'pago' if e.recibo else 'transferido'} · {pag.rotulo} {pag.numero} "
+                                         f"de {pag.data:%d/%m/%Y}")
+            elif seguinte and l.chave in seguinte[1]:
+                cc.pagamento[l.chave] = f"por pagar · transitou para a carta de {seguinte[0].data:%d/%m/%Y}"
+            else:
+                cc.pagamento[l.chave] = "por pagar"
+        # documentos da Santa Casa do período (mês anterior até à data da carta) que a carta não lista
+        for d in docs:
+            if not (cc.mes_ref <= d.data <= t.data) or d.chave in ks:
+                continue
+            e = por_est.get(d.chave)
+            pag = e and (e.recibo or e.transferencia)
+            outra = next((c for c, kk in chaves_carta if c is not t and d.chave in kk), None)
+            if pag and pag.data <= t.data:
+                cc.fora.append(ForaDaCarta("santa casa", d.pid, d.chave, d.data, d.total, "bate",
+                                           f"pago antes da carta ({pag.rotulo} {pag.numero} de {pag.data:%d/%m/%Y})"))
+            elif e and e.validacao in ("regularizado", "validado"):
+                cc.fora.append(ForaDaCarta("santa casa", d.pid, d.chave, d.data, d.total, "bate", e.validacao))
+            elif outra:
+                cc.fora.append(ForaDaCarta("santa casa", d.pid, d.chave, d.data, d.total, "bate",
+                                           f"vem na carta de {outra.data:%d/%m/%Y}"))
+            else:
+                cc.fora.append(ForaDaCarta("santa casa", d.pid, d.chave, d.data, d.total, "falta",
+                                           "não está na carta nem foi pago" + (f" ({pag.rotulo} {pag.numero} de "
+                                           f"{pag.data:%d/%m/%Y}, depois da carta)" if pag else "")))
+        # faturas da farmácia do mês anterior que não são cobradas por nenhuma linha desta carta
+        fim_ref = t.data.replace(day=1) - timedelta(days=1)
+        for f in faturas:
+            if not (cc.mes_ref <= f.data <= fim_ref):
+                continue
+            l = lig_f.get(f.numero)
+            lancs = [x.chave for x in l.lancamentos] if l else []
+            if any(k in ks for k in lancs):
+                continue
+            if lancs:
+                onde = next((c for c, kk in chaves_carta if any(k in kk for k in lancs)), None)
+                nota = f"cobrada em {', '.join(lancs)}" + (f" (carta de {onde.data:%d/%m/%Y})" if onde else "")
+                cc.fora.append(ForaDaCarta("farmácia", f.pid, f.numero, f.data, f.total, "bate", nota))
+            elif _fim_mes_seguinte(f.data) >= hoje:
+                cc.fora.append(ForaDaCarta("farmácia", f.pid, f.numero, f.data, f.total, "bate",
+                                           f"ainda sem lançamento da Santa Casa (pode vir até {_fim_mes_seguinte(f.data):%d/%m/%Y})"))
+            else:
+                cc.fora.append(ForaDaCarta("farmácia", f.pid, f.numero, f.data, f.total, "falta",
+                                           "sem lançamento da Santa Casa com este valor"))
+        cc.fora.sort(key=lambda x: (x.estado != "falta", x.data))
+    return sorted(out.values(), key=lambda c: c.tabela.data, reverse=True), sem_carta
+
+
 # ------------------------------------------------------------------ tudo junto
 @dataclass
 class Conciliacao:
@@ -602,6 +729,8 @@ class Conciliacao:
     n_anulados: int = 0
     inicio: date | None = None                     # o que se mostra: a partir daqui (depois de «pago até» e de «validar desde»)
     tabelas: list = field(default_factory=list)    # [TabelaDocumentos] cartas e recibos validados linha a linha
+    por_carta: list = field(default_factory=list)  # [ConciliacaoCarta] a conciliação a partir de cada carta informativa
+    recibos_sem_carta: list = field(default_factory=list)  # [TabelaDocumentos] recibos que não pagam nenhuma carta
 
 
 def conciliar(farmacia_docs: list[tuple[int, str]], santa_casa_docs: list[tuple[int, str]], movimentos: list,
@@ -707,6 +836,12 @@ def conciliar(farmacia_docs: list[tuple[int, str]], santa_casa_docs: list[tuple[
         if t.origem != "carta" and not regularizada:
             for x in t.diverge:
                 alertas.append(("tabela", f"{t.rotulo} {t.numero} de {t.data:%d/%m/%Y}: {x}", t.data))
+    por_carta, sem_carta = conciliar_cartas(tabelas, docs, est, faturas, ligacoes, hoje)
+    for cc in por_carta:
+        for x in cc.fora:
+            if x.origem == "santa casa" and x.estado == "falta":
+                alertas.append(("tabela", f"{x.numero} de {x.data:%d/%m/%Y} ({fmt_montante(x.valor)}) não está na carta de "
+                                          f"{cc.tabela.data:%d/%m/%Y} nem foi pago", cc.tabela.data))
     # só o intervalo em análise: o resto está pago/regularizado e fica escondido
     alertas = [(tipo, texto) for tipo, texto, d in alertas if no_intervalo(d)]
     dentro = [e for e in est if no_intervalo(e.data)]
@@ -725,4 +860,6 @@ def conciliar(farmacia_docs: list[tuple[int, str]], santa_casa_docs: list[tuple[
                        sum(1 for e in dentro if e.validacao == "por validar"),
                        sorted(meses.values(), key=lambda m: m["mes"] or date.min, reverse=True), len(est) - len(dentro),
                        [x for x in nao_reconhecidos if x[2] is None or no_intervalo(x[2])], n_anulados, inicio,
-                       [t for t in tabelas if no_intervalo(t.data)])
+                       [t for t in tabelas if no_intervalo(t.data)],
+                       [cc for cc in por_carta if no_intervalo(cc.tabela.data)],
+                       [t for t in sem_carta if no_intervalo(t.data)])
