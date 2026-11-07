@@ -442,6 +442,145 @@ def ligar_pagamentos(recibos: list[Recibo], movimentos: list) -> list[tuple[Reci
     return sorted(out, key=lambda x: x[0].data, reverse=True)
 
 
+# ------------------------------------------------------------------ validação pela tabela de documentos
+@dataclass
+class LinhaTabela:
+    """Uma linha da tabela de documentos de uma carta ou de um recibo, cruzada com o PDF da NLD/FT e com as faturas
+    da farmácia que esse lançamento cobra."""
+    chave: str
+    tipo: str
+    data: date | None
+    valor: int | None               # o que a tabela diz (None: comprovativo que não indica o valor de cada documento)
+    pdf: DocSantaCasa | None = None
+    farmacia: list = field(default_factory=list)      # [FaturaFarmacia] da ligação deste lançamento
+    lancamentos: list = field(default_factory=list)   # [chave] da ligação (quando a fatura se reparte por vários)
+    da_farmacia: bool = False       # lançamento que cobra a farmácia (NLD de medicamentos ou FT que não é mensalidade)
+    bate: list = field(default_factory=list)          # o que confere
+    falta: list = field(default_factory=list)         # o que não está no Paperless
+    diverge: list = field(default_factory=list)       # valores que não batem
+    validacao: str = ""
+
+    @property
+    def estado(self) -> str:
+        return "diverge" if self.diverge else "falta" if self.falta else "bate"
+
+    @property
+    def referencia(self) -> int | None:
+        """O valor desta linha: o da tabela ou, se a tabela não o diz, o do PDF."""
+        return self.valor if self.valor is not None else (self.pdf.total if self.pdf else None)
+
+    @property
+    def soma_farmacia(self) -> int:
+        return sum(f.total for f in self.farmacia)
+
+
+@dataclass
+class TabelaDocumentos:
+    """A tabela de documentos de uma carta de aviso ou de um recibo (regularização, transferência), linha a linha."""
+    origem: str                     # carta | recibo | regularização | comprovativo
+    pid: int
+    numero: str
+    data: date
+    total: int | None
+    linhas: list                    # [LinhaTabela]
+    movimento: object | None = None # o débito na conta (recibos)
+    diverge: list = field(default_factory=list)       # ao nível da tabela: soma ≠ total
+    falta: list = field(default_factory=list)
+
+    @property
+    def rotulo(self) -> str:
+        return {"carta": "Carta", "regularização": "Regularização", "comprovativo": "Transferência"}.get(self.origem, "Recibo")
+
+    @property
+    def soma(self) -> int:
+        return sum(l.referencia or 0 for l in self.linhas)
+
+    def contagem(self) -> dict:
+        n = {"bate": 0, "falta": 0, "diverge": 0}
+        for l in self.linhas:
+            n[l.estado] += 1
+        return n
+
+    @property
+    def estado(self) -> str:
+        n = self.contagem()
+        if self.diverge or n["diverge"]:
+            return "diverge"
+        if self.falta or n["falta"]:
+            return "falta"
+        return "bate"
+
+
+def _linha(chave_doc: str, tipo: str, d: date | None, valor: int | None, pdfs: dict, est: dict, lig: dict,
+           farmacia_ate: date | None) -> LinhaTabela:
+    l = LinhaTabela(chave_doc, tipo, d, valor, pdfs.get(chave_doc))
+    e = est.get(chave_doc)
+    l.validacao = e.validacao if e else ""
+    if l.pdf is None:
+        l.falta.append(f"PDF da {tipo} em falta no Paperless")
+    elif valor is not None and abs(l.pdf.total - valor) > TOLERANCIA:
+        l.diverge.append(f"o PDF diz {fmt_montante(l.pdf.total)}, a tabela {fmt_montante(valor)}")
+    else:
+        l.bate.append(f"PDF: {fmt_montante(l.pdf.total)}")
+        l.data = l.data or l.pdf.data
+    l.da_farmacia = bool(e and lancamento_farmacia(e))
+    # a farmácia paga diretamente: os lançamentos depois do prazo de cobrança das últimas faturas já não a incluem
+    if l.da_farmacia and farmacia_ate and e.data and e.data > _fim_mes_seguinte(farmacia_ate):
+        l.da_farmacia = False
+    ligacao = lig.get(chave_doc)
+    if not l.da_farmacia:
+        return l
+    if ligacao is None or not ligacao.faturas:
+        l.falta.append("fatura da farmácia com este valor não encontrada no Paperless"
+                       + ("" if l.pdf else " (sem o PDF não se sabe se é de medicamentos)"))
+        return l
+    l.farmacia = list(ligacao.faturas)
+    l.lancamentos = [x.chave for x in ligacao.lancamentos]
+    nums = ", ".join(f.numero for f in ligacao.faturas)
+    if ligacao.ok:
+        if len(ligacao.lancamentos) > 1:
+            l.bate.append(f"farmácia {nums} ({fmt_montante(ligacao.soma_faturas)}) = soma de {', '.join(l.lancamentos)}")
+        else:
+            l.bate.append(f"farmácia {nums}: {fmt_montante(ligacao.soma_faturas)}")
+    else:
+        l.diverge.append(f"farmácia {nums} soma {fmt_montante(ligacao.soma_faturas)}, os lançamentos "
+                         f"{fmt_montante(ligacao.soma_lancamentos)}")
+    return l
+
+
+def validar_tabelas(cartas: list[Carta], pagamentos: list, docs: list[DocSantaCasa], est: list[EstadoDoc],
+                    ligacoes: list[Ligacao], farmacia_ate: date | None = None) -> list[TabelaDocumentos]:
+    """Para cada carta de aviso e cada recibo/regularização/transferência, lê a tabela de documentos («Data Doc. · Tipo ·
+    Número · Valor…» nas cartas, «Documentos · Valor Pag.» nos recibos), localiza no Paperless o PDF de cada NLD/FT e,
+    nos lançamentos que cobram a farmácia, as faturas da farmácia; compara os valores e diz o que bate, o que falta e
+    o que diverge — linha a linha e no total."""
+    pdfs = {d.chave: d for d in docs}
+    por_est = {e.chave: e for e in est}
+    lig = {e.chave: l for l in ligacoes for e in l.lancamentos}
+    out = []
+    for c in cartas:
+        linhas = [_linha(k, tipo, dd, valor, pdfs, por_est, lig, farmacia_ate) for k, tipo, dd, valor, _ in c.docs]
+        t = TabelaDocumentos("carta", c.pid, c.data.strftime("%d/%m/%Y"), c.data, c.total, linhas)
+        por_pagar = sum(p for *_, p in c.docs)
+        if c.total is not None and abs(por_pagar - c.total) > TOLERANCIA:
+            t.diverge.append(f"as linhas somam {fmt_montante(por_pagar)}, o total diz {fmt_montante(c.total)}")
+        if not c.docs:
+            t.falta.append("a tabela de documentos não se leu (OCR?)")
+        out.append(t)
+    for r, m in pagamentos:
+        linhas = []
+        for k, valor in r.docs:
+            e = por_est.get(k)
+            linhas.append(_linha(k, k.split()[0], e.data if e else None, valor, pdfs, por_est, lig, farmacia_ate))
+        t = TabelaDocumentos(r.tipo, r.pid, r.numero, r.data, r.total, linhas, m)
+        if not r.docs:
+            t.falta.append("não indica os documentos pagos")
+        elif r.total is not None and all(l.referencia is not None for l in linhas) and abs(t.soma - r.total) > TOLERANCIA:
+            t.diverge.append(f"os documentos somam {fmt_montante(t.soma)}, o total pago foi {fmt_montante(r.total)}")
+        out.append(t)
+    return sorted(out, key=lambda t: (t.data, t.origem != "carta"), reverse=True)
+
+
 # ------------------------------------------------------------------ tudo junto
 @dataclass
 class Conciliacao:
@@ -462,6 +601,7 @@ class Conciliacao:
     nao_reconhecidos: list = field(default_factory=list)   # [(pid, início do texto, data)] da Santa Casa que não se leram
     n_anulados: int = 0
     inicio: date | None = None                     # o que se mostra: a partir daqui (depois de «pago até» e de «validar desde»)
+    tabelas: list = field(default_factory=list)    # [TabelaDocumentos] cartas e recibos validados linha a linha
 
 
 def conciliar(farmacia_docs: list[tuple[int, str]], santa_casa_docs: list[tuple[int, str]], movimentos: list,
@@ -554,6 +694,19 @@ def conciliar(farmacia_docs: list[tuple[int, str]], santa_casa_docs: list[tuple[
                 (bool(r.docs) and all(k in validados for k, _ in r.docs))
             if m is None and not regularizado and r.data >= hoje - timedelta(days=400):
                 alertas.append(("pagamento", f"{r.rotulo} {r.numero} de {r.data:%d/%m/%Y} ({fmt_montante(r.total or 0)}) sem débito igual na conta", r.data))
+    tabelas = validar_tabelas(cartas, pagamentos, docs, est, ligacoes, farmacia_ate)
+    for t in tabelas:
+        for l in t.linhas:
+            if l.validacao in ("regularizado", "validado"):
+                continue
+            for x in l.diverge:
+                if x.startswith("o PDF diz"):          # as da farmácia já têm alerta próprio (ligações)
+                    alertas.append(("tabela", f"{t.rotulo} {t.numero}: {l.chave} — {x}", t.data))
+        regularizada = (validar_desde is not None and t.data < validar_desde) or \
+            (bool(t.linhas) and all(l.validacao in ("regularizado", "validado") for l in t.linhas))
+        if t.origem != "carta" and not regularizada:
+            for x in t.diverge:
+                alertas.append(("tabela", f"{t.rotulo} {t.numero} de {t.data:%d/%m/%Y}: {x}", t.data))
     # só o intervalo em análise: o resto está pago/regularizado e fica escondido
     alertas = [(tipo, texto) for tipo, texto, d in alertas if no_intervalo(d)]
     dentro = [e for e in est if no_intervalo(e.data)]
@@ -571,4 +724,5 @@ def conciliar(farmacia_docs: list[tuple[int, str]], santa_casa_docs: list[tuple[
                        alertas, len(faturas), len(docs) + len(cartas) + len(recibos), pago_ate, validar_desde,
                        sum(1 for e in dentro if e.validacao == "por validar"),
                        sorted(meses.values(), key=lambda m: m["mes"] or date.min, reverse=True), len(est) - len(dentro),
-                       [x for x in nao_reconhecidos if x[2] is None or no_intervalo(x[2])], n_anulados, inicio)
+                       [x for x in nao_reconhecidos if x[2] is None or no_intervalo(x[2])], n_anulados, inicio,
+                       [t for t in tabelas if no_intervalo(t.data)])

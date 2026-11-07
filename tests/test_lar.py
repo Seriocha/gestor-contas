@@ -343,3 +343,79 @@ def test_config_datas_no_formato_do_campo(tmp_path, falso):
     r = c.post("/lar/config", data={"csrf": _csrf(r), "entidade": "", "santa_casa": "", "farmacia": "",
                                     "lar_pago_ate": "31/02/2026", "lar_validar_desde": "01/01/2026"}, follow_redirects=True)
     assert "«Tudo pago até»: data inválida" in r.text and app.state.prefs["lar_pago_ate"] == "2026-09-30"
+
+
+def _carta_outubro():
+    """A carta real de novembro (estrutura e valores do documento do utilizador; números fictícios do resto)."""
+    return carta("02-11-2026", [("15-10-2026", "NLD", 2026, 3564, "3,90"), ("30-10-2026", "FT", 2026, 6452, "21,00"),
+                                ("31-10-2026", "NLD", 2026, 3768, "32,64"), ("01-11-2026", "FT", 2026, 6725, "1.367,53")],
+                 "1.425,07")
+
+
+def test_tabela_da_carta_cruzada_com_pdf_e_farmacia():
+    fa = [(10, farmacia(1, "10-10-2026", "3,90")), (11, farmacia(2, "25-10-2026", "21,00")),
+          (12, farmacia(3, "20-10-2026", "20,00")), (13, farmacia(4, "28-10-2026", "12,64"))]
+    sc = [(20, nld(3564, "15-10-2026", "3,90")),                  # bate com o PDF e com a fatura de 10/10
+          # FT 6452 (21,00): sem PDF no Paperless — a fatura da farmácia existe, mas o PDF falta
+          (21, nld(3768, "31-10-2026", "33,64")),                 # o PDF diz 33,64, a carta 32,64
+          (22, ft(6725, "01-11-2026", "1.367,53")),               # mensalidade: só o PDF, sem farmácia
+          (23, _carta_outubro()),
+          (24, recibo(1500, "05-11-2026", [("FT", 2026, 6725, "1.367,53"), ("NLD", 2026, 3564, "3,90")], "1400,00"))]
+    c = lar.conciliar(fa, sc, [], hoje=date(2026, 11, 10))
+    tab = {t.origem: t for t in c.tabelas}
+    ca = tab["carta"]
+    assert ca.total == 142507 and ca.soma == 142507 and not ca.diverge and ca.estado == "diverge"
+    ln = {l.chave: l for l in ca.linhas}
+    assert ln["NLD 2026/3564"].estado == "bate" and [f.numero for f in ln["NLD 2026/3564"].farmacia] == ["FT U014/1"]
+    assert ln["FT 2026/6452"].estado == "falta" and ln["FT 2026/6452"].pdf is None
+    assert [f.numero for f in ln["FT 2026/6452"].farmacia] == ["FT U014/2"]
+    assert any("PDF da FT em falta" in x for x in ln["FT 2026/6452"].falta)
+    l3 = ln["NLD 2026/3768"]
+    assert l3.estado == "diverge" and "o PDF diz 33,64" in l3.diverge[0]
+    assert sorted(f.numero for f in l3.farmacia) == ["FT U014/3", "FT U014/4"] and l3.soma_farmacia == 3264
+    l4 = ln["FT 2026/6725"]
+    assert l4.estado == "bate" and not l4.da_farmacia and l4.farmacia == []
+    assert ca.contagem() == {"bate": 2, "falta": 1, "diverge": 1}
+    rec = tab["recibo"]
+    assert rec.soma == 137143 and rec.estado == "diverge" and "o total pago foi 1400,00" in rec.diverge[0].replace(".", "").replace(" €", "")
+    textos = " | ".join(t for _, t in c.alertas)
+    assert "NLD 2026/3768 — o PDF diz" in textos and "Recibo PB2026/1500" in textos
+
+
+def test_tabela_sem_fatura_da_farmacia_e_pagamento_direto():
+    sc = [(20, nld(3564, "15-10-2026", "3,90")), (23, _carta_outubro())]
+    c = lar.conciliar([], sc, [], hoje=date(2026, 11, 10))
+    ln = {l.chave: l for l in c.tabelas[0].linhas}
+    assert any("fatura da farmácia" in x for x in ln["NLD 2026/3564"].falta)
+    assert any("sem o PDF" in x for x in ln["NLD 2026/3768"].falta)
+    # sem PDF, a FT de 1.367,53 é mensalidade (acima de 300 €): não se procura na farmácia
+    assert not ln["FT 2026/6725"].da_farmacia
+    # farmácia paga diretamente desde junho: lançamentos de outubro já não a cobram
+    c = lar.conciliar([], sc, [], hoje=date(2026, 11, 10), farmacia_ate=date(2026, 6, 1))
+    ln = {l.chave: l for l in c.tabelas[0].linhas}
+    assert ln["NLD 2026/3564"].estado == "bate" and not ln["NLD 2026/3564"].da_farmacia
+
+
+def test_tabela_comprovativo_sem_valores_e_regularizado():
+    sc = [(20, nld(3564, "15-10-2026", "3,90")), (22, ft(6725, "01-11-2026", "1.367,53")),
+          (25, "Crédito Agrícola\nID operação: 99\nEnviar Nacional SANTA CASA DA MISERICORDIA\nMontante 1.371,43 €\n"
+               "Data da Operação 06/11/2026\nInformação Complementar FTUT12026 / 00006725 NLDUT12026 / 00003564")]
+    c = lar.conciliar([], sc, [], hoje=date(2026, 11, 10))
+    t = next(t for t in c.tabelas if t.origem == "comprovativo")
+    assert [l.valor for l in t.linhas] == [None, None] and t.soma == 137143 and not t.diverge
+    c = lar.conciliar([], sc[:2] + [(25, sc[2][1].replace("1.371,43", "1.380,00"))], [], hoje=date(2026, 11, 10),
+                      validados={k: {"em": date(2026, 11, 9), "por": "Admin", "nota": ""} for k in ("FT 2026/6725", "NLD 2026/3564")})
+    t = next(t for t in c.tabelas if t.origem == "comprovativo")
+    assert t.diverge and not any("Transferência" in x for _, x in c.alertas)      # documentos validados: sem alerta
+    c = lar.conciliar([], sc[:2] + [(25, sc[2][1].replace("1.371,43", "1.380,00"))], [], hoje=date(2026, 11, 10))
+    assert any("Transferência" in x and "somam" in x for _, x in c.alertas)
+
+
+def test_pagina_mostra_validacao_pela_tabela(tmp_path, falso):
+    app = create_app(tmp_path, backups_automaticos=False)
+    c = TestClient(app)
+    _post(c, "/setup", nome="Admin", login="admin", password=PW, password2=PW)
+    _heranca(app)
+    r = c.get("/lar")
+    assert r.status_code == 200, r.text
+    assert "Validação pela tabela de documentos" in r.text and "Carta" in r.text and "etiqueta-ok\">bate" in r.text
