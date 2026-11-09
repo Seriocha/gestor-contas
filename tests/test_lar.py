@@ -78,26 +78,28 @@ def _ligar(faturas, santa_casa, **kw):
 
 
 def test_farmacia_setembro_um_lancamento_por_fatura():
-    """O caso real de setembro: a carta lista NLD 3077 (1,67), NLD 3298 (1,81) e FT 5755 (21,00) sem os PDF;
-    cada fatura da farmácia liga-se, pelo valor, ao lançamento do mesmo mês ou do seguinte."""
+    """A carta lista NLD 3077 (1,67), NLD 3298 (1,81), NLD 3400 (21,00) e FT 5755 (21,00) sem os PDF; cada fatura da
+    farmácia liga-se, pelo valor, à NLD do mesmo mês ou do seguinte. As FT (FTUT) são faturação interna da Santa Casa."""
     fs = [(1, farmacia(47843, "18-09-2026", "21,00")), (2, farmacia(47700, "08-09-2026", "1,67")),
           (3, farmacia(47900, "22-09-2026", "1,81"))]
     sc = [(10, carta("15-10-2026", [("15-09-2026", "NLD", 2026, 3077, "1,67"), ("30-09-2026", "NLD", 2026, 3298, "1,81"),
-                                    ("30-09-2026", "FT", 2026, 5755, "21,00"), ("01-10-2026", "FT", 2026, 6000, "1.339,41")], "1.363,89"))]
+                                    ("30-09-2026", "NLD", 2026, 3400, "21,00"), ("30-09-2026", "FT", 2026, 5755, "21,00"),
+                                    ("01-10-2026", "FT", 2026, 6000, "1.339,41")], "1.384,89"))]
     lig, c = _ligar(fs, sc)
-    assert lig[(("FT U014/47843",), ("FT 2026/5755",))].metodo == "mesmo valor"
+    assert lig[(("FT U014/47843",), ("NLD 2026/3400",))].metodo == "mesmo valor"
+    assert not any("FT 2026/5755" in k[1] for k in lig)                 # FT pequena: interna, não é farmácia
     assert lig[(("FT U014/47700",), ("NLD 2026/3077",))].ok and lig[(("FT U014/47900",), ("NLD 2026/3298",))].ok
     assert not any("FT 2026/6000" in k[1] for k in lig)                 # a mensalidade não entra
     assert not any(t[0] == "farmacia" for t in c.alertas)
 
 
 def test_farmacia_uma_fatura_varios_lancamentos():
-    """Uma fatura de 24,48 € cobrada pela Santa Casa em três lançamentos (1,67 + 1,81 + 21,00)."""
+    """Uma fatura de 24,48 € cobrada pela Santa Casa em três NLD (1,67 + 1,81 + 21,00)."""
     fs = [(1, farmacia(47843, "18-09-2026", "24,48"))]
     sc = [(10, carta("15-10-2026", [("15-09-2026", "NLD", 2026, 3077, "1,67"), ("30-09-2026", "NLD", 2026, 3298, "1,81"),
-                                    ("30-09-2026", "FT", 2026, 5755, "21,00")], "24,48"))]
+                                    ("30-09-2026", "NLD", 2026, 3400, "21,00")], "24,48"))]
     lig, _ = _ligar(fs, sc)
-    l = lig[(("FT U014/47843",), ("NLD 2026/3077", "NLD 2026/3298", "FT 2026/5755"))]
+    l = next(v for k, v in lig.items() if set(k[1]) == {"NLD 2026/3077", "NLD 2026/3298", "NLD 2026/3400"})
     assert l.ok and l.metodo == "soma de lançamentos"
 
 
@@ -368,7 +370,7 @@ def test_tabela_da_carta_cruzada_com_pdf_e_farmacia():
     ln = {l.chave: l for l in ca.linhas}
     assert ln["NLD 2026/3564"].estado == "bate" and [f.numero for f in ln["NLD 2026/3564"].farmacia] == ["FT U014/1"]
     assert ln["FT 2026/6452"].estado == "falta" and ln["FT 2026/6452"].pdf is None
-    assert [f.numero for f in ln["FT 2026/6452"].farmacia] == ["FT U014/2"]
+    assert ln["FT 2026/6452"].farmacia == [] and not ln["FT 2026/6452"].da_farmacia      # FTUT: faturação interna
     assert any("PDF da FT em falta" in x for x in ln["FT 2026/6452"].falta)
     l3 = ln["NLD 2026/3768"]
     assert l3.estado == "diverge" and "o PDF diz 33,64" in l3.diverge[0]
@@ -382,18 +384,13 @@ def test_tabela_da_carta_cruzada_com_pdf_e_farmacia():
     assert "NLD 2026/3768 — o PDF diz" in textos and "Recibo PB2026/1500" in textos
 
 
-def test_tabela_sem_fatura_da_farmacia_e_pagamento_direto():
+def test_tabela_sem_fatura_da_farmacia():
     sc = [(20, nld(3564, "15-10-2026", "3,90")), (23, _carta_outubro())]
     c = lar.conciliar([], sc, [], hoje=date(2026, 11, 10))
     ln = {l.chave: l for l in c.tabelas[0].linhas}
     assert any("fatura da farmácia" in x for x in ln["NLD 2026/3564"].falta)
-    assert any("sem o PDF" in x for x in ln["NLD 2026/3768"].falta)
-    # sem PDF, a FT de 1.367,53 é mensalidade (acima de 300 €): não se procura na farmácia
-    assert not ln["FT 2026/6725"].da_farmacia
-    # farmácia paga diretamente desde junho: lançamentos de outubro já não a cobram
-    c = lar.conciliar([], sc, [], hoje=date(2026, 11, 10), farmacia_ate=date(2026, 6, 1))
-    ln = {l.chave: l for l in c.tabelas[0].linhas}
-    assert ln["NLD 2026/3564"].estado == "bate" and not ln["NLD 2026/3564"].da_farmacia
+    assert ln["NLD 2026/3768"].da_farmacia and ln["NLD 2026/3768"].estado == "falta"   # NLD sem PDF: é da farmácia
+    assert not ln["FT 2026/6725"].da_farmacia and not ln["FT 2026/6452"].da_farmacia    # FTUT: faturação interna
 
 
 def test_tabela_comprovativo_sem_valores_e_regularizado():
@@ -456,3 +453,64 @@ def test_conciliacao_parte_da_carta_do_mes_anterior():
     # passado o prazo (fim do mês seguinte), a fatura de outubro sem lançamento passa a faltar
     c = lar.conciliar(fa, sc, [], hoje=date(2026, 12, 15))
     assert {x.numero: x for x in c.por_carta[1].fora}["FT U014/5"].estado == "falta"
+
+
+def _mov(i, valor, d, desc="TRF SANTA CASA"):
+    return SimpleNamespace(id=i, montante=-valor, data_mov=d, descricao_original=desc)
+
+
+def test_debito_parte_dos_documentos_ligados():
+    """A + B: o débito no banco → os documentos ligados no Gestor (documento_ligado) → a tabela de documentos de cada
+    um → as NLD/FT pagas → o PDF e as faturas da farmácia."""
+    fa = [(10, farmacia(1, "10-10-2026", "3,90")), (12, farmacia(3, "20-10-2026", "20,00")),
+          (13, farmacia(4, "28-10-2026", "12,64"))]
+    sc = [(20, nld(3564, "15-10-2026", "3,90")), (21, nld(3768, "31-10-2026", "32,64")),
+          (22, ft(6725, "01-11-2026", "1.367,53")), (23, _carta_outubro()),
+          (24, recibo(1500, "05-11-2026", [("FT", 2026, 6725, "1.367,53"), ("NLD", 2026, 3564, "3,90")], "1371,43")),
+          (25, recibo(1510, "20-11-2026", [("NLD", 2026, 3768, "32,64")], "32,64"))]
+    movs = [_mov(1, 137143, date(2026, 11, 4)),            # ligado ao recibo 1500: bate, linha a linha
+            _mov(2, 3264, date(2026, 11, 19)),             # sem ligação: achado pelo valor do recibo 1510
+            _mov(3, 2100, date(2026, 11, 6)),              # ligado à carta e a um documento que não é da Santa Casa
+            _mov(4, 5000, date(2026, 11, 7)),              # ligado à NLD 3564 diretamente: não bate
+            _mov(5, 999, date(2026, 11, 8), "OUTRA COISA")]  # nada: não aparece
+    ligados = {1: [24], 3: [23, 999], 4: [20]}
+    c = lar.conciliar(fa, sc, movs, hoje=date(2026, 11, 25), ligados=ligados)
+    b = {p.movimento.id: p for p in c.banco}
+    assert set(b) == {1, 2, 3, 4}
+    p1 = b[1]
+    assert p1.origem == "ligado" and [t.numero for t in p1.documentos] == ["PB2026/1500"] and p1.estado == "bate"
+    assert [l.chave for l in p1.linhas] == ["FT 2026/6725", "NLD 2026/3564"] and p1.soma == 137143
+    assert [f.numero for f in p1.linhas[1].farmacia] == ["FT U014/1"] and not p1.linhas[0].da_farmacia
+    p2 = b[2]
+    assert p2.origem == "pelo valor" and p2.estado == "falta" and "não está ligado" in p2.falta[0]
+    assert sorted(f.numero for f in p2.linhas[0].farmacia) == ["FT U014/3", "FT U014/4"]
+    p3 = b[3]
+    assert p3.outros == [999] and any("sem recibo nem comprovativo" in x for x in p3.falta)
+    assert len(p3.linhas) == 4 and p3.estado == "diverge" and "o débito foi 21,00" in p3.diverge[0]
+    p4 = b[4]
+    assert [l.chave for l in p4.linhas] == ["NLD 2026/3564"] and p4.soma == 390 and p4.estado == "diverge"
+    assert any("Débito de 07/11/2026" in t for _, t in c.alertas) and not any("Débito de 04/11/2026" in t for _, t in c.alertas)
+
+
+def test_pagina_debito_com_documento_ligado(tmp_path, falso):
+    from sqlalchemy import select
+    from app.models import Conta, DocumentoLigado, Entidade, Instituicao, Movimento
+    app = create_app(tmp_path, backups_automaticos=False)
+    c = TestClient(app)
+    _post(c, "/setup", nome="Admin", login="admin", password=PW, password2=PW)
+    _heranca(app)
+    with app.state.SessionLocal() as db:
+        ent = db.scalar(select(Entidade).where(Entidade.nome == "Mãe"))
+        conta = Conta(entidade=ent, instituicao=db.scalar(select(Instituicao)) or Instituicao(nome="CCAM"), nome="Ordem", tipo="ORDEM")
+        db.add(conta)
+        db.flush()
+        m = Movimento(conta_id=conta.id, data_mov=date.today(), montante=-133941, descricao_original="TRF SANTA CASA",
+                      descricao_norm="TRF SANTA CASA", hash_dedup="sc1")
+        db.add(m)
+        db.flush()
+        db.add(DocumentoLigado(paperless_id=22, titulo="Carta", movimento_id=m.id))
+        db.commit()
+    r = c.get("/lar")
+    assert r.status_code == 200, r.text
+    assert "Pagamentos no banco ↔ documentos ligados" in r.text and "documentos ligados" in r.text
+    assert "TRF SANTA CASA" in r.text and "sem recibo nem comprovativo ligado" in r.text

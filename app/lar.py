@@ -4,11 +4,11 @@ de aviso, dos recibos e dos pagamentos — tudo lido do Paperless (texto/OCR dos
 Como funciona o circuito (confirmado pelo utilizador e pelos documentos reais):
   1. A farmácia (Farmácia Nova de Santo André) emite uma FATURA por cada compra, «Debitado em Conta» na conta corrente
      da utente; o valor que conta é o «Total Utente» (o resto é comparticipado pelo Estado).
-  2. A Santa Casa paga a farmácia e cobra à utente num LANÇAMENTO: uma NOTA DE LANÇAMENTO (NLD) «22 - Reembolso de
-     Medicamentos» ou uma FATURA (FT) que não é a mensalidade — no mês da fatura da farmácia ou no seguinte, com o
-     mesmo valor (ou repartido por vários lançamentos, ou vários faturas juntas num). Há NLD de outros reembolsos
-     (26 Consultas, 90 Cabeleireiro), que não vêm da farmácia.
-  3. A mensalidade vem numa FATURA da Santa Casa (FT: 39 Mensalidade ERPI, 41 Comp. descendentes…).
+  2. A Santa Casa paga a farmácia e cobra à utente numa NOTA DE LANÇAMENTO (NLD, série NLDUT) — as NLD são o que a
+     Santa Casa refatura de fornecedores externos, e o único até hoje é a farmácia — no mês da fatura da farmácia ou
+     no seguinte, com o mesmo valor (ou repartido por várias NLD, ou várias faturas juntas numa).
+  3. As FATURAS da Santa Casa (FT, série FTUT) são faturação interna (39 Mensalidade ERPI, 41 Comp. descendentes…):
+     nunca cobram a farmácia.
   4. A CARTA INFORMATIVA/AVISO lista os documentos (NLD e FT) por pagar e o total.
   5. O RECIBO (REC) diz que documentos foram pagos e quando; o pagamento sai da conta da utente (Crédito Agrícola).
      A REGULARIZAÇÃO («Regularização n.º PNL NLCDIV2026/1436») é o recibo das NLD de medicamentos: lista as NLD
@@ -228,9 +228,6 @@ def ler_santa_casa(pid: int, texto: str):
 
 
 # ------------------------------------------------------------------ ligação: faturas da farmácia ↔ lançamentos da Santa Casa
-CODIGOS_FARMACIA = {COD_MEDICAMENTOS}       # NLD «22 - Reembolso de Medicamentos»
-CODIGOS_MENSALIDADE = {"39", "41"}          # FT «39 Mensalidade ERPI», «41 Comp. Descend. Lar»
-MENSALIDADE_MINIMA = 30000                  # FT sem PDF (só pela carta) a partir deste valor: é mensalidade
 DIAS_ANTES = 3                              # um lançamento pode ter data até 3 dias antes da fatura (datas de emissão)
 MAX_COMBINACAO = 4
 
@@ -239,7 +236,7 @@ MAX_COMBINACAO = 4
 class Ligacao:
     """Faturas da farmácia ↔ lançamentos da Santa Casa (NLD ou FT) que as cobram."""
     faturas: list                   # [FaturaFarmacia]
-    lancamentos: list               # [EstadoDoc]
+    lancamentos: list               # [EstadoDoc] NLD
     metodo: str                     # mesmo valor | soma de lançamentos | soma de faturas | sem lançamento | sem fatura
 
     @property
@@ -274,15 +271,10 @@ def _fim_mes_seguinte(d: date) -> date:
 
 
 def lancamento_farmacia(e) -> bool:
-    """Um lançamento da Santa Casa que pode cobrar a farmácia: NLD de medicamentos ou FT que não é a mensalidade.
-    Sem o PDF (só pela carta) não se sabe o código: NLD conta sempre; FT conta se for abaixo de 300 €."""
-    if e.tipo == "NLD":
-        return not e.codigos or bool(e.codigos & CODIGOS_FARMACIA)
-    if e.tipo == "FT":
-        if e.codigos:
-            return not (e.codigos & CODIGOS_MENSALIDADE)
-        return 0 < e.valor < MENSALIDADE_MINIMA
-    return False
+    """Um lançamento da Santa Casa que cobra a farmácia: as NLD (série NLDUT, refaturação de fornecedores externos — até
+    hoje só a farmácia). As FT (série FTUT) são faturação interna da Santa Casa e nunca cobram a farmácia. Uma NLD cujo
+    PDF só tem outros códigos (26 Consultas, 90 Cabeleireiro…) não se procura na farmácia."""
+    return e.tipo == "NLD" and (not e.codigos or COD_MEDICAMENTOS in e.codigos)
 
 
 def _melhor(candidatos: list, alvo: int, ref: date, maximo: int):
@@ -301,8 +293,8 @@ def _melhor(candidatos: list, alvo: int, ref: date, maximo: int):
 
 
 def ligar_farmacia(faturas: list[FaturaFarmacia], estados_docs: list) -> tuple[list[Ligacao], int]:
-    """Parte de cada fatura da farmácia e procura, pelo valor, os lançamentos da Santa Casa (NLD ou FT, também os que
-    só se conhecem pela carta) desde 3 dias antes da fatura até ao fim do mês seguinte: o lançamento com o mesmo valor
+    """Parte de cada fatura da farmácia e procura, pelo valor, as NLD da Santa Casa (também as que só se conhecem
+    pela carta) desde 3 dias antes da fatura até ao fim do mês seguinte: o lançamento com o mesmo valor
     ou a combinação de até 4 lançamentos que soma o valor (os mais próximos primeiro). Depois, para os lançamentos que
     sobram, a combinação de faturas que dá o seu valor (uma NLD por quinzena). Devolve (ligações, n.º de lançamentos
     de antes da 1.ª fatura no Paperless — não há com que comparar)."""
@@ -454,7 +446,7 @@ class LinhaTabela:
     pdf: DocSantaCasa | None = None
     farmacia: list = field(default_factory=list)      # [FaturaFarmacia] da ligação deste lançamento
     lancamentos: list = field(default_factory=list)   # [chave] da ligação (quando a fatura se reparte por vários)
-    da_farmacia: bool = False       # lançamento que cobra a farmácia (NLD de medicamentos ou FT que não é mensalidade)
+    da_farmacia: bool = False       # lançamento que cobra a farmácia (NLD; as FT são faturação interna)
     bate: list = field(default_factory=list)          # o que confere
     falta: list = field(default_factory=list)         # o que não está no Paperless
     diverge: list = field(default_factory=list)       # valores que não batem
@@ -511,8 +503,7 @@ class TabelaDocumentos:
         return "bate"
 
 
-def _linha(chave_doc: str, tipo: str, d: date | None, valor: int | None, pdfs: dict, est: dict, lig: dict,
-           farmacia_ate: date | None) -> LinhaTabela:
+def _linha(chave_doc: str, tipo: str, d: date | None, valor: int | None, pdfs: dict, est: dict, lig: dict) -> LinhaTabela:
     l = LinhaTabela(chave_doc, tipo, d, valor, pdfs.get(chave_doc))
     e = est.get(chave_doc)
     l.validacao = e.validacao if e else ""
@@ -524,15 +515,11 @@ def _linha(chave_doc: str, tipo: str, d: date | None, valor: int | None, pdfs: d
         l.bate.append(f"PDF: {fmt_montante(l.pdf.total)}")
         l.data = l.data or l.pdf.data
     l.da_farmacia = bool(e and lancamento_farmacia(e))
-    # a farmácia paga diretamente: os lançamentos depois do prazo de cobrança das últimas faturas já não a incluem
-    if l.da_farmacia and farmacia_ate and e.data and e.data > _fim_mes_seguinte(farmacia_ate):
-        l.da_farmacia = False
     ligacao = lig.get(chave_doc)
     if not l.da_farmacia:
         return l
     if ligacao is None or not ligacao.faturas:
-        l.falta.append("fatura da farmácia com este valor não encontrada no Paperless"
-                       + ("" if l.pdf else " (sem o PDF não se sabe se é de medicamentos)"))
+        l.falta.append("fatura da farmácia com este valor não encontrada no Paperless")
         return l
     l.farmacia = list(ligacao.faturas)
     l.lancamentos = [x.chave for x in ligacao.lancamentos]
@@ -549,7 +536,7 @@ def _linha(chave_doc: str, tipo: str, d: date | None, valor: int | None, pdfs: d
 
 
 def validar_tabelas(cartas: list[Carta], pagamentos: list, docs: list[DocSantaCasa], est: list[EstadoDoc],
-                    ligacoes: list[Ligacao], farmacia_ate: date | None = None) -> list[TabelaDocumentos]:
+                    ligacoes: list[Ligacao]) -> list[TabelaDocumentos]:
     """Para cada carta de aviso e cada recibo/regularização/transferência, lê a tabela de documentos («Data Doc. · Tipo ·
     Número · Valor…» nas cartas, «Documentos · Valor Pag.» nos recibos), localiza no Paperless o PDF de cada NLD/FT e,
     nos lançamentos que cobram a farmácia, as faturas da farmácia; compara os valores e diz o que bate, o que falta e
@@ -559,7 +546,7 @@ def validar_tabelas(cartas: list[Carta], pagamentos: list, docs: list[DocSantaCa
     lig = {e.chave: l for l in ligacoes for e in l.lancamentos}
     out = []
     for c in cartas:
-        linhas = [_linha(k, tipo, dd, valor, pdfs, por_est, lig, farmacia_ate) for k, tipo, dd, valor, _ in c.docs]
+        linhas = [_linha(k, tipo, dd, valor, pdfs, por_est, lig) for k, tipo, dd, valor, _ in c.docs]
         t = TabelaDocumentos("carta", c.pid, c.data.strftime("%d/%m/%Y"), c.data, c.total, linhas)
         por_pagar = sum(p for *_, p in c.docs)
         if c.total is not None and abs(por_pagar - c.total) > TOLERANCIA:
@@ -571,7 +558,7 @@ def validar_tabelas(cartas: list[Carta], pagamentos: list, docs: list[DocSantaCa
         linhas = []
         for k, valor in r.docs:
             e = por_est.get(k)
-            linhas.append(_linha(k, k.split()[0], e.data if e else None, valor, pdfs, por_est, lig, farmacia_ate))
+            linhas.append(_linha(k, k.split()[0], e.data if e else None, valor, pdfs, por_est, lig))
         t = TabelaDocumentos(r.tipo, r.pid, r.numero, r.data, r.total, linhas, m)
         if not r.docs:
             t.falta.append("não indica os documentos pagos")
@@ -579,6 +566,90 @@ def validar_tabelas(cartas: list[Carta], pagamentos: list, docs: list[DocSantaCa
             t.diverge.append(f"os documentos somam {fmt_montante(t.soma)}, o total pago foi {fmt_montante(r.total)}")
         out.append(t)
     return sorted(out, key=lambda t: (t.data, t.origem != "carta"), reverse=True)
+
+
+# ------------------------------------------------------------------ débito no banco ↔ documentos ligados (documento_ligado)
+@dataclass
+class PagamentoBanco:
+    """Um débito à Santa Casa na conta da utente e os documentos do Paperless ligados a ele no Gestor (tabela
+    documento_ligado): recibos, regularizações, comprovativos, cartas ou as próprias NLD/FT. A tabela de documentos de
+    cada um (B) dá as NLD/FT pagas; cada linha cruza-se com o PDF e com as faturas da farmácia."""
+    movimento: object
+    origem: str                     # ligado (documento_ligado) | pelo valor (recibo com o mesmo valor, sem ligação)
+    documentos: list = field(default_factory=list)   # [TabelaDocumentos] ligados (ou o recibo achado pelo valor)
+    linhas: list = field(default_factory=list)       # [LinhaTabela] o que este débito paga
+    outros: list = field(default_factory=list)       # [paperless_id] ligados que não são documentos da Santa Casa lidos
+    diverge: list = field(default_factory=list)
+    falta: list = field(default_factory=list)
+
+    @property
+    def valor(self) -> int:
+        return -self.movimento.montante
+
+    @property
+    def soma(self) -> int:
+        return sum(l.referencia or 0 for l in self.linhas)
+
+    @property
+    def estado(self) -> str:
+        if self.diverge or any(l.estado == "diverge" for l in self.linhas):
+            return "diverge"
+        if self.falta or any(l.estado == "falta" for l in self.linhas):
+            return "falta"
+        return "bate"
+
+
+def ligar_banco(movimentos: list, ligados: dict, tabelas: list[TabelaDocumentos], pagamentos: list,
+                docs: list[DocSantaCasa], est: list[EstadoDoc], ligacoes: list[Ligacao]) -> list[PagamentoBanco]:
+    """`ligados`: id do movimento → [ids do Paperless ligados] (documento_ligado). Parte de cada débito com documentos
+    ligados — e dos débitos que só se acharam pelo valor de um recibo (sem ligação: «ligar no Gestor» fica em falta) —
+    e chega às NLD/FT pela tabela de documentos de cada documento ligado: os recibos/comprovativos dizem o que foi pago;
+    sem eles, a carta ligada; uma NLD/FT ligada diretamente conta por si."""
+    por_pid = {}
+    for t in tabelas:
+        por_pid.setdefault(t.pid, t)
+    pdf_pid = {d.pid: d for d in docs}
+    pdfs = {d.chave: d for d in docs}
+    por_est = {e.chave: e for e in est}
+    lig = {e.chave: l for l in ligacoes for e in l.lancamentos}
+    pelo_valor = {m.id: r for r, m in pagamentos if m is not None}
+    out = []
+    for m in movimentos:
+        pids = ligados.get(m.id) or []
+        tabs = [por_pid[p] for p in pids if p in por_pid]
+        diretos = [pdf_pid[p] for p in pids if p in pdf_pid]
+        if not tabs and not diretos:
+            r = pelo_valor.get(m.id)
+            if r is None:
+                continue
+            t = next((x for x in tabelas if x.origem != "carta" and x.pid == r.pid), None)
+            p = PagamentoBanco(m, "pelo valor", [t] if t else [])
+            p.falta.append(f"{r.rotulo} {r.numero} não está ligado a este movimento no Gestor")
+        else:
+            p = PagamentoBanco(m, "ligado", tabs)
+        p.outros = [x for x in pids if x not in por_pid and x not in pdf_pid]
+        pagos = [t for t in p.documentos if t.origem != "carta"]
+        base = pagos or [t for t in p.documentos if t.origem == "carta"]
+        vistos = set()
+        for t in base:
+            for l in t.linhas:
+                if l.chave not in vistos:
+                    vistos.add(l.chave)
+                    p.linhas.append(l)
+        for d in diretos:
+            if d.chave not in vistos:
+                vistos.add(d.chave)
+                p.linhas.append(_linha(d.chave, d.tipo, d.data, None, pdfs, por_est, lig))
+        if p.origem == "ligado" and not pagos:
+            p.falta.append("sem recibo nem comprovativo ligado" + (" (conta a carta)" if base else ""))
+        if not p.linhas:
+            p.falta.append("os documentos ligados não indicam as NLD/FT pagas")
+        elif all(l.referencia is not None for l in p.linhas) and abs(p.soma - p.valor) > TOLERANCIA:
+            p.diverge.append(f"os documentos somam {fmt_montante(p.soma)}, o débito foi {fmt_montante(p.valor)}")
+        for t in p.documentos:
+            p.diverge.extend(f"{t.rotulo} {t.numero}: {x}" for x in t.diverge)
+        out.append(p)
+    return sorted(out, key=lambda p: p.movimento.data_mov, reverse=True)
 
 
 # ------------------------------------------------------------------ conciliação a partir da carta informativa
@@ -731,13 +802,13 @@ class Conciliacao:
     tabelas: list = field(default_factory=list)    # [TabelaDocumentos] cartas e recibos validados linha a linha
     por_carta: list = field(default_factory=list)  # [ConciliacaoCarta] a conciliação a partir de cada carta informativa
     recibos_sem_carta: list = field(default_factory=list)  # [TabelaDocumentos] recibos que não pagam nenhuma carta
+    banco: list = field(default_factory=list)      # [PagamentoBanco] débitos ↔ documentos ligados (documento_ligado)
 
 
 def conciliar(farmacia_docs: list[tuple[int, str]], santa_casa_docs: list[tuple[int, str]], movimentos: list,
               hoje: date | None = None, pago_ate: date | None = None, validar_desde: date | None = None,
-              validados: dict | None = None, farmacia_ate: date | None = None) -> Conciliacao:
-    """`farmacia_ate`: a partir deste dia a farmácia é paga diretamente (Gestão do Lar › Farmácia Nova): as faturas
-    dessa data em diante já não se procuram nos lançamentos da Santa Casa.
+              validados: dict | None = None, ligados: dict | None = None) -> Conciliacao:
+    """`ligados`: id do movimento → [ids do Paperless] ligados a ele no Gestor (documento_ligado).
     `pago_ate`: tudo até essa data está pago (declarado pelo utilizador) — não há alertas de «por pagar».
     `validar_desde`: os documentos anteriores ficam «regularizados»; os seguintes ficam «por validar» até o utilizador
     os validar um a um (`validados`: chave → {em, por, nota}); documentos regularizados ou validados não dão alertas."""
@@ -752,8 +823,7 @@ def conciliar(farmacia_docs: list[tuple[int, str]], santa_casa_docs: list[tuple[
         if d and d < validar_desde:
             return "regularizado"
         return "por validar"
-    faturas = [f for item in farmacia_docs if (f := ler_farmacia(item[0], item[1]))
-               and (farmacia_ate is None or f.data < farmacia_ate)]
+    faturas = [f for item in farmacia_docs if (f := ler_farmacia(item[0], item[1]))]
     vistos_f = {}
     for f in faturas:                                 # o mesmo documento importado duas vezes
         vistos_f.setdefault(f.numero, f)
@@ -823,7 +893,7 @@ def conciliar(farmacia_docs: list[tuple[int, str]], santa_casa_docs: list[tuple[
                 (bool(r.docs) and all(k in validados for k, _ in r.docs))
             if m is None and not regularizado and r.data >= hoje - timedelta(days=400):
                 alertas.append(("pagamento", f"{r.rotulo} {r.numero} de {r.data:%d/%m/%Y} ({fmt_montante(r.total or 0)}) sem débito igual na conta", r.data))
-    tabelas = validar_tabelas(cartas, pagamentos, docs, est, ligacoes, farmacia_ate)
+    tabelas = validar_tabelas(cartas, pagamentos, docs, est, ligacoes)
     for t in tabelas:
         for l in t.linhas:
             if l.validacao in ("regularizado", "validado"):
@@ -837,6 +907,13 @@ def conciliar(farmacia_docs: list[tuple[int, str]], santa_casa_docs: list[tuple[
             for x in t.diverge:
                 alertas.append(("tabela", f"{t.rotulo} {t.numero} de {t.data:%d/%m/%Y}: {x}", t.data))
     por_carta, sem_carta = conciliar_cartas(tabelas, docs, est, faturas, ligacoes, hoje)
+    banco = ligar_banco(movimentos, ligados or {}, tabelas, pagamentos, docs, est, ligacoes)
+    for p in banco:
+        if p.origem != "ligado" or (validar_desde and p.movimento.data_mov < validar_desde) or                 (p.linhas and all(l.validacao in ("regularizado", "validado") for l in p.linhas)):
+            continue
+        for x in p.diverge[:1]:
+            alertas.append(("pagamento", f"Débito de {p.movimento.data_mov:%d/%m/%Y} ({fmt_montante(p.valor)}): {x}",
+                            p.movimento.data_mov))
     for cc in por_carta:
         for x in cc.fora:
             if x.origem == "santa casa" and x.estado == "falta":
@@ -862,4 +939,5 @@ def conciliar(farmacia_docs: list[tuple[int, str]], santa_casa_docs: list[tuple[
                        [x for x in nao_reconhecidos if x[2] is None or no_intervalo(x[2])], n_anulados, inicio,
                        [t for t in tabelas if no_intervalo(t.data)],
                        [cc for cc in por_carta if no_intervalo(cc.tabela.data)],
-                       [t for t in sem_carta if no_intervalo(t.data)])
+                       [t for t in sem_carta if no_intervalo(t.data)],
+                       [p for p in banco if no_intervalo(p.movimento.data_mov)])

@@ -9,10 +9,10 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import lar, lar_farmacia, paperless, preferencias
+from .. import lar, paperless, preferencias
 from .. import paperless_gestao as pg
 from ..deps import auditar, entidades_visiveis, exigir_papel, flash, get_db, render, utilizador_atual
-from ..models import PAPEIS, Conta, Entidade, LarValidacao, Movimento, Utilizador
+from ..models import PAPEIS, Conta, DocumentoLigado, Entidade, LarValidacao, Movimento, Utilizador
 from ..formatos import parse_data
 from ..seguranca import ler_form
 from .documentos import token as token_paperless
@@ -104,13 +104,18 @@ def pagina(request: Request, renovar: int = 0, u: Utilizador = Depends(utilizado
                 movimentos = db.scalars(select(Movimento).join(Conta).where(
                     Conta.entidade_id == ent.id, Movimento.montante < 0,
                     Movimento.data_mov >= date.today() - timedelta(days=800))).all()
+            ligados: dict[int, list[int]] = {}       # débito → documentos do Paperless ligados (documento_ligado)
+            ids = [m.id for m in movimentos]
+            for i in range(0, len(ids), 500):
+                for d in db.scalars(select(DocumentoLigado).where(DocumentoLigado.movimento_id.in_(ids[i:i + 500]))):
+                    ligados.setdefault(d.movimento_id, []).append(d.paperless_id)
             validados = {v.chave: {"em": v.em, "por": v.utilizador.nome if v.utilizador else "", "nota": v.nota or ""}
                          for v in db.scalars(select(LarValidacao))}
             ctx["c"] = lar.conciliar(_documentos(token, fa["id"], bool(renovar)) if fa else [],
                                      _documentos(token, sc["id"], bool(renovar)), movimentos,
                                      pago_ate=_data_pref(prefs, "lar_pago_ate"),
                                      validar_desde=_data_pref(prefs, "lar_validar_desde"), validados=validados,
-                                     farmacia_ate=_data_pref(prefs, "lar_farm_desde"))
+                                     ligados=ligados)
     except paperless.ErroPaperless as e:
         ctx["erros"].append(str(e))
     return render(request, "lar.html", **ctx)
@@ -177,59 +182,3 @@ async def validar(request: Request, u: Utilizador = Depends(utilizador_atual), d
         db.commit()
     flash(request, f"{n} documento{'s' if n != 1 else ''} {'validado' if acao == 'validar' else 'com a validação anulada'}{'s' if n != 1 else ''}.")
     return RedirectResponse("/lar#documentos", status_code=303)
-
-
-# ------------------------------------------------------------------ Gestão do Lar › Farmácia Nova (pagamento direto)
-@router.get("/lar/farmacia")
-def farmacia(request: Request, renovar: int = 0, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
-    """Faturas e recibos da farmácia (Paperless) ↔ pagamentos na conta da herança (app/lar_farmacia.py)."""
-    prefs = request.app.state.prefs
-    token = token_paperless(request, u)
-    ent = _entidade(db, u, prefs)
-    ctx = {"hoje": date.today(), "paperless_cfg": paperless.configurado(), "token_ok": bool(token), "erros": [], "a": None,
-           "prefs": prefs, "entidade": ent, "entidades": _entidades_lar(db, u), "correspondentes": [],
-           "desde": _data_pref(prefs, "lar_farm_desde"), "texto_banco": prefs.get("lar_farm_texto") or lar_farmacia.TEXTO_BANCO,
-           "link": paperless.url_browser() if paperless.configurado() else ""}
-    if not ent:
-        return render(request, "lar_farmacia.html", sem_modulo=True, **ctx)
-    if not token:
-        return render(request, "lar_farmacia.html", **ctx)
-    try:
-        lista = sorted(pg.listar("correspondents", token), key=lambda c: (c.get("name") or "").lower())
-        ctx["correspondentes"] = lista
-        fa = _correspondente(lista, prefs.get("lar_corr_farmacia", ""), ("farmacia", "nova"))
-        ctx["corr_fa"] = fa
-        if not fa:
-            ctx["erros"].append("Não encontrei o correspondente da farmácia no Paperless: escolhe-o em «Configurar».")
-        else:
-            movimentos = db.scalars(select(Movimento).join(Conta).where(
-                Conta.entidade_id == ent.id, Movimento.montante < 0,
-                Movimento.data_mov >= date.today() - timedelta(days=800))).all()
-            ctx["a"] = lar_farmacia.analisar(_documentos(token, fa["id"], bool(renovar)), movimentos,
-                                             desde=ctx["desde"], texto_banco=ctx["texto_banco"])
-    except paperless.ErroPaperless as e:
-        ctx["erros"].append(str(e))
-    return render(request, "lar_farmacia.html", **ctx)
-
-
-@router.post("/lar/farmacia/config")
-async def farmacia_config(request: Request, u: Utilizador = Depends(utilizador_atual), db: Session = Depends(get_db)):
-    form = await ler_form(request)
-    ent = _entidade(db, u, request.app.state.prefs)
-    if ent:
-        exigir_papel(db, u, ent.id, "editar")
-    preferencias.gravar(db, "lar_corr_farmacia", str(form.get("farmacia", "")).strip()[:128])
-    preferencias.gravar(db, "lar_farm_texto", str(form.get("texto_banco", "")).strip()[:60])
-    erro = ""
-    try:
-        d = parse_data(str(form.get("desde", "")))
-        preferencias.gravar(db, "lar_farm_desde", d.isoformat() if d else "")
-    except ValueError:
-        erro = "«Pagamento direto desde»: data inválida (usa dd/mm/aaaa)"
-    auditar(db, u, "lar_farmacia_config", "")
-    db.commit()
-    request.app.state.prefs = preferencias.carregar(db)
-    _CACHE.clear()
-    flash(request, f"Configuração da farmácia guardada, menos: {erro}." if erro else "Configuração da farmácia guardada.",
-          "erro" if erro else "ok")
-    return RedirectResponse("/lar/farmacia", status_code=303)

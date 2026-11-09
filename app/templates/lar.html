@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% from "_abas.html" import abas_lar with context %}
 {% block titulo %}Lar · conciliação{% endblock %}
 {% macro validacao(v, info=none) -%}
 {% if v == 'validado' %}<span class="etiqueta etiqueta-ok" title="{{ info.por ~ ' · ' ~ info.em.strftime('%d/%m/%Y') ~ (' · ' ~ info.nota if info.nota else '') if info else '' }}">validado</span>
@@ -10,7 +9,6 @@
 {% block conteudo %}
 <div class="titulo-acoes"><h1>Lar · conciliação</h1>
   {% if c %}<a class="botao" href="/lar?renovar=1">Ler de novo do Paperless</a>{% endif %}</div>
-{% if not sem_modulo %}{{ abas_lar() }}{% endif %}
 <p class="nota">Faturas da farmácia ↔ notas de lançamento de medicamentos da Santa Casa ↔ cartas de aviso ↔ recibos ↔
   pagamentos na conta{% if entidade %} da entidade <strong>{{ entidade.nome }}</strong>{% endif %}. Tudo lido do Paperless
   (o texto de cada documento); nada é alterado.</p>
@@ -49,7 +47,7 @@
   <h2>Conciliação por carta informativa <span class="nota">· {{ c.por_carta|length }} carta{{ 's' if c.por_carta|length != 1 }}</span></h2>
   <p class="nota">A carta informativa, emitida no início do mês, lista os documentos do mês anterior (e a mensalidade do
     próprio mês) por pagar. A conciliação parte dela: cada linha da tabela ↔ o PDF da NLD/FT no Paperless ↔ as faturas da
-    Farmácia Nova que esse lançamento cobra (medicamentos, ou FT que não é a mensalidade) ↔ o recibo ou a transferência
+    Farmácia Nova que essa NLD cobra (as NLDUT refaturam a farmácia; as FTUT são faturação interna da Santa Casa) ↔ o recibo ou a transferência
     que a pagou. Depois, os documentos do período que a carta não lista. «Bate»: os valores conferem; «falta»: um
     documento não está no Paperless ou na carta; «diverge»: os valores não batem.</p>
   {% for cc in c.por_carta[:24] %}{% set t = cc.tabela %}{% set n = t.contagem() %}
@@ -67,7 +65,7 @@
         <td class="num">{{ l.valor | eur if l.valor is not none else '—' }}</td>
         <td class="num">{{ l.pdf.total | eur if l.pdf else '—' }}</td>
         <td class="nota">{% if l.farmacia %}{% for f in l.farmacia %}<div class="sem-quebra">{{ doc(f.pid, f.numero) }} · {{ f.data | data }} · {{ f.total | eur }}</div>{% endfor %}{% if l.lancamentos|length > 1 %}<div>repartida por {{ l.lancamentos|join(', ') }}</div>{% endif %}
-          {% elif l.da_farmacia %}—{% else %}<span class="nota">não é da farmácia</span>{% endif %}</td>
+          {% elif l.da_farmacia %}—{% else %}<span class="nota">interna (Santa Casa)</span>{% endif %}</td>
         <td class="nota">{{ cc.pagamento.get(l.chave, '') }}</td>
         <td class="nota">{{ estado_tabela(l.estado) }}{% for x in l.diverge %}<div class="pp-problema">{{ x }}</div>{% endfor %}{% for x in l.falta %}<div>· {{ x }}</div>{% endfor %}</td></tr>
       {% endfor %}
@@ -97,10 +95,41 @@
   {% endif %}
 </section>
 
+<section class="cartao" id="banco">
+  <h2>Pagamentos no banco ↔ documentos ligados <span class="nota">· {{ c.banco|length }} débito{{ 's' if c.banco|length != 1 }} à Santa Casa</span></h2>
+  <p class="nota">Parte de cada débito na conta{% if entidade %} ({{ entidade.nome }}){% endif %} e dos documentos do
+    Paperless ligados a ele no Gestor (recibo, regularização, comprovativo, carta ou a própria NLD/FT). A tabela de
+    documentos de cada um dá as NLD/FT pagas, e cada linha cruza-se com o PDF e com as faturas da farmácia. Os débitos que só se acharam pelo
+    valor de um recibo ficam com «falta: ligar no Gestor» (liga o documento no detalhe do movimento).</p>
+  {% for p in c.banco[:36] %}
+  <details class="recolher" {% if p.estado != 'bate' %}open{% endif %} style="margin-top:.75rem">
+    <summary><strong><a href="/movimentos/{{ p.movimento.id }}/detalhe">{{ p.movimento.data_mov | data }} · {{ p.valor | eur }}</a></strong>
+      <span class="nota">{{ p.movimento.descricao_original|truncate(40) }} · {{ 'documentos ligados' if p.origem == 'ligado' else 'achado pelo valor' }}:
+        {% for t in p.documentos %}{{ t.rotulo }} {{ doc(t.pid, t.numero) }}{{ ', ' if not loop.last }}{% else %}—{% endfor %}
+        · soma {{ p.soma | eur }}</span>
+      {{ estado_tabela(p.estado) }}</summary>
+    {% for x in p.diverge %}<div class="pp-problema">⚠ {{ x }}</div>{% endfor %}
+    {% for x in p.falta %}<div class="nota">· {{ x }}</div>{% endfor %}
+    {% if p.outros %}<div class="nota">· também ligado{{ 's' if p.outros|length != 1 }}: {% for pid in p.outros %}{{ doc(pid, '#' ~ pid) }}{{ ', ' if not loop.last }}{% endfor %} (não são documentos da Santa Casa lidos)</div>{% endif %}
+    {% if p.linhas %}<div class="rolar"><table class="tabela compacta">
+      <thead><tr><th>Documento</th><th class="num">Pago</th><th class="num">PDF</th><th>Farmácia</th><th>Estado</th></tr></thead>
+      {% for l in p.linhas %}
+      <tr><td class="sem-quebra">{{ doc(l.pdf.pid if l.pdf else none, l.chave) }}<br><span class="nota">{{ l.data | data if l.data else '' }}{% if l.pdf %} · {{ l.pdf.descricao }}{% endif %}</span> {{ validacao(l.validacao) }}</td>
+        <td class="num">{{ l.valor | eur if l.valor is not none else '—' }}</td>
+        <td class="num">{{ l.pdf.total | eur if l.pdf else '—' }}</td>
+        <td class="nota">{% if l.farmacia %}{% for f in l.farmacia %}<div class="sem-quebra">{{ doc(f.pid, f.numero) }} · {{ f.data | data }} · {{ f.total | eur }}</div>{% endfor %}
+          {% elif l.da_farmacia %}—{% else %}<span class="nota">interna (Santa Casa)</span>{% endif %}</td>
+        <td class="nota">{{ estado_tabela(l.estado) }}{% for x in l.diverge %}<div class="pp-problema">{{ x }}</div>{% endfor %}{% for x in l.falta %}<div>· {{ x }}</div>{% endfor %}</td></tr>
+      {% endfor %}
+    </table></div>{% endif %}
+  </details>
+  {% else %}<p class="vazio sem-margem">Sem débitos à Santa Casa com documentos ligados ou recibos com o mesmo valor.</p>{% endfor %}
+</section>
+
 <section class="cartao">
   <h2>Farmácia <span class="nota">· faturas da farmácia ↔ lançamentos da Santa Casa</span></h2>
-  <p class="nota">Para cada fatura da farmácia procura-se, pelo valor, o lançamento da Santa Casa (nota de lançamento ou
-    fatura que não é a mensalidade, também os que só aparecem nas cartas) do mesmo mês ou do seguinte: o que tem o mesmo
+  <p class="nota">Para cada fatura da farmácia procura-se, pelo valor, a nota de lançamento (NLD) da Santa Casa que a
+    cobra (também as que só aparecem nas cartas; as FT são faturação interna da Santa Casa) do mesmo mês ou do seguinte: o que tem o mesmo
     valor ou os que, somados, dão o valor. Depois, para os lançamentos que sobram, as faturas que juntas dão o seu valor.</p>
   {% set com_fatura = c.farmacia|selectattr('faturas')|list %}
   {% set sem_fatura = c.farmacia|rejectattr('faturas')|list %}
