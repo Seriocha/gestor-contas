@@ -157,8 +157,9 @@
     <div><span class="nota">Saldo inicial{% if conta.data_saldo_inicial %} ({{ conta.data_saldo_inicial | data }}){% endif %}</span><strong>{{ conta.saldo_inicial | eur(conta.moeda) }}</strong></div>
     {% endif %}
     <div><span class="nota">Movimentos (filtro)</span><strong>{{ total }}</strong></div>
-    <div><span class="nota">Entradas (filtro)</span><strong class="pos">{{ entradas | eur }}</strong></div>
-    <div><span class="nota">Saídas (filtro)</span><strong class="neg">{{ saidas | eur }}</strong></div>
+    <div><span class="nota">Entradas (filtro)</span><strong class="pos">{{ entradas | eur(moeda_totais) }}</strong></div>
+    <div><span class="nota">Saídas (filtro)</span><strong class="neg">{{ saidas | eur(moeda_totais) }}</strong>
+      {% if sem_euros %}<span class="nota" title="Movimentos noutra moeda sem o valor em euros no extrato: não entram nos totais nem no calendário">{{ sem_euros }} noutra moeda sem valor em euros (não contam)</span>{% endif %}</div>
     <div><span class="nota">Sem categoria</span><strong>
       {% if n_sem %}<a href="{{ request.url.path }}?{% if not conta %}entidade={{ entidade.id }}&{% endif %}tipo=sem{% if anteriores %}&anteriores=1{% endif %}">{{ n_sem }}</a>{% else %}0{% endif %}</strong></div>
   </div>
@@ -169,7 +170,7 @@
       <a class="cal-nav" href="{{ cal.anterior }}" aria-label="Mês anterior">‹</a>
       <strong>{{ cal.rotulo }}</strong>
       <a class="cal-nav" href="{{ cal.seguinte }}" aria-label="Mês seguinte">›</a>
-      <span class="nota cal-resumo">{{ cal.n }} mov. · {{ cal.soma | eur }}</span>
+      <span class="nota cal-resumo">{{ cal.n }} mov. · {{ cal.soma | eur(moeda_totais) }}</span>
       <a class="cal-mes {{ 'ativo' if cal.mes_inteiro_ativo }}" href="{{ cal.mes_inteiro }}">{{ 'limpar' if cal.mes_inteiro_ativo else 'mês inteiro' }}</a>
       {% if cal.dia_escolhido %}<span class="etiqueta etiqueta-cor">dia {{ cal.dia_escolhido | data }}</span>{% endif %}
     </div>
@@ -178,7 +179,7 @@
       {% for semana in cal.semanas %}{% for c in semana %}
         {% if c %}
         <a class="cal-dia{{ ' com-mov' if c.n }}{{ ' escolhido' if c.escolhido }}{{ ' hoje' if c.hoje }}" href="{{ c.href }}"
-           title="{{ c.dia | data }}{% if c.n %}: {{ c.n }} movimento{{ 's' if c.n != 1 }}, {{ c.soma | eur }}{% endif %}{% if c.escolhido %} (clica para limpar){% endif %}">
+           title="{{ c.dia | data }}{% if c.n %}: {{ c.n }} movimento{{ 's' if c.n != 1 }}, {{ c.soma | eur(moeda_totais) }}{% endif %}{% if c.escolhido %} (clica para limpar){% endif %}">
           <span class="cal-num">{{ c.dia.day }}</span>
           {% if c.n %}<span class="cal-n">{{ c.n }}</span><span class="cal-soma {{ 'pos' if c.soma > 0 else 'neg' if c.soma < 0 }}">{{ (c.soma / 100) | round | int }}</span>{% endif %}
         </a>

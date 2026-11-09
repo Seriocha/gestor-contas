@@ -7,7 +7,7 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from ..deps import (IntOpcional, auditar, entidade_escolhida, exigir_papel, flash, get_db, papel_em, render,
@@ -132,8 +132,17 @@ def _pares_da_pagina(db: Session, movimentos: list[Movimento]) -> dict[int, dict
 DIAS_SEMANA = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"]
 
 
+def valor_nos_totais(moeda: str):
+    """O valor de cada movimento nos totais da lista e do calendário. Numa conta noutra moeda (KRW, JPY…), a lista dessa
+    conta soma na moeda dela; em tudo o resto soma em euros: o montante dos movimentos em EUR e, nos outros, o valor
+    em euros dado pelo extrato (valor_eur) — sem ele, não conta (somar KRW a euros dá valores irreais)."""
+    if moeda != "EUR":
+        return Movimento.montante
+    return case((Movimento.moeda == "EUR", Movimento.montante), else_=func.coalesce(Movimento.valor_eur, 0))
+
+
 def _calendario(db: Session, base, *, conta_id, categoria, etiqueta, tipo, q, vmin, vmax, mes: str,
-                d_de: date | None, d_ate: date | None, base_q: dict) -> dict:
+                d_de: date | None, d_ate: date | None, base_q: dict, moeda: str = "EUR") -> dict:
     """Calendário do mês para o topo dos filtros: movimentos e saldo de cada dia (com os outros filtros);
     clicar num dia filtra esse dia."""
     m = re.fullmatch(r"(\d{4})-(\d{2})", mes or "")
@@ -148,7 +157,7 @@ def _calendario(db: Session, base, *, conta_id, categoria, etiqueta, tipo, q, vm
         ini = (ultimo or date.today()).replace(day=1)
     fim = rel.fim_do_mes(ini)
     por_dia = {d: (n, s) for d, n, s in db.execute(_filtrar(
-        base.with_only_columns(Movimento.data_mov, func.count(), func.sum(Movimento.montante)), conta_id=conta_id,
+        base.with_only_columns(Movimento.data_mov, func.count(), func.sum(valor_nos_totais(moeda))), conta_id=conta_id,
         categoria=categoria, etiqueta=etiqueta, tipo=tipo, texto=q, d_de=ini, d_ate=fim, vmin=vmin, vmax=vmax)
         .group_by(Movimento.data_mov))}
     sem_datas = {k: v for k, v in base_q.items() if k not in ("de", "ate", "pagina")}
@@ -275,10 +284,13 @@ def _listar(request: Request, db: Session, u: Utilizador, *, entidade: int | Non
         ocultos = db.scalar(q_antes)
     filtro = _filtrar(base, conta_id=conta.id if conta else None, categoria=categoria, etiqueta=etiqueta,
                       tipo=tipo, texto=q, d_de=d_de, d_ate=d_ate, vmin=v_min, vmax=v_max)
-    sub = filtro.with_only_columns(Movimento.montante).subquery()
-    total, entradas, saidas = db.execute(select(
-        func.count(), func.coalesce(func.sum(func.max(sub.c.montante, 0)), 0),
-        func.coalesce(func.sum(func.min(sub.c.montante, 0)), 0)).select_from(sub)).one()
+    moeda_totais = conta.moeda if conta else "EUR"
+    sub = filtro.with_only_columns(valor_nos_totais(moeda_totais).label("v"), Movimento.montante,
+                                   (and_(Movimento.moeda != moeda_totais, Movimento.valor_eur.is_(None))).label("sem_eur")).subquery()
+    total, entradas, saidas, sem_euros = db.execute(select(
+        func.count(), func.coalesce(func.sum(case((sub.c.montante > 0, sub.c.v), else_=0)), 0),
+        func.coalesce(func.sum(case((sub.c.montante < 0, sub.c.v), else_=0)), 0),
+        func.coalesce(func.sum(case((sub.c.sem_eur, 1), else_=0)), 0)).select_from(sub)).one()
     pagina = max(1, pagina or 1)
     ordem = ordem if ordem.lstrip("-") in ORDENS else "-data"
     lista = db.scalars(_ordenar(filtro, ordem).options(
@@ -305,7 +317,7 @@ def _listar(request: Request, db: Session, u: Utilizador, *, entidade: int | Non
         ordens[col] = {"href": "?" + urlencode({**base_q, "ordem": nova}), "seta": seta}
     calendario = _calendario(db, base, conta_id=conta.id if conta else None, categoria=categoria, etiqueta=etiqueta,
                              tipo=tipo, q=q, vmin=v_min, vmax=v_max, mes=mes, d_de=d_de, d_ate=d_ate,
-                             base_q={**base_q, **({"ordem": ordem} if ordem != "-data" else {})})
+                             base_q={**base_q, **({"ordem": ordem} if ordem != "-data" else {})}, moeda=moeda_totais)
     return render(
         request, "movimentos/lista.html", visiveis=visiveis, entidade=ent, conta=conta, bem_filtro=bem_obj,
         cartao_filtro=cartao_obj, cartao_de=cartoes.do_movimento(db, [m.id for m in lista]),
@@ -324,6 +336,7 @@ def _listar(request: Request, db: Session, u: Utilizador, *, entidade: int | Non
         categorias=arvore_categorias(db), etiquetas=db.scalars(select(Etiqueta).order_by(Etiqueta.nome)).all(),
         bens=db.scalars(select(Bem).where(Bem.entidade_id == ent.id, Bem.data_venda.is_(None)).order_by(Bem.tipo, Bem.nome)).all(),
         tipos=TIPOS_FILTRO, movimentos=lista, total=total, entradas=entradas, saidas=saidas, n_sem=n_sem,
+        moeda_totais=moeda_totais, sem_euros=sem_euros,
         pagina=pagina, paginas=max(1, -(-total // POR_PAGINA)), erro=erro, f=filtros,
         query=urlencode({**{k: v for k, v in filtros.items() if v}, **({"ordem": ordem} if ordem != "-data" else {})}),
         ordem=ordem, ordens=ordens, pares=_pares_da_pagina(db, lista), corte=corte, ocultos=ocultos, calendario=calendario,

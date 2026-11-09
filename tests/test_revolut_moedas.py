@@ -111,3 +111,24 @@ def test_reimportar_completa_a_linha_gravada_sem_saldo(app, admin):
         db.commit()
         db.refresh(m)
         assert (m.saldo_apos, m.valor_eur) == (21744, -1303)
+
+
+def test_lista_de_movimentos_soma_em_euros(app, admin):
+    """A lista de todas as contas soma em euros (KRW, JPY, CHF pelo valor em euros do extrato); a lista de uma conta
+    noutra moeda soma na moeda dela."""
+    with app.state.SessionLocal() as db:
+        _mov(db, 2, "Conversão cambial para CHF", 34014100, valor_eur=21000, moeda="CHF", transferencia=True)
+        _mov(db, 2, "Sem taxa", -5000000, moeda="CHF")            # sem valor em euros: não conta
+        _mov(db, 1, "Lidl", -1000)
+        db.commit()
+    def totais(r):
+        assert r.status_code == 200, r.text
+        t = r.text
+        return t[t.index("Entradas (filtro)"):t.index("Sem categoria")], t[t.index("cal-resumo"):t.index("cal-mes")]
+    kpi, cal = totais(admin.get("/movimentos?entidade=1&mes=2026-04"))
+    assert "210,00 €" in kpi and "-10,00 €" in kpi and "340.141" not in kpi and "50.000" not in kpi
+    assert "1 noutra moeda sem valor em euros" in kpi
+    assert "200,00 €" in cal                                        # calendário do mês: 210,00 − 10,00
+    kpi, cal = totais(admin.get("/contas/2/movimentos?mes=2026-04"))
+    assert "340.141,00 CHF" in kpi and "-50.000,00 CHF" in kpi and "sem valor em euros" not in kpi
+    assert "290.141,00 CHF" in cal
