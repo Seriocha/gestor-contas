@@ -67,7 +67,7 @@
         <td class="nota">{% if l.farmacia %}{% for f in l.farmacia %}<div class="sem-quebra">{{ doc(f.pid, f.numero) }} · {{ f.data | data }} · {{ f.total | eur }}</div>{% endfor %}{% if l.lancamentos|length > 1 %}<div>repartida por {{ l.lancamentos|join(', ') }}</div>{% endif %}
           {% elif l.da_farmacia %}—{% else %}<span class="nota">interna (Santa Casa)</span>{% endif %}</td>
         <td class="nota">{{ cc.pagamento.get(l.chave, '') }}</td>
-        <td class="nota">{{ estado_tabela(l.estado) }}{% for x in l.diverge %}<div class="pp-problema">{{ x }}</div>{% endfor %}{% for x in l.falta %}<div>· {{ x }}</div>{% endfor %}</td></tr>
+        <td class="nota">{{ estado_tabela(l.estado) }}{% for x in l.diverge %}<div class="pp-problema">{{ x }}</div>{% endfor %}{% for x in l.falta %}<div>· {{ x }}</div>{% endfor %}{% for x in l.notas %}<div class="nota">ⓘ {{ x }}</div>{% endfor %}</td></tr>
       {% endfor %}
       {% if t.linhas %}<tr><td><strong>Soma</strong></td><td class="num"><strong>{{ t.soma | eur }}</strong></td><td colspan="4"></td></tr>{% endif %}
     </table></div>
@@ -83,6 +83,8 @@
       <span class="nota">{{ p.data | data }} · {{ (p.total or 0) | eur }} · {{ p.linhas|map(attribute='chave')|join(', ') }}
         · {% if p.movimento %}<a href="/movimentos/{{ p.movimento.id }}/detalhe">débito de {{ p.movimento.data_mov | data }}</a>{% elif entidade %}sem débito igual na conta{% else %}—{% endif %}</span>
       {% for x in p.diverge %}<div class="pp-problema">⚠ {{ x }}</div>{% endfor %}
+      {% for x in p.falta %}<div class="nota">· {{ x }}</div>{% endfor %}
+      {% for x in p.notas %}<div class="nota">ⓘ {{ x }}</div>{% endfor %}
       {% for l in p.linhas if l.estado != 'bate' %}<div class="nota">· {{ l.chave }}: {{ (l.diverge + l.falta)|join('; ') }}</div>{% endfor %}</div>
     {% else %}<p class="nota sem-margem">{{ 'Ainda sem recibo nem transferência.' if cc.em_aberto else '—' }}</p>{% endfor %}
   </details>
@@ -110,6 +112,7 @@
       {{ estado_tabela(p.estado) }}</summary>
     {% for x in p.diverge %}<div class="pp-problema">⚠ {{ x }}</div>{% endfor %}
     {% for x in p.falta %}<div class="nota">· {{ x }}</div>{% endfor %}
+    {% for t in p.documentos %}{% for x in t.notas %}<div class="nota">ⓘ {{ t.rotulo }} {{ t.numero }}: {{ x }}</div>{% endfor %}{% endfor %}
     {% if p.outros %}<div class="nota">· também ligado{{ 's' if p.outros|length != 1 }}: {% for pid in p.outros %}{{ doc(pid, '#' ~ pid) }}{{ ', ' if not loop.last }}{% endfor %} (não são documentos da Santa Casa lidos)</div>{% endif %}
     {% if p.linhas %}<div class="rolar"><table class="tabela compacta">
       <thead><tr><th>Documento</th><th class="num">Pago</th><th class="num">PDF</th><th>Farmácia</th><th>Estado</th></tr></thead>
@@ -119,7 +122,7 @@
         <td class="num">{{ l.pdf.total | eur if l.pdf else '—' }}</td>
         <td class="nota">{% if l.farmacia %}{% for f in l.farmacia %}<div class="sem-quebra">{{ doc(f.pid, f.numero) }} · {{ f.data | data }} · {{ f.total | eur }}</div>{% endfor %}
           {% elif l.da_farmacia %}—{% else %}<span class="nota">interna (Santa Casa)</span>{% endif %}</td>
-        <td class="nota">{{ estado_tabela(l.estado) }}{% for x in l.diverge %}<div class="pp-problema">{{ x }}</div>{% endfor %}{% for x in l.falta %}<div>· {{ x }}</div>{% endfor %}</td></tr>
+        <td class="nota">{{ estado_tabela(l.estado) }}{% for x in l.diverge %}<div class="pp-problema">{{ x }}</div>{% endfor %}{% for x in l.falta %}<div>· {{ x }}</div>{% endfor %}{% for x in l.notas %}<div class="nota">ⓘ {{ x }}</div>{% endfor %}</td></tr>
       {% endfor %}
     </table></div>{% endif %}
   </details>

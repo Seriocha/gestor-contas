@@ -306,7 +306,7 @@ def test_regularizacao_e_comprovativo():
     assert r.docs == [("NLD 2026/2709", 380), ("NLD 2026/2439", 395), ("NLD 2026/2302", 177)]
     t = lar.ler_santa_casa(2, comprovativo("26/10/2026", "1.392,01", "01-10-2026 FTUT12026 / 00006073 c/extras"))
     assert t.tipo == "comprovativo" and t.total == 139201 and t.data == date(2026, 10, 26)
-    assert t.docs == [("FT 2026/6073", 139201)] and t.numero == "transferência 300000000001"
+    assert t.docs == [("FT 2026/6073", None)] and t.extras and t.numero == "300000000001"   # «c/extras»: resolve-se pela carta
 
     sc = [(1, nld(2709, "15-08-2026", "3,80")), (2, regularizacao(1436, "01-09-2026", [("NLD", 2026, 2709, "3,80")], "3,80")),
           (3, regularizacao(1436, "01-09-2026", [("NLD", 2026, 2709, "3,80")], "3,80", via="2.ª VIA")),
@@ -514,3 +514,36 @@ def test_pagina_debito_com_documento_ligado(tmp_path, falso):
     assert r.status_code == 200, r.text
     assert "Pagamentos no banco ↔ documentos ligados" in r.text and "documentos ligados" in r.text
     assert "TRF SANTA CASA" in r.text and "sem recibo nem comprovativo ligado" in r.text
+
+
+def test_transferencia_c_extras_paga_a_carta_inteira():
+    """O caso de novembro: a carta de 05/11 (sem os PDF das NLD/FT no Paperless) e a transferência de 09/11 de
+    1.425,07 € com «01-11-2026 FT FTUT12026 / 00006725 c/extras» — paga a carta toda, não só a mensalidade."""
+    fa = [(10, farmacia(48395, "01-10-2026", "0,92")), (11, farmacia(48426, "01-10-2026", "0,17")),
+          (12, farmacia(48757, "10-10-2026", "2,81")), (13, farmacia(49113, "17-10-2026", "2,64")),
+          (14, farmacia(49321, "23-10-2026", "26,55")), (15, farmacia(49322, "23-10-2026", "2,53")),
+          (16, farmacia(49578, "29-10-2026", "0,92"))]
+    carta_nov = carta("05-11-2026", [("15-10-2026", "NLD", 2026, 3564, "3,90"), ("30-10-2026", "FT", 2026, 6452, "21,00"),
+                                     ("31-10-2026", "NLD", 2026, 3768, "32,64"), ("01-11-2026", "FT", 2026, 6725, "1.367,53")],
+                      "1.425,07")
+    sem_pagar = lar.conciliar(fa, [(23, carta_nov)], [], hoje=date(2026, 11, 9))
+    ln = {l.chave: l for l in sem_pagar.por_carta[0].tabela.linhas}
+    assert ln["NLD 2026/3564"].estado == "bate" and "confere com as faturas da farmácia" in ln["NLD 2026/3564"].notas[0]
+    assert ln["NLD 2026/3768"].soma_farmacia == 3264 and ln["NLD 2026/3768"].estado == "bate"
+    assert ln["FT 2026/6725"].estado == "falta"                      # sem PDF e ainda por pagar
+    comp = (3496, comprovativo("09/11/2026", "1.425,07", "01-11-2026 FT FTUT12026 / 00006725 c/extras"))
+    movs = [_mov(1, 142507, date(2026, 11, 9))]
+    c = lar.conciliar(fa, [(23, carta_nov), comp], movs, hoje=date(2026, 11, 9))
+    cc = c.por_carta[0]
+    assert cc.pago == 142507 and cc.em_aberto == 0 and cc.estado == "bate"
+    assert all(v.startswith("transferido · Transferência 300000000001 de 09/11/2026") for v in cc.pagamento.values())
+    ln = {l.chave: l for l in cc.tabela.linhas}
+    assert ln["FT 2026/6725"].estado == "bate" and "paga (Transferência" in ln["FT 2026/6725"].notas[0]
+    t = cc.pagamentos[0]
+    assert t.origem == "comprovativo" and t.soma == 142507 and not t.diverge
+    assert t.notas == ["paga a carta de 05/11/2026 inteira («c/extras»)"]
+    assert c.pagamentos[0][1].id == 1
+    # sem carta com esse total: não se inventa — fica em falta
+    c = lar.conciliar(fa, [(23, carta_nov), (3496, comp[1].replace("1.425,07", "1.400,00"))], [], hoje=date(2026, 11, 9))
+    t = next(t for t in c.tabelas if t.origem == "comprovativo")
+    assert any("c/extras" in x for x in t.falta) and c.por_carta[0].pagos == {"FT 2026/6725"}   # só a FT indicada

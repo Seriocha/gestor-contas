@@ -129,6 +129,8 @@ class Recibo:
     total: int | None = None
     pagamento: str = ""
     tipo: str = "recibo"            # recibo | regularização | comprovativo (transferência, o recibo vem depois)
+    extras: bool = False            # comprovativo «… FTUT… c/extras»: a FT da mensalidade e os extras da mesma carta
+    carta: date | None = None       # comprovativo que paga uma carta inteira: a data dessa carta
 
     @property
     def rotulo(self) -> str:
@@ -190,12 +192,16 @@ def ler_santa_casa(pid: int, texto: str):
         oper = re.search(r"ID\s+opera\S*:?\s*(\d+)", s, re.I)
         if not mont or not data_op:
             return None
-        r = Recibo(pid, f"transferência {oper.group(1)}" if oper else "transferência", _data(data_op.group(1)),
+        r = Recibo(pid, oper.group(1) if oper else "sem n.º", _data(data_op.group(1)),
                    total=cent(mont.group(1)), tipo="comprovativo")
         info = re.search(r"Informa\S*\s+Complementar\s*\n?([^\n]*)", s)
-        refs = re.findall(r"(NLD|FT)\s*(?:NLD|FT)?UT1\s*/?\s*(20\d{2})\s*/?\s*0*(\d+)", info.group(1) if info else "")
+        info = info.group(1) if info else ""
+        refs = re.findall(r"(NLD|FT)\s*(?:NLD|FT)?UT1\s*/?\s*(20\d{2})\s*/?\s*0*(\d+)", info)
         r.docs = [(chave(tp, int(ano), int(n)), None) for tp, ano, n in refs]
-        if len(r.docs) == 1:
+        # «01-11-2026 FT FTUT12026 / 00006725 c/extras»: a mensalidade e os extras da carta — o montante é o da carta
+        # inteira (resolve-se em conciliar); sem «c/extras», um só documento leva o montante todo
+        r.extras = bool(re.search(r"c\s*/\s*extras", info, re.I))
+        if len(r.docs) == 1 and not r.extras:
             r.docs = [(r.docs[0][0], r.total)]
         r.pagamento = "Transferência (comprovativo)"
         return r
@@ -415,6 +421,23 @@ def estados(docs: list[DocSantaCasa], cartas: list[Carta], recibos: list[Recibo]
     return sorted(por.values(), key=lambda e: (e.data or date.min, e.chave), reverse=True), ultima
 
 
+def _transferencias_da_carta(recibos: list[Recibo], cartas: list[Carta]) -> None:
+    """A transferência paga a carta: a «Informação Complementar» só indica a FT da mensalidade («c/extras»), mas o
+    montante é o total por pagar da carta. Se a carta mais recente (até à data da transferência) que lista os
+    documentos indicados tem esse total, a transferência passa a pagar todos os documentos da carta."""
+    for r in recibos:
+        if r.tipo != "comprovativo" or not r.total or not r.docs:
+            continue
+        refs = {k for k, _ in r.docs}
+        for c in sorted(cartas, key=lambda c: c.data, reverse=True):
+            if c.data > r.data or not c.docs or not refs <= {k for k, *_ in c.docs}:
+                continue
+            if abs(sum(p for *_, p in c.docs) - r.total) <= TOLERANCIA:
+                r.docs = [(k, p) for k, _, _, _, p in c.docs]
+                r.carta = c.data
+            break
+
+
 def ligar_pagamentos(recibos: list[Recibo], movimentos: list) -> list[tuple[Recibo, object | None]]:
     """Cada recibo ↔ o débito de valor igual na conta da utente entre 10 dias antes e 3 dias depois do recibo; um
     comprovativo de transferência ↔ o débito do próprio dia (até 3 dias depois). Os comprovativos cujos documentos já
@@ -450,6 +473,7 @@ class LinhaTabela:
     bate: list = field(default_factory=list)          # o que confere
     falta: list = field(default_factory=list)         # o que não está no Paperless
     diverge: list = field(default_factory=list)       # valores que não batem
+    notas: list = field(default_factory=list)         # informação (não muda o estado): PDF em falta mas confirmado
     validacao: str = ""
 
     @property
@@ -478,6 +502,7 @@ class TabelaDocumentos:
     movimento: object | None = None # o débito na conta (recibos)
     diverge: list = field(default_factory=list)       # ao nível da tabela: soma ≠ total
     falta: list = field(default_factory=list)
+    notas: list = field(default_factory=list)         # informação (não muda o estado)
 
     @property
     def rotulo(self) -> str:
@@ -507,8 +532,9 @@ def _linha(chave_doc: str, tipo: str, d: date | None, valor: int | None, pdfs: d
     l = LinhaTabela(chave_doc, tipo, d, valor, pdfs.get(chave_doc))
     e = est.get(chave_doc)
     l.validacao = e.validacao if e else ""
-    if l.pdf is None:
-        l.falta.append(f"PDF da {tipo} em falta no Paperless")
+    sem_pdf = l.pdf is None
+    if sem_pdf:
+        pass                        # decide-se no fim: o valor pode estar confirmado pela farmácia ou pelo pagamento
     elif valor is not None and abs(l.pdf.total - valor) > TOLERANCIA:
         l.diverge.append(f"o PDF diz {fmt_montante(l.pdf.total)}, a tabela {fmt_montante(valor)}")
     else:
@@ -516,11 +542,22 @@ def _linha(chave_doc: str, tipo: str, d: date | None, valor: int | None, pdfs: d
         l.data = l.data or l.pdf.data
     l.da_farmacia = bool(e and lancamento_farmacia(e))
     ligacao = lig.get(chave_doc)
-    if not l.da_farmacia:
-        return l
-    if ligacao is None or not ligacao.faturas:
+    if l.da_farmacia and (ligacao is None or not ligacao.faturas):
         l.falta.append("fatura da farmácia com este valor não encontrada no Paperless")
-        return l
+    elif l.da_farmacia:
+        _farmacia(l, ligacao)
+    if sem_pdf:
+        pag = e and (e.recibo or e.transferencia)
+        if l.da_farmacia and ligacao is not None and ligacao.ok:
+            l.notas.append(f"sem PDF da {tipo} no Paperless — o valor confere com as faturas da farmácia")
+        elif not l.da_farmacia and pag:
+            l.notas.append(f"sem PDF da {tipo} no Paperless — paga ({pag.rotulo} {pag.numero} de {pag.data:%d/%m/%Y})")
+        else:
+            l.falta.insert(0, f"PDF da {tipo} em falta no Paperless")
+    return l
+
+
+def _farmacia(l: LinhaTabela, ligacao: Ligacao) -> None:
     l.farmacia = list(ligacao.faturas)
     l.lancamentos = [x.chave for x in ligacao.lancamentos]
     nums = ", ".join(f.numero for f in ligacao.faturas)
@@ -532,7 +569,6 @@ def _linha(chave_doc: str, tipo: str, d: date | None, valor: int | None, pdfs: d
     else:
         l.diverge.append(f"farmácia {nums} soma {fmt_montante(ligacao.soma_faturas)}, os lançamentos "
                          f"{fmt_montante(ligacao.soma_lancamentos)}")
-    return l
 
 
 def validar_tabelas(cartas: list[Carta], pagamentos: list, docs: list[DocSantaCasa], est: list[EstadoDoc],
@@ -560,6 +596,11 @@ def validar_tabelas(cartas: list[Carta], pagamentos: list, docs: list[DocSantaCa
             e = por_est.get(k)
             linhas.append(_linha(k, k.split()[0], e.data if e else None, valor, pdfs, por_est, lig))
         t = TabelaDocumentos(r.tipo, r.pid, r.numero, r.data, r.total, linhas, m)
+        if r.carta:
+            t.notas.append(f"paga a carta de {r.carta:%d/%m/%Y} inteira" + (" («c/extras»)" if r.extras else ""))
+        elif r.extras:
+            t.falta.append("«c/extras»: não há carta (até à data da transferência) com este total que inclua "
+                           + ", ".join(k for k, _ in r.docs))
         if not r.docs:
             t.falta.append("não indica os documentos pagos")
         elif r.total is not None and all(l.referencia is not None for l in linhas) and abs(t.soma - r.total) > TOLERANCIA:
@@ -849,6 +890,7 @@ def conciliar(farmacia_docs: list[tuple[int, str]], santa_casa_docs: list[tuple[
     docs = list({d.chave: d for d in docs}.values())
     cartas = list({(c.data, tuple(k for k, *_ in c.docs)): c for c in cartas}.values())
     recibos = list({(r.numero or r.pid): r for r in recibos}.values())
+    _transferencias_da_carta(recibos, cartas)
     est, ultima = estados(docs, cartas, recibos)
     pagamentos = ligar_pagamentos(recibos, movimentos)
     for e in est:
