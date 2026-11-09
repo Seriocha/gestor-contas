@@ -22,7 +22,7 @@
 
 {% if c %}
 <section class="cartao">
-  <h2>A ver <span class="nota">· {{ c.n_faturas }} faturas da farmácia · {{ c.n_docs }} documentos da Santa Casa</span></h2>
+  <h2>A ver <span class="nota">· {{ c.n_faturas }} faturas da farmácia{% if c.recibos_farmacia %} · {{ c.recibos_farmacia|length }} recibos da farmácia{% endif %} · {{ c.n_docs }} documentos da Santa Casa</span></h2>
   {% if not c.pago_ate or not c.validar_desde %}
   <div class="aviso aviso-erro">As datas de regularização não estão definidas ({{ 'tudo pago até' if not c.pago_ate }}{{ ' e ' if not c.pago_ate and not c.validar_desde }}{{ 'validar a partir de' if not c.validar_desde }}):
     sem elas, os documentos aparecem «por pagar» e não ficam «por validar». Preenche-as em <a href="#configurar">Configurar</a>.</div>
@@ -39,6 +39,7 @@
   {% else %}<p class="sem-margem"><span class="etiqueta etiqueta-ok">tudo bate certo</span></p>{% endif %}
 </section>
 
+{% macro recibo_f(f) %}{% if f.paga %} · <span class="etiqueta etiqueta-ok" title="paga à farmácia">{{ doc(f.recibo.pid, f.recibo.numero) }} de {{ f.recibo.data | data }}</span>{% elif f.recibos %} · <span class="etiqueta etiqueta-cor">paga só {{ f.pago | eur }}</span>{% endif %}{% endmacro %}
 {% set MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'] %}
 {% macro estado_tabela(est) -%}
 {% if est == 'bate' %}<span class="etiqueta etiqueta-ok">bate</span>{% elif est == 'falta' %}<span class="etiqueta etiqueta-cor">falta</span>{% else %}<span class="etiqueta etiqueta-erro">diverge</span>{% endif %}
@@ -64,7 +65,7 @@
       <tr><td class="sem-quebra">{{ doc(l.pdf.pid if l.pdf else none, l.chave) }}<br><span class="nota">{{ l.data | data if l.data else '' }}{% if l.pdf %} · {{ l.pdf.descricao }}{% endif %}</span> {{ validacao(l.validacao) }}</td>
         <td class="num">{{ l.valor | eur if l.valor is not none else '—' }}</td>
         <td class="num">{{ l.pdf.total | eur if l.pdf else '—' }}</td>
-        <td class="nota">{% if l.farmacia %}{% for f in l.farmacia %}<div class="sem-quebra">{{ doc(f.pid, f.numero) }} · {{ f.data | data }} · {{ f.total | eur }}</div>{% endfor %}{% if l.lancamentos|length > 1 %}<div>repartida por {{ l.lancamentos|join(', ') }}</div>{% endif %}
+        <td class="nota">{% if l.farmacia %}{% for f in l.farmacia %}<div class="sem-quebra">{{ doc(f.pid, f.numero) }} · {{ f.data | data }} · {{ f.total | eur }}{{ recibo_f(f) }}</div>{% endfor %}{% if l.lancamentos|length > 1 %}<div>repartida por {{ l.lancamentos|join(', ') }}</div>{% endif %}
           {% elif l.da_farmacia %}—{% else %}<span class="nota">interna (Santa Casa)</span>{% endif %}</td>
         <td class="nota">{{ cc.pagamento.get(l.chave, '') }}</td>
         <td class="nota">{{ estado_tabela(l.estado) }}{% for x in l.diverge %}<div class="pp-problema">{{ x }}</div>{% endfor %}{% for x in l.falta %}<div>· {{ x }}</div>{% endfor %}{% for x in l.notas %}<div class="nota">ⓘ {{ x }}</div>{% endfor %}</td></tr>
@@ -120,7 +121,7 @@
       <tr><td class="sem-quebra">{{ doc(l.pdf.pid if l.pdf else none, l.chave) }}<br><span class="nota">{{ l.data | data if l.data else '' }}{% if l.pdf %} · {{ l.pdf.descricao }}{% endif %}</span> {{ validacao(l.validacao) }}</td>
         <td class="num">{{ l.valor | eur if l.valor is not none else '—' }}</td>
         <td class="num">{{ l.pdf.total | eur if l.pdf else '—' }}</td>
-        <td class="nota">{% if l.farmacia %}{% for f in l.farmacia %}<div class="sem-quebra">{{ doc(f.pid, f.numero) }} · {{ f.data | data }} · {{ f.total | eur }}</div>{% endfor %}
+        <td class="nota">{% if l.farmacia %}{% for f in l.farmacia %}<div class="sem-quebra">{{ doc(f.pid, f.numero) }} · {{ f.data | data }} · {{ f.total | eur }}{{ recibo_f(f) }}</div>{% endfor %}
           {% elif l.da_farmacia %}—{% else %}<span class="nota">interna (Santa Casa)</span>{% endif %}</td>
         <td class="nota">{{ estado_tabela(l.estado) }}{% for x in l.diverge %}<div class="pp-problema">{{ x }}</div>{% endfor %}{% for x in l.falta %}<div>· {{ x }}</div>{% endfor %}{% for x in l.notas %}<div class="nota">ⓘ {{ x }}</div>{% endfor %}</td></tr>
       {% endfor %}
@@ -137,7 +138,7 @@
   {% set com_fatura = c.farmacia|selectattr('faturas')|list %}
   {% set sem_fatura = c.farmacia|rejectattr('faturas')|list %}
   <div class="rolar"><table class="tabela compacta">
-    <thead><tr><th>Fatura da farmácia</th><th class="num">Valor</th><th>Produtos</th><th>Lançamentos da Santa Casa</th><th>Resultado</th></tr></thead>
+    <thead><tr><th>Fatura da farmácia</th><th class="num">Valor</th><th>Produtos</th><th>Lançamentos da Santa Casa</th><th>Resultado</th><th>Recibo da farmácia</th></tr></thead>
     {% for l in com_fatura %}
     <tr>
       <td class="nota sem-quebra">{% for f in l.faturas %}{{ doc(f.pid, f.numero) }}<br>{{ f.data | data }}{% if not loop.last %}<br>{% endif %}{% endfor %}</td>
@@ -148,9 +149,23 @@
         {% elif l.metodo == 'sem lançamento' %}<span class="etiqueta etiqueta-cor">sem lançamento</span>
           <br><span class="nota">{{ 'esperado até' if l.prazo >= hoje else 'o prazo acabou a' }} {{ l.prazo | data }}</span>
         {% else %}<span class="etiqueta etiqueta-erro">diferença {{ l.diferenca | eur }}</span>{% endif %}</td>
+      <td class="nota">{% for f in l.faturas %}<div class="sem-quebra">{% if f.paga %}<span class="etiqueta etiqueta-ok">paga</span> {{ doc(f.recibo.pid, f.recibo.numero) }} · {{ f.recibo.data | data }}{% elif f.recibos %}<span class="etiqueta etiqueta-cor">paga só {{ f.pago | eur }}</span>{% else %}sem recibo{% endif %}</div>{% endfor %}</td>
     </tr>
-    {% else %}<tr><td colspan="5" class="vazio">Sem faturas da farmácia no Paperless neste intervalo.</td></tr>{% endfor %}
+    {% else %}<tr><td colspan="6" class="vazio">Sem faturas da farmácia no Paperless neste intervalo.</td></tr>{% endfor %}
   </table></div>
+  {% if c.recibos_farmacia %}
+  <h3>Recibos da farmácia <span class="nota">· {{ c.recibos_farmacia|length }} · as faturas pagas à farmácia</span></h3>
+  <p class="nota">Cada recibo (série RG) diz que faturas da farmácia foram pagas; cada linha confere-se com a fatura no Paperless.</p>
+  <div class="rolar"><table class="tabela compacta">
+    <thead><tr><th>Recibo</th><th class="num">Pago</th><th>Faturas</th><th>Estado</th></tr></thead>
+    {% for r in c.recibos_farmacia %}
+    <tr><td class="nota sem-quebra">{{ doc(r.pid, r.numero) }}<br>{{ r.data | data }}</td>
+      <td class="num">{{ (r.total if r.total is not none else r.soma) | eur }}</td>
+      <td class="nota">{% for num, d, liq, falta, pago in r.linhas %}{% set f = r.faturas.get(num) %}<div class="sem-quebra">{% if f %}{{ doc(f.pid, num) }}{% else %}{{ num }}{% endif %} · {{ d | data }} · {{ pago | eur }}{% if not f %} <span class="nota">(sem fatura no Paperless)</span>{% endif %}</div>{% endfor %}</td>
+      <td>{{ estado_tabela(r.estado) }}{% for x in r.diverge + r.falta %}<div class="nota">{{ x }}</div>{% endfor %}</td></tr>
+    {% endfor %}
+  </table></div>
+  {% endif %}
   {% if sem_fatura %}
   <h3>Lançamentos da Santa Casa sem fatura da farmácia <span class="nota">· {{ sem_fatura|length }}</span></h3>
   <p class="nota">Notas de lançamento (ou faturas pequenas) que nenhuma fatura da farmácia explica pelo valor: falta a fatura no

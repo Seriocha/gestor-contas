@@ -4,6 +4,7 @@ de aviso, dos recibos e dos pagamentos — tudo lido do Paperless (texto/OCR dos
 Como funciona o circuito (confirmado pelo utilizador e pelos documentos reais):
   1. A farmácia (Farmácia Nova de Santo André) emite uma FATURA por cada compra, «Debitado em Conta» na conta corrente
      da utente; o valor que conta é o «Total Utente» (o resto é comparticipado pelo Estado).
+     Quando a conta corrente é paga, a farmácia emite um RECIBO (série RG) com as faturas pagas (líquido, falta, pago).
   2. A Santa Casa paga a farmácia e cobra à utente numa NOTA DE LANÇAMENTO (NLD, série NLDUT) — as NLD são o que a
      Santa Casa refatura de fornecedores externos, e o único até hoje é a farmácia — no mês da fatura da farmácia ou
      no seguinte, com o mesmo valor (ou repartido por várias NLD, ou várias faturas juntas numa).
@@ -87,6 +88,37 @@ class FaturaFarmacia:
     total: int                      # cêntimos, a parte da utente
     debitado: bool = False
     itens: list = field(default_factory=list)   # [(produto, líquido)]
+    recibos: list = field(default_factory=list)  # [ReciboFarmacia] que a dão por paga
+    pago: int = 0                   # cêntimos pagos nesses recibos
+
+    @property
+    def paga(self) -> bool:
+        return bool(self.recibos) and self.pago >= self.total - TOLERANCIA
+
+    @property
+    def recibo(self):
+        return self.recibos[-1] if self.recibos else None
+
+
+@dataclass
+class ReciboFarmacia:
+    """Recibo da farmácia («RECIBO n.º RG U014/9996»): as faturas pagas, cada uma com líquido, falta e pago."""
+    pid: int
+    numero: str                     # «RG U014/9996»
+    data: date
+    linhas: list = field(default_factory=list)  # [(«FT U014/33478», data, líquido, falta, pago)]
+    total: int | None = None        # o total pago
+    faturas: dict = field(default_factory=dict)  # número → FaturaFarmacia (as que estão no Paperless)
+    diverge: list = field(default_factory=list)
+    falta: list = field(default_factory=list)
+
+    @property
+    def soma(self) -> int:
+        return sum(p for *_, p in self.linhas)
+
+    @property
+    def estado(self) -> str:
+        return "diverge" if self.diverge else "falta" if self.falta else "bate"
 
 
 @dataclass
@@ -152,6 +184,59 @@ def ler_farmacia(pid: int, texto: str) -> FaturaFarmacia | None:
         itens.append((nome.strip(), cent(liq)))
     return FaturaFarmacia(pid, re.sub(r"\s+", " ", m.group(1)), d, cent(tot.group(1)),
                           bool(re.search(r"Debitado\s+em\s+Conta", t, re.I)), itens)
+
+
+_LINHA_RECIBO_F = re.compile(r"Fa(?:c)?tura\s+(?:FT\s+)?([A-Z0-9]+/\d+)\s+de\s+(\d{2}[-/]\d{2}[-/]\d{4})((?:\s*(?:" + _VALOR + r")\s*€?){1,3})", re.I)
+
+
+def ler_recibo_farmacia(pid: int, texto: str) -> ReciboFarmacia | None:
+    """O recibo que a farmácia emite quando a conta corrente é paga: lista as faturas pagas (líquido, falta, pago)."""
+    t = texto or ""
+    if not re.search(r"\bRECIBO\b", t, re.I) or not re.search(r"farm[aá]cia", t, re.I):
+        return None
+    m = re.search(r"\b(RG\s*[A-Z0-9]+/\d+)", t)
+    if not m:
+        return None
+    d = _data(t[t.find("Data"):][:60]) if "Data" in t else None
+    d = d or _data(t)
+    if not d:
+        return None
+    linhas = []
+    for num, dt, vals in _LINHA_RECIBO_F.findall(t):
+        v = [cent(x) for x in re.findall(_VALOR, vals)]
+        liq, falta, pago = (v + [0, 0])[:3] if len(v) == 3 else (v[0], 0, v[-1])
+        linhas.append((f"FT {num}", _data(dt), liq, falta, pago))
+    if not linhas:
+        return None
+    tot = re.search(r"\bTotal((?:\s*(?:" + _VALOR + r")\s*€?){1,3})", t)
+    total = None
+    if tot:
+        vt = [cent(x) for x in re.findall(_VALOR, tot.group(1))]
+        total = vt[-1]
+    return ReciboFarmacia(pid, re.sub(r"\s+", " ", m.group(1)).replace("RGU", "RG U"), d, linhas, total)
+
+
+def ligar_recibos_farmacia(recibos: list[ReciboFarmacia], faturas: list[FaturaFarmacia]) -> None:
+    """Cada linha do recibo ↔ a fatura da farmácia no Paperless: a fatura fica paga; diz o que não confere."""
+    por_num = {f.numero: f for f in faturas}
+    inicio = min((f.data for f in faturas), default=None)
+    for r in sorted(recibos, key=lambda r: r.data):
+        for num, d, liq, falta, pago in r.linhas:
+            f = por_num.get(num)
+            if f is None:
+                if inicio and d and d >= inicio:
+                    r.falta.append(f"fatura {num} de {d:%d/%m/%Y} ({fmt_montante(liq)}) não está no Paperless")
+                continue
+            r.faturas[num] = f
+            if r not in f.recibos:
+                f.recibos.append(r)
+            f.pago += pago
+            if abs(liq - f.total) > TOLERANCIA:
+                r.diverge.append(f"fatura {num}: o recibo diz {fmt_montante(liq)}, a fatura {fmt_montante(f.total)}")
+            if falta > TOLERANCIA:
+                r.falta.append(f"fatura {num}: falta pagar {fmt_montante(falta)}")
+        if r.total is not None and abs(r.soma - r.total) > TOLERANCIA:
+            r.diverge.insert(0, f"as linhas somam {fmt_montante(r.soma)}, o total diz {fmt_montante(r.total)}")
 
 
 def ler_santa_casa(pid: int, texto: str):
@@ -844,6 +929,7 @@ class Conciliacao:
     por_carta: list = field(default_factory=list)  # [ConciliacaoCarta] a conciliação a partir de cada carta informativa
     recibos_sem_carta: list = field(default_factory=list)  # [TabelaDocumentos] recibos que não pagam nenhuma carta
     banco: list = field(default_factory=list)      # [PagamentoBanco] débitos ↔ documentos ligados (documento_ligado)
+    recibos_farmacia: list = field(default_factory=list)  # [ReciboFarmacia] faturas da farmácia pagas
 
 
 def conciliar(farmacia_docs: list[tuple[int, str]], santa_casa_docs: list[tuple[int, str]], movimentos: list,
@@ -864,11 +950,21 @@ def conciliar(farmacia_docs: list[tuple[int, str]], santa_casa_docs: list[tuple[
         if d and d < validar_desde:
             return "regularizado"
         return "por validar"
-    faturas = [f for item in farmacia_docs if (f := ler_farmacia(item[0], item[1]))]
+    faturas, recibos_f = [], []
+    for item in farmacia_docs:
+        if (rf := ler_recibo_farmacia(item[0], item[1])):
+            recibos_f.append(rf)
+        elif (f := ler_farmacia(item[0], item[1])):
+            faturas.append(f)
     vistos_f = {}
     for f in faturas:                                 # o mesmo documento importado duas vezes
         vistos_f.setdefault(f.numero, f)
     faturas = list(vistos_f.values())
+    vistos_r: dict = {}
+    for r in recibos_f:                               # o mesmo recibo importado duas vezes
+        vistos_r.setdefault(r.numero, r)
+    recibos_f = list(vistos_r.values())
+    ligar_recibos_farmacia(recibos_f, faturas)
     docs, cartas, recibos, nao_reconhecidos, n_anulados = [], [], [], [], 0
     for item in santa_casa_docs:                # (id, texto) ou (id, texto, data de criação no Paperless)
         pid, t = item[0], item[1]
@@ -916,6 +1012,17 @@ def conciliar(farmacia_docs: list[tuple[int, str]], santa_casa_docs: list[tuple[
             if e.validacao not in ("regularizado", "validado"):
                 alertas.append(("farmacia", f"{e.chave} de {e.data:%d/%m/%Y} ({fmt_montante(e.valor)}) sem fatura da farmácia "
                                             "com esse valor no Paperless", e.data))
+    # faturas da farmácia sem recibo: só depois do 1.º recibo no Paperless e passado o fim do mês seguinte
+    desde_recibos = min((d for r in recibos_f for _, d, *_ in r.linhas if d), default=None)
+    for f in faturas:
+        if desde_recibos and not f.paga and f.data >= desde_recibos and _fim_mes_seguinte(f.data) < hoje                 and (validar_desde is None or f.data >= validar_desde):
+            alertas.append(("farmacia", f"Fatura da farmácia {f.numero} de {f.data:%d/%m/%Y} ({fmt_montante(f.total)}) "
+                                        + ("sem recibo da farmácia no Paperless" if not f.recibos else
+                                           f"paga só em parte ({fmt_montante(f.pago)})"), f.data))
+    for r in recibos_f:
+        if validar_desde is None or r.data >= validar_desde:
+            for x in r.diverge + r.falta:
+                alertas.append(("farmacia", f"Recibo da farmácia {r.numero} de {r.data:%d/%m/%Y}: {x}", r.data))
     for e in est:
         if e.validacao in ("regularizado", "validado"):
             continue
@@ -982,4 +1089,5 @@ def conciliar(farmacia_docs: list[tuple[int, str]], santa_casa_docs: list[tuple[
                        [t for t in tabelas if no_intervalo(t.data)],
                        [cc for cc in por_carta if no_intervalo(cc.tabela.data)],
                        [t for t in sem_carta if no_intervalo(t.data)],
-                       [p for p in banco if no_intervalo(p.movimento.data_mov)])
+                       [p for p in banco if no_intervalo(p.movimento.data_mov)],
+                       sorted([r for r in recibos_f if no_intervalo(r.data)], key=lambda r: r.data, reverse=True))

@@ -547,3 +547,59 @@ def test_transferencia_c_extras_paga_a_carta_inteira():
     c = lar.conciliar(fa, [(23, carta_nov), (3496, comp[1].replace("1.425,07", "1.400,00"))], [], hoje=date(2026, 11, 9))
     t = next(t for t in c.tabelas if t.origem == "comprovativo")
     assert any("c/extras" in x for x in t.falta) and c.por_carta[0].pagos == {"FT 2026/6725"}   # só a FT indicada
+
+
+def recibo_farmacia(num, data, linhas, total=None):
+    """Recibo da farmácia como o Paperless o lê (tudo numa linha): [(fatura, data, líquido, falta, pago)]."""
+    corpo = " ".join(f"Factura U014/{f} de {d} {l} € {fa} € {p} €" for f, d, l, fa, p in linhas)
+    tot = total or "0,00"
+    return (f"Original RECIBO n.º: RG U014/{num} Data: {data} 12:52:12 Nº Venda: 1 Op: X Cliente N.º: 1 FARMACIA NOVA "
+            f"Exmo(s). Sr(s). MARIA EXEMPLO Capital Social: 230 000,00 € Descrição Líquido Falta Pago {corpo} "
+            f"Total {tot} € 0,00 € {tot} € ATCUD: X-{num} Veja as novidades da sua Farmácia em: www.exemplo.pt")
+
+
+def test_le_recibo_da_farmacia():
+    t = recibo_farmacia(9996, "22-09-2025", [(33478, "04/08/2025", "1,80", "0,00", "1,80"),
+                                             (33505, "05/08/2025", "3,98", "0,00", "3,98")], "5,78")
+    r = lar.ler_recibo_farmacia(7, t)
+    assert r.numero == "RG U014/9996" and r.data == date(2025, 9, 22) and r.total == 578 and r.soma == 578
+    assert r.linhas[0] == ("FT U014/33478", date(2025, 8, 4), 180, 0, 180)
+    assert lar.ler_farmacia(7, t) is None                       # não é uma fatura
+    assert lar.ler_recibo_farmacia(1, farmacia(1, "03-11-2026", "2,64")) is None
+
+
+def test_recibo_da_farmacia_da_as_faturas_por_pagas():
+    fa = [(1, farmacia(1, "04-08-2026", "1,80")), (2, farmacia(2, "05-08-2026", "3,98")),
+          (3, farmacia(3, "11-08-2026", "11,99")),       # sem recibo: alerta (passou o fim do mês seguinte)
+          (4, farmacia(4, "20-08-2026", "2,00")),        # o recibo diz outro valor
+          (5, recibo_farmacia(9996, "22-09-2026", [(1, "04/08/2026", "1,80", "0,00", "1,80"),
+                                                   (2, "05/08/2026", "3,98", "0,00", "3,98"),
+                                                   (4, "20/08/2026", "2,50", "0,00", "2,50"),
+                                                   (9, "25/08/2026", "4,00", "0,00", "4,00")], "12,28")),
+          (6, recibo_farmacia(9996, "22-09-2026", [(1, "04/08/2026", "1,80", "0,00", "1,80")], "1,80"))]  # repetido
+    sc = [(20, nld(1, "15-08-2026", "5,78")), (21, nld(2, "31-08-2026", "11,99")), (22, nld(3, "31-08-2026", "2,00"))]
+    c = lar.conciliar(fa, sc, [], hoje=date(2026, 11, 9))
+    assert len(c.recibos_farmacia) == 1
+    r = c.recibos_farmacia[0]
+    assert r.estado == "diverge" and sorted(r.faturas) == ["FT U014/1", "FT U014/2", "FT U014/4"]
+    assert any("FT U014/4: o recibo diz 2,50 €, a fatura 2,00 €" in x for x in r.diverge)
+    assert any("FT U014/9" in x and "não está no Paperless" in x for x in r.falta)
+    fat = {f.numero: f for l in c.farmacia for f in l.faturas}
+    assert fat["FT U014/1"].paga and fat["FT U014/1"].recibo.numero == "RG U014/9996" and not fat["FT U014/3"].recibos
+    textos = " | ".join(t for _, t in c.alertas)
+    assert "FT U014/3 de 11/08/2026 (11,99 €) sem recibo da farmácia" in textos
+    assert "FT U014/1 de" not in textos and "Recibo da farmácia RG U014/9996 de 22/09/2026" in textos
+
+
+def test_pagina_mostra_recibos_da_farmacia(tmp_path, falso):
+    from app.routes import lar as rotas_lar
+    rotas_lar._CACHE.clear()                                  # o texto dos documentos fica em cache entre testes
+    falso[1].append((12, recibo_farmacia(15400, "20-11-2026", [(1, "03/11/2026", "2,64", "0,00", "2,64")], "2,64")))
+    app = create_app(tmp_path, backups_automaticos=False)
+    c = TestClient(app)
+    _post(c, "/setup", nome="Admin", login="admin", password=PW, password2=PW)
+    _heranca(app)
+    r = c.get("/lar")
+    assert r.status_code == 200, r.text
+    assert "1 recibos da farmácia" in r.text and "Recibos da farmácia" in r.text and "RG U014/15400" in r.text
+    assert "2 faturas da farmácia" in r.text and "sem recibo" in r.text
