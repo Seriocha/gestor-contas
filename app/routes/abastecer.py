@@ -211,7 +211,8 @@ async def validar(request: Request, pid: int, u: Utilizador = Depends(utilizador
     notas = dados.pop("notas")
     if p.quem:
         notas = f"{notas} · registado por {p.quem}" if notas else f"registado por {p.quem}"
-    a = Abastecimento(bem_id=b.id, guid=f"web:{p.id}", notas=notas, preco_litro=round(dados["valor"] / 100 / dados["litros"], 3)
+    # o SQLite reaproveita o id de um pendente apagado: só «web:<id>» repetia o guid de um abastecimento já validado
+    a = Abastecimento(bem_id=b.id, guid=f"web:{p.id}-{secrets.token_hex(4)}", notas=notas, preco_litro=round(dados["valor"] / 100 / dados["litros"], 3)
                       if dados["valor"] else None, **dados)
     db.add(a)
     aviso = ""

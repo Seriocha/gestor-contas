@@ -71,11 +71,34 @@ def test_registar_sem_login_e_validar(admin, app):
     assert r.status_code == 303
     with app.state.SessionLocal() as db:
         a = db.scalar(select(Abastecimento))
-        assert a.guid == f"web:{pid}" and a.valor == 8491 and "registado por Ana" in a.notas
+        assert a.guid.startswith(f"web:{pid}-") and a.valor == 8491 and "registado por Ana" in a.notas
         assert a.movimento.descricao_original == "INTERAZOIA"            # ligado ao débito
         b = db.get(Bem, a.bem_id)
         assert b.km == 18064 and db.scalar(select(Movimento).where(Movimento.descricao_original == "INTERAZOIA")).bem_id == b.id
         assert db.query(AbastecimentoPendente).count() == 0
+
+
+def test_validar_segundo_abastecimento_com_id_reaproveitado(admin, app):
+    """Regressão v0.100.1: o SQLite reaproveita o id do pendente apagado ao validar; o guid «web:<id>» do segundo
+    abastecimento colidia com o do primeiro (bem_id, guid únicos) e a confirmação dava Internal Server Error."""
+    codigo = _link(admin)
+    anonimo = TestClient(app)
+    pids = []
+    for km, valor in (("18000", "50"), ("18500", "60")):
+        pg = anonimo.get(f"/abastecer/{codigo}")
+        bid = re.search(r'name="bem_id" value="(\d+)"', pg.text).group(1)
+        anonimo.post(f"/abastecer/{codigo}", data={"csrf": _csrf(pg), "bem_id": bid, "data": ONTEM, "km": km,
+                                                   "litros": "30", "valor": valor})
+        v = admin.get("/patrimonio/abastecimentos?entidade=1")
+        pid = re.search(r"/patrimonio/abastecimentos/(\d+)/validar", v.text).group(1)
+        pids.append(pid)
+        r = admin.post(f"/patrimonio/abastecimentos/{pid}/validar", data={
+            "csrf": _csrf(v), "data": ONTEM, "km": km, "litros": "30", "valor": valor}, follow_redirects=False)
+        assert r.status_code == 303 and r.headers["location"] == "/patrimonio/abastecimentos?entidade=1"
+    assert pids[0] == pids[1]                                    # o caso que rebentava: o mesmo id outra vez
+    with app.state.SessionLocal() as db:
+        assert db.query(Abastecimento).count() == 2 and db.query(AbastecimentoPendente).count() == 0
+        assert len({a.guid for a in db.scalars(select(Abastecimento))}) == 2
 
 
 def test_rejeitar_e_link_novo_invalida(admin, app):
