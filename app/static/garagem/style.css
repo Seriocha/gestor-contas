@@ -206,3 +206,11 @@ button:disabled { opacity: .45; cursor: default; }
 .embed .sidebar .brand, .embed .sidebar .nav-collapsible { display: none; }
 .embed .sidebar .quick { padding: 0; }
 .embed .content { max-width: none; padding: 1rem; }
+
+/* alçados e edição sem sobreposição */
+.elevations { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; margin-top: 6px; }
+.elevations figure { margin: 0; }
+.elevations figcaption { font-size: .85rem; color: var(--muted, inherit); margin-bottom: 2px; }
+.plan.elev { max-height: 30vh; }
+.plan .draft.bad { fill: #d33; opacity: .55; }
+.plan.edit .zone.hl { cursor: move; }

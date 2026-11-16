@@ -427,6 +427,62 @@ function crumbs(id, includeSelf) {
   return h('div', { class: 'crumbs' }, h('a', { href: '#/' }, spaceById((pathOf(id)[0] || {}).space_id).name),
     p.map(l => h('a', { href: '#/loc/' + l.id }, l.name)));
 }
+// ---------- sobreposição ----------
+// Duas zonas sobrepõem-se se ocupam o mesmo espaço no chão E ao mesmo nível (intervalos de altura que se cruzam).
+// Uma zona por cima de outra (ex.: sobre a mezanine) ou encostada a ela não conta.
+const EPS = 1e-6;
+const bbox = l => {
+  const { ex, ey } = ext(l), { x, y } = absXY(l), z = baseZ(l);
+  return { x, y, ex, ey, z0: z, z1: z + (Number(l.plan_alt) || defaultAlt(l)) };
+};
+const boxesClash = (a, b) => a.x < b.x + b.ex - EPS && b.x < a.x + a.ex - EPS && a.y < b.y + b.ey - EPS && b.y < a.y + a.ey - EPS &&
+  a.z0 < b.z1 - EPS && b.z0 < a.z1 - EPS;
+// Zona do mesmo espaço que choca com `l` depois de lhe aplicar `body` (ou undefined).
+const clashWith = (l, body = {}) => {
+  const t = { ...l, ...body }, b = bbox(t);
+  const root = mezzOf(t) ? mezzOf(t) : t;
+  return zoneChoices(root.space_id ?? curSpace().id).find(o => o.id !== l.id && onMap(o) && boxesClash(b, bbox(o)));
+};
+// Primeiro sítio livre (de 25 em 25 cm) para uma zona com estas medidas; null se não houver.
+function freeSpot(l, body) {
+  const t = { ...l, ...body }, { ex, ey } = ext(t), m = mezzOf(t), sp = curSpace();
+  const bw = m ? ext(m).ex : Number(sp.w) || 6, bd = m ? ext(m).ey : Number(sp.d) || 5;
+  for (let y = 0; y <= bd - ey + EPS; y += SNAP) for (let x = 0; x <= bw - ex + EPS; x += SNAP) {
+    const pos = t.plan_wall ? snapWall(t.plan_wall, x, y, ex, ey) : { plan_x: x, plan_y: y };
+    if (!clashWith(l, { ...body, ...pos })) return pos;
+  }
+  return null;
+}
+
+// ---------- alçados ----------
+// Projeções das zonas nas quatro paredes: o observador está do lado da parede e olha para dentro da sala.
+// Horizontal = direita do observador; vertical = altura. As zonas mais afastadas desenham-se primeiro.
+const VIEWS = [
+  { key: 'frente', title: 'Alçado da frente (visto da entrada)', u: (b, W) => b.x, len: (W) => W, dist: (b, W, D) => D - (b.y + b.ey), span: b => b.ex },
+  { key: 'fundo', title: 'Alçado do fundo (visto da parede do fundo)', u: (b, W) => W - b.x - b.ex, len: (W) => W, dist: b => b.y, span: b => b.ex },
+  { key: 'esquerda', title: 'Alçado da esquerda', u: b => b.y, len: (W, D) => D, dist: b => b.x, span: b => b.ey },
+  { key: 'direita', title: 'Alçado da direita', u: (b, W, D) => D - b.y - b.ey, len: (W, D) => D, dist: (b, W) => W - (b.x + b.ex), span: b => b.ey },
+];
+function elevationsSvg({ highlight, onpick, space } = {}) {
+  const sp = space || curSpace();
+  const W = Number(sp.w) || 6, D = Number(sp.d) || 5, H = Number(sp.h) || 2.5;
+  const hl = new Set([].concat(highlight ?? []));
+  const zones = zoneChoices(sp.id).filter(onMap);
+  return h('div', { class: 'elevations' }, VIEWS.map(v => {
+    const L = v.len(W, D);
+    const svg = h('svg', { viewBox: `-0.1 -0.1 ${L + 0.2} ${H + 0.2}`, class: 'plan elev' },
+      h('rect', { x: 0, y: 0, width: L, height: H, class: 'floor' }));
+    const items = zones.map(l => ({ l, b: bbox(l) })).sort((a, b) => v.dist(b.b, W, D) - v.dist(a.b, W, D));
+    for (const { l, b } of items) {
+      const w = v.span(b), x = v.u(b, W, D), top = H - Math.min(H, b.z1), ht = Math.max(0.02, Math.min(H, b.z1) - Math.max(0, b.z0));
+      const fs = Math.max(0.1, Math.min(0.25, w / (l.name.length * 0.58), ht * 0.6));
+      svg.append(h('g', { class: 'zone' + (l.type === 'mezanine' ? ' mezz' : '') + (mezzOf(l) ? ' sub' : '') + (hl.has(l.id) ? ' hl' : ''), onclick: () => onpick && onpick(l) },
+        h('rect', { x, y: top, width: w, height: ht, rx: 0.03 }),
+        h('text', { x: x + w / 2, y: top + ht / 2, 'font-size': fs }, l.name)));
+    }
+    return h('figure', {}, h('figcaption', {}, v.title), svg);
+  }));
+}
 function planSvg({ highlight, onpick, edit, space } = {}) {
   const sp = space || curSpace();
   const W = Number(sp.w) || 6, D = Number(sp.d) || 5;
@@ -442,7 +498,7 @@ function planSvg({ highlight, onpick, edit, space } = {}) {
     const { ex, ey } = ext(l), { x, y } = absXY(l);
     const lit = hlSet.has(l.id) && !(l.type === 'mezanine' && subZones(l).some(c => hlSet.has(c.id)));
     const fs = Math.max(0.12, Math.min(0.3, ex / (l.name.length * 0.58), ey * 0.6));
-    svg.append(h('g', { class: 'zone' + (l.type === 'mezanine' ? ' mezz' : '') + (mezzOf(l) ? ' sub' : '') + (lit ? ' hl' : ''), onclick: () => onpick && onpick(l) },
+    svg.append(h('g', { class: 'zone' + (l.type === 'mezanine' ? ' mezz' : '') + (mezzOf(l) ? ' sub' : '') + (lit ? ' hl' : ''), 'data-id': l.id, onclick: () => onpick && onpick(l) },
       h('rect', { x, y, width: ex, height: ey, rx: 0.05 }),
       h('text', { x: x + ex / 2, y: y + ey / 2, 'font-size': fs }, l.name)));
   }
@@ -550,7 +606,11 @@ function planView(highlight, path3d, space) {
     if (planMode === '3d') {
       const box = box3d(path3d || highlight, open, null, space);
       body.replaceChildren(box, bar3d(box, !!(path3d || highlight)), h('div', { class: 'muted' }, 'Arraste para rodar, belisque ou use a roda para aproximar, toque numa zona para a abrir.'));
-    } else body.replaceChildren(planSvg({ highlight: path3d || highlight, space, onpick: l => open(l.id) }));
+    } else {
+      const hl = path3d || highlight;
+      body.replaceChildren(planSvg({ highlight: hl, space, onpick: l => open(l.id) }),
+        h('h3', {}, 'Alçados'), elevationsSvg({ highlight: hl, space, onpick: l => open(l.id) }));
+    }
   };
   draw();
   return h('div', { class: 'plan-wrap' }, tabs, body);
@@ -764,11 +824,30 @@ function viewMap2d() {
     const b = bounds(), snap = (v, lo, hi) => Math.min(hi, Math.max(lo, Math.round(v / SNAP) * SNAP));
     return { x: snap(p.x, b.x0, b.x1), y: snap(p.y, b.y0, b.y1) };
   };
-  let start = null, draft = null, box = null;
+  // Dois gestos: arrastar sobre a zona escolhida move-a; arrastar no vazio desenha a posição/medidas dela.
+  // Em ambos a zona não pode sobrepor-se a outra ao mesmo nível (o rascunho fica vermelho e o gesto é recusado).
+  let start = null, draft = null, box = null, moving = null;
+  const r2 = n => Math.round(n * 100) / 100;
+  // Corpo a gravar para a caixa (x, y em coordenadas absolutas do mapa) com as medidas ex × ey.
+  const bodyFor = (b, dims) => {
+    const m = mezzOf(sel);
+    const pos = m ? { plan_x: r2(b.x - m.plan_x), plan_y: r2(b.y - m.plan_y) } : snapWall(sel.plan_wall, b.x, b.y, b.ex, b.ey);
+    return { ...pos, ...(dims ? toDims(orientOf(sel), b.ex, b.ey) : {}) };
+  };
+  const mark = (rect, b, dims) => {
+    rect.setAttribute('x', b.x); rect.setAttribute('y', b.y); rect.setAttribute('width', b.ex); rect.setAttribute('height', b.ey);
+    rect.classList.toggle('bad', !!clashWith(sel, bodyFor(b, dims)));
+  };
   svg.addEventListener('pointerdown', e => {
-    if (!sel) { if (!e.target.closest('.zone')) toast('Escolha primeiro uma zona na lista abaixo.'); return; }
+    const zone = e.target.closest('.zone');
+    if (!sel) { if (!zone) toast('Escolha primeiro uma zona na lista abaixo.'); return; }
     if (mezzOf(sel) && !(mezzOf(sel).plan_w > 0)) { toast('Posicione primeiro a mezanine.'); return; }
+    if (zone && Number(zone.dataset.id) !== sel.id) return; // clique noutra zona: escolhe-a (onclick)
     start = point(e);
+    if (zone && sel.plan_w > 0) { // mover a zona escolhida
+      const { ex, ey } = ext(sel), a = absXY(sel);
+      moving = { dx: start.x - a.x, dy: start.y - a.y, ex, ey, moved: false };
+    }
     draft = h('rect', { class: 'draft' });
     svg.append(draft);
     svg.setPointerCapture(e.pointerId);
@@ -776,20 +855,27 @@ function viewMap2d() {
   svg.addEventListener('pointermove', e => {
     if (!start) return;
     const p = point(e);
+    if (moving) {
+      const b = bounds();
+      const x = Math.min(b.x1 - moving.ex, Math.max(b.x0, p.x - moving.dx)), y = Math.min(b.y1 - moving.ey, Math.max(b.y0, p.y - moving.dy));
+      box = { x, y, ex: moving.ex, ey: moving.ey };
+      moving.moved = true;
+      mark(draft, box, false);
+      return;
+    }
     box = { x: Math.min(start.x, p.x), y: Math.min(start.y, p.y), ex: Math.abs(p.x - start.x), ey: Math.abs(p.y - start.y) };
-    draft.setAttribute('x', box.x); draft.setAttribute('y', box.y);
-    draft.setAttribute('width', box.ex); draft.setAttribute('height', box.ey);
+    mark(draft, box, true);
   });
   const end = () => {
     if (!start) return;
-    const b = box;
-    start = null; box = null; draft.remove();
-    if (b && b.ex >= SNAP && b.ey >= SNAP) {
-      const m = mezzOf(sel), r2 = n => Math.round(n * 100) / 100;
-      // zonas de mezanine guardam X/Y relativos ao canto da mezanine
-      const pos = m ? { plan_x: r2(b.x - m.plan_x), plan_y: r2(b.y - m.plan_y) } : snapWall(sel.plan_wall, b.x, b.y, b.ex, b.ey);
-      act(() => api('PUT', '/api/locations/' + sel.id, { ...pos, ...toDims(orientOf(sel), b.ex, b.ey) }));
-    }
+    const b = box, mv = moving;
+    start = null; box = null; moving = null; draft.remove();
+    if (!b || (mv && !mv.moved)) return;
+    if (!mv && !(b.ex >= SNAP && b.ey >= SNAP)) return;
+    const body = bodyFor(b, !mv);
+    const other = clashWith(sel, body);
+    if (other) { toast(`Sobrepõe-se a "${other.name}" ao mesmo nível. Mude a altura (Z) ou escolha outro sítio.`); return; }
+    act(() => api('PUT', '/api/locations/' + sel.id, body));
   };
   svg.addEventListener('pointerup', end);
   svg.addEventListener('pointercancel', end);
@@ -798,9 +884,10 @@ function viewMap2d() {
     h('h1', {}, 'Edição de Mapas · 2D'),
     dimsForm(),
     h('p', { class: 'muted' }, sel
-      ? `Arraste sobre a planta para desenhar a posição de "${sel.name}"${mezzOf(sel) ? ' dentro da mezanine' : ''}. Cada quadrícula é 1 m; encaixa de ${SNAP * 100} em ${SNAP * 100} cm.`
+      ? `Arraste "${sel.name}" para a mover, ou arraste no vazio para desenhar a posição e as medidas${mezzOf(sel) ? ' dentro da mezanine' : ''}. Cada quadrícula é 1 m; encaixa de ${SNAP * 100} em ${SNAP * 100} cm. Não pode sobrepor outra zona ao mesmo nível.`
       : 'Escolha uma zona abaixo e depois arraste sobre a planta para a posicionar.'),
     h('div', { class: 'plan-wrap' }, svg),
+    h('h3', {}, 'Alçados'), elevationsSvg({ highlight: planSel, space: curSpace(), onpick: l => { planSel = l.id; render(); } }),
     zoneChips(zones),
     sel ? coordsPanel(sel) : null,
     resetSection(),
@@ -873,7 +960,11 @@ function zoneChips(zones) {
 }
 // Coordenadas e medidas da zona escolhida; cada campo grava ao sair dele (ou com Enter).
 function coordsPanel(sel) {
-  const put = body => act(() => api('PUT', '/api/locations/' + sel.id, body));
+  const put = body => act(async () => {
+    const other = clashWith(sel, body);
+    if (other) { toast(`Sobrepõe-se a "${other.name}" ao mesmo nível. Mude a altura (Z) ou a posição.`); return false; }
+    await api('PUT', '/api/locations/' + sel.id, body);
+  });
   const open = h('a', { class: 'btn', href: '#/loc/' + sel.id }, `Abrir "${sel.name}"`);
   const mz = mezzOf(sel), isMezz = sel.type === 'mezanine';
   if (!(sel.plan_w > 0)) {
@@ -881,8 +972,13 @@ function coordsPanel(sel) {
     const first = isMezz
       ? { plan_x: 0, plan_y: 0, plan_w: 2, plan_h: 1.5, plan_z: Math.min(2.2, (Number(curSpace().h) || 2.5) * 0.7), plan_alt: defaultAlt(sel) }
       : { plan_x: 0, plan_y: 0, plan_w: 1, plan_h: 0.5, plan_z: 0, plan_alt: defaultAlt(sel) };
+    const place = () => {
+      const pos = freeSpot(sel, first);
+      if (!pos) return toast('Não há espaço livre ao mesmo nível para esta zona. Reduza as medidas ou mude a altura (Z).');
+      put({ ...first, ...pos });
+    };
     return h('div', { class: 'row' },
-      h('button', { class: 'primary', onclick: () => put(first) }, mz ? `Colocar "${sel.name}" na mezanine` : `Colocar "${sel.name}" no mapa`), open);
+      h('button', { class: 'primary', onclick: place }, mz ? `Colocar "${sel.name}" na mezanine` : `Colocar "${sel.name}" no mapa`), open);
   }
   // Mantém a zona encostada à parede ou, numa mezanine, dentro do piso dela.
   const fit = body => {

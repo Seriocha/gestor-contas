@@ -441,6 +441,58 @@ def criar_local(ctx: Ctx, body: dict) -> int:
         ctx.db.flush()
         return l.id
 
+# Alturas por omissão (iguais às da interface) e verificação de sobreposição no mapa.
+ALT_PADRAO = {"estante": 2, "armario": 2, "bancada": 0.9, "prateleira": 0.4, "caixa": 0.4, "gaveta": 0.2, "mezanine": 0.15}
+_FACE_PAREDE = {"entrada": "fundo", "fundo": "frente", "esquerda": "direita", "direita": "esquerda"}
+_PLAN = ("plan_x", "plan_y", "plan_w", "plan_h", "plan_z", "plan_alt", "plan_wall", "plan_face")
+
+
+def _caixa(l, pai) -> tuple | None:
+    """(x0, x1, y0, y1, z0, z1) absolutos de uma zona no mapa, ou None se não estiver posicionada."""
+    if not l.plan_w or l.plan_w <= 0 or not l.plan_h or l.plan_h <= 0:
+        return None
+    lado = (l.plan_wall or _FACE_PAREDE.get(l.plan_face) or "fundo") in ("esquerda", "direita")
+    ex, ey = (l.plan_h, l.plan_w) if lado else (l.plan_w, l.plan_h)
+    x, y, z = l.plan_x or 0, l.plan_y or 0, l.plan_z or 0
+    if pai is not None:
+        if not pai.plan_w or pai.plan_w <= 0:
+            return None
+        x, y = x + (pai.plan_x or 0), y + (pai.plan_y or 0)
+        z += (pai.plan_z or 0) + (pai.plan_alt or ALT_PADRAO["mezanine"])
+    return (x, x + ex, y, y + ey, z, z + (l.plan_alt or ALT_PADRAO.get(l.type, 1)))
+
+
+def _verifica_sobreposicao(ctx: Ctx, cur: GarLocal, o: dict) -> None:
+    """Recusa pôr a zona onde choca com outra do mesmo espaço ao mesmo nível (chão e altura em comum)."""
+    if not any(k in o for k in _PLAN):
+        return
+    from types import SimpleNamespace
+    novo = SimpleNamespace(**{c.name: getattr(cur, c.name) for c in GarLocal.__table__.columns})
+    for k, v in o.items():
+        if k in novo.__dict__:
+            setattr(novo, k, v)
+    pai = ctx.db.get(GarLocal, novo.parent_id) if novo.parent_id else None
+    if pai is not None and pai.type != "mezanine":
+        return                                     # só as zonas do mapa (topo ou sobre uma mezanine) têm planta
+    if novo.grid_row is not None:
+        return
+    a = _caixa(novo, pai)
+    if a is None:
+        return
+    espaco = novo.space_id if pai is None else pai.space_id
+    outras = ctx.db.scalars(select(GarLocal).where(GarLocal.entidade_id == ctx.ent, GarLocal.id != cur.id)).all()
+    por_id = {x.id: x for x in outras}
+    e = 1e-6
+    for x in outras:
+        xp = por_id.get(x.parent_id)
+        if x.grid_row is not None or (x.parent_id is not None and (xp is None or xp.type != "mezanine")):
+            continue
+        if (xp.space_id if xp is not None else x.space_id) != espaco:
+            continue
+        b = _caixa(x, xp)
+        if b and a[0] < b[1] - e and b[0] < a[1] - e and a[2] < b[3] - e and b[2] < a[3] - e and a[4] < b[5] - e and b[4] < a[5] - e:
+            raise GaragemErro(f"Sobrepõe-se a «{x.name}» ao mesmo nível.", 409)
+
 
 def atualizar_local(ctx: Ctx, id_, body: dict, rotulo: str = "alterar localização") -> None:
     with mutacao(ctx, rotulo):
@@ -464,6 +516,7 @@ def atualizar_local(ctx: Ctx, id_, body: dict, rotulo: str = "alterar localizaç
                 del o["space_id"]
             elif o["space_id"] != cur.space_id:           # mudou de espaço: tem de ser posicionada de novo no mapa
                 o.update(plan_x=None, plan_y=None, plan_w=None, plan_h=None, plan_wall=None)
+        _verifica_sobreposicao(ctx, cur, o)
         for k, v in o.items():
             setattr(cur, k, v)
 

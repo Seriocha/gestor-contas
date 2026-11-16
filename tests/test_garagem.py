@@ -395,3 +395,18 @@ def test_construir_menu_hierarquia_e_filtros():
     assert m["groups"][2]["items"][1]["badge"] == 3 and m["groups"][2]["items"][0]["badge"] is None
     so_imovel = g.construir_menu(esp, loc, 0, 0, imovel="7")
     assert [i["title"] for i in so_imovel["groups"][0]["items"]] == ["Garagem", "Novo espaço"]
+
+
+# --- sobreposição no mapa ----------------------------------------------------------------------------------------------
+def test_zonas_ao_mesmo_nivel_nao_se_sobrepoem(api):
+    a = api.novo("/locations", {"name": "A", "type": "estante", "plan_x": 0, "plan_y": 0, "plan_w": 1, "plan_h": 1, "plan_alt": 2})
+    b = api.novo("/locations", {"name": "B", "type": "estante", "plan_x": 2, "plan_y": 0, "plan_w": 1, "plan_h": 1, "plan_alt": 2})
+    r = api.put(f"/locations/{b}", {"plan_x": 0.5})
+    assert r.status_code == 409 and "A" in r.json()["error"]
+    assert api.put(f"/locations/{b}", {"plan_x": 1}).status_code == 200          # encostada (sem área comum) é permitido
+    # por cima da outra (outro nível) é permitido; ao nível dela não
+    assert api.put(f"/locations/{b}", {"plan_x": 0, "plan_z": 2}).status_code == 200
+    assert api.put(f"/locations/{b}", {"plan_z": 1.5}).status_code == 409
+    # girar uma zona também conta (a área no chão muda)
+    c = api.novo("/locations", {"name": "C", "type": "estante", "plan_x": 3, "plan_y": 0, "plan_w": 2, "plan_h": 0.5, "plan_alt": 2})
+    assert api.put(f"/locations/{c}", {"plan_wall": "esquerda", "plan_x": 0}).status_code == 409
