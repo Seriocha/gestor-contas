@@ -132,6 +132,9 @@ def render(request: Request, template: str, status_code: int = 200, **ctx):
                 ctx["n_por_validar"] = por_validar(db, ctx["utilizador"])
                 # o menu «Gestão do Lar» só aparece a quem vê uma entidade com o módulo (as heranças)
                 ctx["menu_lar"] = any(e.tem("lar") for e, _ in entidades_visiveis(db, ctx["utilizador"]))
+                # o grupo «Garagem» (espaços › zonas e as secções) só aparece a quem vê uma entidade com o módulo
+                from . import garagem
+                ctx["menu_garagem"] = garagem.menu_para_utilizador(db, ctx["utilizador"], request)
         except Exception:          # o contador nunca impede a página de abrir
             ctx["n_por_validar"] = 0
     ctx["flashes"] = request.session.pop("flash", [])

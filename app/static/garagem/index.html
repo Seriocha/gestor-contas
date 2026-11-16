@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="pt">
+<head>
+  <meta charset="utf-8">
+  <!-- O servidor troca este <base> pelo prefixo configurado (BASE_PATH), para a app funcionar sob /garagem, por exemplo. -->
+  <base href="/">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#1f4e79">
+  <title>Gestão de Garagem</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+  <script>
+    // Modo embebido (?embed=1): a app anfitriã desenha o menu e mostra esta app num iframe; fica só o conteúdo.
+    try {
+      if (new URLSearchParams(location.search).get('embed') === '1') sessionStorage.setItem('embed', '1');
+      if (sessionStorage.getItem('embed') === '1') document.documentElement.classList.add('embed');
+    } catch (e) { /* sem armazenamento */ }
+  </script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="#/"><img src="icon.svg" alt="" width="24" height="24"><span id="brand">Gestão de Espaços</span></a>
+      <div class="quick">
+        <button id="btn-scan" title="Ler código QR de uma caixa ou gaveta">📷 Ler QR</button>
+        <button id="btn-new" class="primary">+ Artigo</button>
+      </div>
+      <div class="quick">
+        <button id="btn-undo" title="Desfazer (Ctrl+Z)" disabled>↶ Desfazer</button>
+        <button id="btn-redo" title="Refazer (Ctrl+Y)" disabled>↷ Refazer</button>
+      </div>
+      <details class="nav-collapsible" open>
+        <summary class="nav-toggle">☰ Menu</summary>
+        <!-- Desenhado por renderNav() a partir de menu-def.js (espaços › zonas, Consulta, Registo, Mapas) -->
+        <nav aria-label="Menu principal" class="nav-groups" id="nav-dynamic"></nav>
+      </details>
+    </aside>
+    <main id="main" class="content"></main>
+  </div>
+  <div id="toast" role="status"></div>
+  <script type="importmap">{ "imports": { "three": "./vendor/three/three.module.js", "three/addons/": "./vendor/three-addons/" } }</script>
+  <script src="vendor/jsQR.js"></script>
+  <script src="menu-def.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

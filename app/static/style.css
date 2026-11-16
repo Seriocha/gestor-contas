@@ -1118,3 +1118,13 @@ body { padding-bottom: var(--altura-moldura); }
 .grelha-recibos .sub { display: block; font-size: .68rem; font-weight: 700; color: var(--previsto); }
 .grelha-recibos .txt { font-size: .68rem; color: var(--suave); }
 .legenda-recibos { display: flex; flex-wrap: wrap; gap: .4rem; margin: .5rem 0; }
+
+/* Garagem / Espaços (app/templates/garagem): grupo isolado no menu e moldura da interface */
+.menu details.gg-espaco > summary { list-style: none; cursor: pointer; }
+.menu details.gg-espaco > summary::-webkit-details-marker { display: none; }
+.menu a.gg-n1 { padding-left: 2.6rem; font-size: .92em; }
+.menu a.gg-n2 { padding-left: 3.6rem; font-size: .88em; }
+.menu a.gg-trocar { font-size: .85em; color: var(--suave); }
+.conteudo.gg-conteudo { padding: 0; max-width: none; }
+.gg-moldura { flex: 1; width: 100%; min-height: calc(100vh - 3.5rem); border: 0; background: transparent; }
+.conteudo.gg-conteudo > .rodape { display: none; }

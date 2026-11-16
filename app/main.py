@@ -7,7 +7,7 @@ from urllib.parse import quote
 from alembic import command
 from alembic.config import Config
 from fastapi import FastAPI, Request
-from fastapi.responses import PlainTextResponse, RedirectResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import sessionmaker
@@ -19,13 +19,15 @@ from . import patrimonio as pt
 from .config import BASE_DIR, carregar_definicoes
 from .db import criar_engine, url_sqlite
 from .deps import NaoAutenticado, render
+from .garagem import GaragemErro
+from .routes import garagem as rotas_garagem
 from .routes import (abastecer, admin, auth, documentos, inicio, posicoes, categorias, contas, emprestimos, importar, movimentos, painel, pareaveis, previsoes,
                      patrimonio, regras, relatorios, saude, subscricoes, viagens)
 from .routes import admin_paperless, lar, saude_api, tv as rotas_tv
 from .seed import semear
 
 APP_DIR = Path(__file__).resolve().parent
-VERSAO = "0.100.1"
+VERSAO = "0.101.0"
 
 
 def aplicar_migracoes(db_path: Path, backup_dir: Path | None = None) -> None:
@@ -106,8 +108,10 @@ def create_app(data_dir: Path | None = None, backups_automaticos: bool = True) -
     for r in (auth.router, inicio.router, painel.router, movimentos.router, contas.router, importar.router, categorias.router,
               regras.router, relatorios.router, emprestimos.router, previsoes.router, pareaveis.router, viagens.router,
               subscricoes.router, abastecer.router, patrimonio.router, posicoes.router, admin.router, documentos.router,
-              saude.router, rotas_tv.router, admin_paperless.router, saude_api.router, lar.router):
+              saude.router, rotas_tv.router, admin_paperless.router, saude_api.router, lar.router, rotas_garagem.router):
         app.include_router(r)
+    # Interface da Garagem (HTML/JS/CSS/three.js): montada depois das rotas, que têm prioridade (índice, API, fotos).
+    app.mount("/garagem/app", StaticFiles(directory=str(APP_DIR / "static" / "garagem")), name="garagem_estaticos")
 
     @app.get("/healthz", include_in_schema=False)
     def healthz():
@@ -124,6 +128,11 @@ def create_app(data_dir: Path | None = None, backups_automaticos: bool = True) -
     async def _nao_autenticado(request: Request, _exc):
         destino = request.url.path + (f"?{request.url.query}" if request.url.query else "")
         return RedirectResponse(f"/login?next={quote(destino, safe='/')}", status_code=303)
+
+    @app.exception_handler(GaragemErro)
+    async def _garagem_erro(request: Request, exc: GaragemErro):
+        """A interface da Garagem espera {"error": "mensagem"} (o contrato da app autónoma)."""
+        return JSONResponse({"error": exc.mensagem}, status_code=exc.status)
 
     @app.exception_handler(rotas_tv.NaoEmparelhado)
     async def _tv_nao_emparelhada(request: Request, _exc):

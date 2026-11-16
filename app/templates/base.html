@@ -65,6 +65,7 @@
     <a href="{{ href }}" {% if ativo %}class="ativo" aria-current="page"{% endif %}>{{ icone(ic) }}<span>{{ rotulo }}</span>{% if contador %}<span class="contador" title="{{ contador }} por validar">{{ contador }}</span>{% endif %}</a>
     {% endfor %}
     {% endfor %}
+    {% if menu_garagem %}{% include "garagem/_menu.html" %}{% endif %}
   </nav>
   <div class="lateral-rodape">
     <a href="/perfil" class="utilizador {{ 'ativo' if caminho.startswith('/perfil') }}">

@@ -62,7 +62,8 @@ FONTES_EXTRATOS = {"pasta": "Pasta partilhada da NAS (extratos largados na pasta
 MODULOS = {"imoveis": "Casas e propriedades", "viaturas": "Viaturas (carros, Via Verde, abastecimentos)",
            "subscricoes": "Subscrições e assinaturas", "viagens": "Viagens",
            "saude": "Saúde (perfis e dados do Google Health)",
-           "lar": "Gestão do Lar (Santa Casa, com as faturas da farmácia) — conciliação; ligado nas heranças"}
+           "lar": "Gestão do Lar (Santa Casa, com as faturas da farmácia) — conciliação; ligado nas heranças",
+           "garagem": "Garagem e espaços (onde está cada coisa: espaços, mapas 2D/3D, inventário)"}
 
 
 def fracao(pct: float | None) -> str:
@@ -1436,3 +1437,83 @@ class LigacaoRecibos(Base):
 
     utilizador: Mapped[Utilizador] = relationship()
     entidade: Mapped[Entidade | None] = relationship()
+
+
+# --- Garagem / Espaços (app/garagem.py) -----------------------------------------------------------------------------
+# Onde está cada coisa: espaços (garagem, arrecadação…) com zonas num mapa 2D/3D, localizações em árvore (estante ›
+# prateleira › caixa › gaveta), artigos e o pré-registo. Tudo pertence a uma entidade (o módulo «garagem» liga-se por
+# entidade). As colunas têm os mesmos nomes que o contrato JSON da app Garagem (static/garagem/app.js), para que a
+# interface funcione sem alterações e o ficheiro de importação/exportação seja idêntico nas duas apps.
+class GarEspaco(Base):
+    """Um espaço com as suas medidas (m). Pode ligar-se a um imóvel (Bem) do Gestor."""
+    __tablename__ = "gar_espaco"
+    __table_args__ = {"sqlite_autoincrement": True}
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entidade_id: Mapped[int] = mapped_column(ForeignKey("entidade.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(100))
+    w: Mapped[float] = mapped_column(Float)
+    d: Mapped[float] = mapped_column(Float)
+    h: Mapped[float] = mapped_column(Float)
+    bem_id: Mapped[int | None] = mapped_column(ForeignKey("bem.id", ondelete="SET NULL"), index=True)
+    imovel_nome: Mapped[str | None] = mapped_column(String(120))     # imóvel indicado em texto, sem Bem correspondente
+    imovel_ref: Mapped[str | None] = mapped_column(String(120))      # referência vinda de uma importação, sem Bem correspondente
+
+
+class GarLocal(Base):
+    """Localização: zona de topo de um espaço (parent_id vazio) ou dentro de outra (prateleira, caixa, gaveta…)."""
+    __tablename__ = "gar_local"
+    __table_args__ = {"sqlite_autoincrement": True}
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entidade_id: Mapped[int] = mapped_column(ForeignKey("entidade.id", ondelete="CASCADE"), index=True)
+    parent_id: Mapped[int | None] = mapped_column(ForeignKey("gar_local.id"), index=True)
+    space_id: Mapped[int | None] = mapped_column(ForeignKey("gar_espaco.id", ondelete="SET NULL"), index=True)  # só zonas de topo
+    name: Mapped[str] = mapped_column(String(100))
+    type: Mapped[str] = mapped_column(String(20), default="zona")
+    code: Mapped[str] = mapped_column(String(12), unique=True)           # código da etiqueta QR
+    notes: Mapped[str | None] = mapped_column(Text)
+    photo: Mapped[str | None] = mapped_column(String(40))
+    grid_rows: Mapped[int | None] = mapped_column(Integer)               # matriz de sub-localizações (gavetas)
+    grid_cols: Mapped[int | None] = mapped_column(Integer)
+    grid_row: Mapped[int | None] = mapped_column(Integer)                # posição na matriz da localização-mãe
+    grid_col: Mapped[int | None] = mapped_column(Integer)
+    plan_x: Mapped[float | None] = mapped_column(Float)                  # posição no mapa (m); numa mezanine, relativa a ela
+    plan_y: Mapped[float | None] = mapped_column(Float)
+    plan_w: Mapped[float | None] = mapped_column(Float)
+    plan_h: Mapped[float | None] = mapped_column(Float)
+    plan_z: Mapped[float | None] = mapped_column(Float)
+    plan_alt: Mapped[float | None] = mapped_column(Float)
+    plan_wall: Mapped[str | None] = mapped_column(String(10))            # parede de encosto
+    plan_face: Mapped[str | None] = mapped_column(String(10))            # para onde olha a frente (sem parede)
+
+
+class GarArtigo(Base):
+    """Artigo guardado numa localização (sem localização = área temporária)."""
+    __tablename__ = "gar_artigo"
+    __table_args__ = {"sqlite_autoincrement": True}
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entidade_id: Mapped[int] = mapped_column(ForeignKey("entidade.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    quantity: Mapped[str | None] = mapped_column(String(60))
+    category: Mapped[str | None] = mapped_column(String(80))
+    notes: Mapped[str | None] = mapped_column(Text)
+    photo: Mapped[str | None] = mapped_column(String(40))
+    location_id: Mapped[int | None] = mapped_column(ForeignKey("gar_local.id", ondelete="SET NULL"), index=True)
+    updated: Mapped[str] = mapped_column(String(19))                     # AAAA-MM-DD HH:MM:SS (UTC), como na app Garagem
+
+
+class GarRascunho(Base):
+    """Linha do pré-registo: artigo rascunho, que só entra no inventário ao confirmar."""
+    __tablename__ = "gar_rascunho"
+    __table_args__ = {"sqlite_autoincrement": True}
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entidade_id: Mapped[int] = mapped_column(ForeignKey("entidade.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str | None] = mapped_column(String(200))
+    quantity: Mapped[str | None] = mapped_column(String(60))
+    category: Mapped[str | None] = mapped_column(String(80))
+    notes: Mapped[str | None] = mapped_column(Text)
+    location_id: Mapped[int | None] = mapped_column(ForeignKey("gar_local.id", ondelete="SET NULL"), index=True)
+    created: Mapped[str] = mapped_column(String(19))

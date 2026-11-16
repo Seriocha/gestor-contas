@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block titulo %}Garagem{% endblock %}
+{% block classe_main %}conteudo gg-conteudo{% endblock %}
+{% block conteudo %}
+{# A interface da Garagem corre numa moldura (modo embebido): o menu é o do Gestor, o conteúdo é da Garagem. #}
+<iframe id="gg-moldura" class="gg-moldura" title="Garagem" src="about:blank"></iframe>
+{% endblock %}
+{% block scripts %}
+<script>
+  (() => {
+    const moldura = document.getElementById('gg-moldura');
+    const origem = location.origin, base = '/garagem/app/?embed=1';
+    moldura.src = base + (location.hash || '');          // o #/… do endereço passa para a interface
+    // Marca no menu o item do endereço atual.
+    const marcar = () => {
+      const alvo = location.pathname + location.hash;
+      document.querySelectorAll('.menu a[data-gg]').forEach(a => {
+        const ativo = a.dataset.gg === alvo || (!location.hash && a.dataset.gg === '/garagem/#/');
+        a.classList.toggle('ativo', ativo);
+        if (ativo) { a.setAttribute('aria-current', 'page'); a.closest('details')?.setAttribute('open', ''); } else a.removeAttribute('aria-current');
+      });
+    };
+    // A interface avisa quando navega: o endereço da página acompanha (links partilháveis, recarregar fica no mesmo sítio).
+    window.addEventListener('message', e => {
+      if (e.origin !== origem || !e.data || e.data.garagem !== 'hash') return;
+      history.replaceState(null, '', '/garagem/' + (e.data.hash || ''));
+      marcar();
+    });
+    // Um clique no menu do Gestor (mesma página, outro #/…) leva a interface para lá.
+    window.addEventListener('hashchange', () => {
+      moldura.contentWindow.postMessage({ garagem: 'goto', hash: location.hash }, origem);
+      marcar();
+    });
+    marcar();
+  })();
+</script>
+{% endblock %}

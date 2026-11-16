@@ -1,0 +1,28 @@
+{# Grupo «Garagem» do menu lateral: estrutura isolada (vem de garagem.construir_menu; o mesmo menu da app autónoma).
+   Os espaços abrem-se com as suas zonas por baixo. O destaque do item ativo é posto por script em garagem/pagina.html. #}
+{% from "_icones.html" import icone %}
+{% set gm = menu_garagem %}
+{% set icones_gg = {'view:home': 'procurar', 'view:inventario': 'categorias', 'view:pre': 'tarefas', 'view:temp': 'importar',
+                    'view:mapa3d': 'patrimonio', 'view:mapa2d': 'fotos', 'view:dados': 'importar'} %}
+<p class="menu-grupo">Garagem{% if gm.outras %} · {{ gm.entidade.nome }}{% endif %}</p>
+{% for g in gm.menu.groups %}
+  {% if g.id == 'espacos' %}
+    {% set espacos_gg = g['items'] | rejectattr('action') | list %}
+    {% for sp in espacos_gg %}
+    <details class="gg-espaco" {% if espacos_gg | length == 1 %}open{% endif %}>
+      <summary><a href="{{ sp.href }}" data-gg="{{ sp.href }}">{{ icone('patrimonio') }}<span>{{ sp.title }}</span></a></summary>
+      {% for z in sp.children %}
+      <a class="gg-n1" href="{{ z.href }}" data-gg="{{ z.href }}"><span>{{ z.title }}</span></a>
+      {% for k in z.children %}<a class="gg-n2" href="{{ k.href }}" data-gg="{{ k.href }}"><span>{{ k.title }}</span></a>{% endfor %}
+      {% endfor %}
+    </details>
+    {% endfor %}
+  {% else %}
+    {% for it in g['items'] %}
+    <a href="{{ it.href }}" data-gg="{{ it.href }}">{{ icone(icones_gg.get(it.key, 'patrimonio')) }}<span>{{ it.title }}</span>{% if it.badge %}<span class="contador">{{ it.badge }}</span>{% endif %}</a>
+    {% endfor %}
+  {% endif %}
+{% endfor %}
+{% for e in gm.outras %}
+<a class="gg-trocar" href="/garagem/entidade/{{ e.id }}"><span>Mudar para {{ e.nome }}</span></a>
+{% endfor %}
