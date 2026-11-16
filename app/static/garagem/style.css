@@ -100,6 +100,8 @@ textarea { min-height: 70px; resize: vertical; }
 .plan-wrap { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 8px; }
 .plan { display: block; width: 100%; max-height: 62vh; }
 .plan.edit { touch-action: none; cursor: crosshair; }
+.pick3d { margin-top: 8px; }
+.pick3d .view3d { height: min(42vh, 320px); }
 /* planta: medidas numa coluna à esquerda, desenho encostado à direita */
 .plan-row { display: flex; gap: 10px; align-items: flex-start; }
 .plan-meas { flex: 0 0 132px; font-size: .82rem; }

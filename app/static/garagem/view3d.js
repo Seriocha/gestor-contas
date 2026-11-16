@@ -121,6 +121,19 @@ export function mount(el, { W, D, H, zones, highlight, onpick, editable, onmove,
       p.position.set(x + w * (c.col + 0.5) / cols, y + h * (1 - (c.row + 0.5) / rows), zf + 0.004);
       parent.add(p);
     }
+    // Cada célula pode ser escolhida (um plano transparente à frente dela), p.ex. para arrumar um artigo nela.
+    if (rows * cols <= 400) {
+      for (const c of cells || []) {
+        if (c.row >= rows || c.col >= cols) continue;
+        const pm = new THREE.Mesh(new THREE.PlaneGeometry(w / cols, h / rows),
+          new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }));
+        pm.position.set(x + w * (c.col + 0.5) / cols, y + h * (1 - (c.row + 0.5) / rows), zf + 0.003);
+        pm.userData.zone = zone;
+        pm.userData.thing = { id: c.id, itemId: null, name: c.name || 'Posição' };
+        parent.add(pm);
+        things.push(pm);
+      }
+    }
     // Caixas e artigos que estão numa célula: saem um pouco da face para se verem (e escolherem) no desenho.
     const cw = w / cols, ch = h / rows;
     for (const c of cells || []) {
@@ -206,10 +219,15 @@ export function mount(el, { W, D, H, zones, highlight, onpick, editable, onmove,
     const alongX = z.w >= z.d, len = alongX ? z.w : z.d, across = alongX ? z.d : z.w;
     levels.forEach((lv, i) => {
       const y0 = i * lh;
-      if (lv.id && hl.has(lv.id)) {
-        const slab = new THREE.Mesh(new THREE.BoxGeometry(z.w, 0.04, z.d), new THREE.MeshBasicMaterial({ color: hlCol }));
+      if (lv.id) { // a prateleira: tábua que se pode escolher (e fica a laranja se está destacada)
+        const on = hl.has(lv.id);
+        const slab = new THREE.Mesh(new THREE.BoxGeometry(z.w, 0.04, z.d), new THREE.MeshBasicMaterial(
+          on ? { color: hlCol } : { color: lineCol, transparent: true, opacity: 0.18, depthWrite: false }));
         slab.position.set(z.w / 2, y0 + 0.02, z.d / 2);
+        slab.userData.zone = z;
+        slab.userData.thing = { id: lv.id, itemId: null, name: lv.name || 'Prateleira' };
         grp.add(slab);
+        things.push(slab);
       }
       if (lv.rows) frontGrid(grp, 0, y0, z.d, z.w, lh, lv.rows, lv.cols, lv.cells, z); // matriz na prateleira
       const entries = [...lv.things.map(t => ({ t })), ...lv.items.map(it => ({ it }))];

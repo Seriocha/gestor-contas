@@ -201,6 +201,7 @@ async function scanQR() {
 }
 
 // ---------- formulários ----------
+let pick3dUsed = false; // o seletor 3D de um formulário foi aberto (só há uma vista 3D de cada vez)
 function fieldEl(f, data) {
   const set = v => { data[f.key] = v; };
   let input;
@@ -241,14 +242,38 @@ function fieldEl(f, data) {
         onkeydown: e => { if (e.key === 'Enter') e.preventDefault(); },
       });
       const note = h('small', { class: 'muted' }, '');
+      // Escolha opcional no 3D: toca-se na prateleira, caixa, posição de matriz ou zona onde fica.
+      const pickBox = h('div', { class: 'pick3d', hidden: true });
+      const choose = id => { search.value = ''; sel.replaceChildren(...draw(opts, id)); sel.value = id; set(id); };
+      const drawPick = () => {
+        const cur = byId.get(data[f.key]);
+        const root = cur ? pathOf(cur.id)[0] : null;
+        const sp = root && onMap(root) ? spaceById(root.space_id) : curSpace();
+        const picked = h('div', { class: 'muted' }, cur ? '📍 ' + pathText(cur.id) : 'Toque numa prateleira, caixa, posição da matriz ou zona.');
+        const spaces = S.spaces.length > 1 ? h('select', { onchange: e => { setSpace(Number(e.target.value)); drawPick(); } },
+          S.spaces.map(s => h('option', { value: s.id, selected: s.id === sp.id }, s.name))) : null;
+        const view = box3d(cur ? pathOf(cur.id).map(l => l.id) : null, (zid, tid, iid) => {
+          if (iid) { toast('Escolha um sítio (prateleira, caixa…), não um artigo.'); return; }
+          const id = tid || zid;
+          if (id === f.exclude) return;
+          choose(id); drawPick();
+        }, null, sp);
+        pickBox.replaceChildren(spaces, view, picked);
+      };
       input = h('div', {},
         h('div', { class: 'row' }, search, note),
         h('div', { class: 'row' }, sel, h('button', {
           type: 'button', onclick: async () => {
-            try { const loc = await scanQR(); if (loc) { search.value = ''; sel.replaceChildren(...draw(opts, loc.id)); sel.value = loc.id; set(loc.id); toast('Localização: ' + pathText(loc.id)); } }
+            try { const loc = await scanQR(); if (loc) { choose(loc.id); toast('Localização: ' + pathText(loc.id)); } }
             catch (e) { toast(e.message); }
           },
-        }, 'Ler QR da caixa/gaveta')));
+        }, 'Ler QR da caixa/gaveta'), h('button', {
+          type: 'button', onclick: () => {
+            pickBox.hidden = !pickBox.hidden;
+            if (pickBox.hidden) pickBox.replaceChildren(); else { pick3dUsed = true; drawPick(); }
+          },
+        }, '🧊 Escolher no 3D')),
+        pickBox);
       search.style.flex = '1 1 200px'; sel.style.flex = '1 1 200px';
     }
   } else if (f.type === 'textarea') {
@@ -274,7 +299,10 @@ function formDialog(title, fields, values = {}, okLabel = 'Guardar') {
         h('div', { class: 'row end' },
           h('button', { type: 'button', class: 'ghost', onclick: () => dlg.close('') }, 'Cancelar'),
           h('button', { type: 'submit', class: 'primary' }, okLabel))));
-    dlg.addEventListener('close', () => { dlg.remove(); resolve(dlg.returnValue === 'ok' ? data : null); });
+    dlg.addEventListener('close', () => {
+      dlg.remove(); resolve(dlg.returnValue === 'ok' ? data : null);
+      if (pick3dUsed) { pick3dUsed = false; render(); } // o seletor 3D substituiu a vista 3D do ecrã: redesenha-a
+    });
     document.body.append(dlg);
     dlg.showModal();
   });
@@ -663,7 +691,7 @@ function contentsOf(l) {
   return (shelves.length ? shelves : [null]).map((s, i) => {
     let ts = s ? childrenOf(s.id).filter(c => c.grid_row == null).map(mkThing) : [], its = s ? itemsIn(s.id) : [];
     if (i === 0) { ts = ts.concat(real.filter(c => c.type !== 'prateleira').map(mkThing)); its = its.concat(itemsIn(l.id)); }
-    return { id: s ? s.id : null, things: ts, items: its.slice(0, 12).map(mkItem),
+    return { id: s ? s.id : null, name: s ? s.name : null, things: ts, items: its.slice(0, 12).map(mkItem),
       rows: s ? s.grid_rows || 0 : 0, cols: s ? s.grid_cols || 0 : 0, cells: s ? cellsOf(s) : [] };
   });
 }
@@ -673,7 +701,7 @@ const mkThing = c => ({
 });
 // Células de uma matriz com o que têm dentro (caixas e artigos), para se verem no desenho.
 const cellsOf = p => childrenOf(p.id).filter(c => c.grid_row != null).map(c => ({
-  id: c.id, row: c.grid_row, col: c.grid_col,
+  id: c.id, name: c.name, row: c.grid_row, col: c.grid_col,
   things: childrenOf(c.id).filter(x => x.grid_row == null).map(mkThing), items: itemsIn(c.id).slice(0, 6).map(mkItem),
 }));
 // Uma matriz não pode conter outra: dentro de uma posição de matriz (ou do que ela tem) já não se cria matriz.
@@ -1231,7 +1259,8 @@ function viewInventory() {
     const it = S.items.find(i => i.id === inv.sel);
     if (!it) { mapPanel.replaceChildren(h('p', { class: 'muted' }, 'Pesquise ou clique num artigo para ver onde está na planta 3D.')); return; }
     if (!it.location_id) {
-      mapPanel.replaceChildren(h('p', { class: 'muted' }, `"${it.name}" está na área temporária: ainda não tem posição definitiva na planta. `, h('a', { href: '#/temporaria' }, 'Arrumar')));
+      mapPanel.replaceChildren(h('p', { class: 'muted' }, `"${it.name}" está na área temporária: ainda não tem posição definitiva na planta. `, h('a', { href: '#/temporaria' }, 'Arrumar'), ' ',
+        h('button', { class: 'primary', onclick: () => moveItem(it) }, 'Mover')));
       return;
     }
     const path = pathOf(it.location_id), root = path[0];
@@ -1241,7 +1270,8 @@ function viewInventory() {
     }
     const box = box3d(path.map(l => l.id), (zid, tid, iid) => { location.hash = iid ? '#/item/' + iid : '#/loc/' + (tid || zid); }, null, spaceById(root.space_id));
     mapPanel.replaceChildren(
-      h('div', { class: 'inv-map-head' }, h('b', {}, it.name), ' · 📍 ' + pathText(it.location_id) + ' ', h('a', { href: '#/item/' + it.id }, 'Abrir artigo')),
+      h('div', { class: 'inv-map-head' }, h('b', {}, it.name), ' · 📍 ' + pathText(it.location_id) + ' ', h('a', { href: '#/item/' + it.id }, 'Abrir artigo'), ' ',
+        h('button', { class: 'primary', onclick: () => moveItem(it) }, 'Mover')),
       box, bar3d(box, true));
   };
   const draw = () => {
