@@ -104,6 +104,10 @@ def interface(request: Request, ctx: g.Ctx = Depends(ctx_pagina)):
     html = (ESTATICOS / "index.html").read_text(encoding="utf-8")
     html = html.replace('<base href="/">', f'<base href="{P}/">')
     html = html.replace('<meta charset="utf-8">', f'<meta charset="utf-8">\n  <meta name="csrf" content="{csrf_token(request)}">', 1)
+    # a versão nos ficheiros força o browser a ir buscar o código novo depois de cada atualização
+    from ..main import VERSAO
+    for f in ("style.css", "menu-def.js", "app.js"):
+        html = html.replace(f'"{f}"', f'"{f}?v={VERSAO}"')
     return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
 
 

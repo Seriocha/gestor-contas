@@ -2,7 +2,7 @@
 // Gestão de Garagem — web app (telemóvel e PC). Sem passo de compilação.
 
 const SVGNS = 'http://www.w3.org/2000/svg';
-const SVG_TAGS = new Set(['svg', 'rect', 'line', 'text', 'g']);
+const SVG_TAGS = new Set(['svg', 'rect', 'line', 'text', 'g', 'circle']);
 const TYPES = {
   zona: ['Zona', '📍'], estante: ['Estante', '🗄️'], armario: ['Armário', '🚪'], bancada: ['Bancada', '🛠️'],
   prateleira: ['Prateleira', '🪜'], caixa: ['Caixa', '📦'], gaveta: ['Gaveta', '🗃️'], mezanine: ['Mezanine', '🏗️'], outro: ['Outro', '📌'],
@@ -454,34 +454,60 @@ function freeSpot(l, body) {
   return null;
 }
 
-// ---------- alçados ----------
-// Projeções das zonas nas quatro paredes: o observador está do lado da parede e olha para dentro da sala.
-// Horizontal = direita do observador; vertical = altura. As zonas mais afastadas desenham-se primeiro.
-const VIEWS = [
-  { key: 'frente', title: 'Alçado da frente (visto da entrada)', u: (b, W) => b.x, len: (W) => W, dist: (b, W, D) => D - (b.y + b.ey), span: b => b.ex },
-  { key: 'fundo', title: 'Alçado do fundo (visto da parede do fundo)', u: (b, W) => W - b.x - b.ex, len: (W) => W, dist: b => b.y, span: b => b.ex },
-  { key: 'esquerda', title: 'Alçado da esquerda', u: b => b.y, len: (W, D) => D, dist: b => b.x, span: b => b.ey },
-  { key: 'direita', title: 'Alçado da direita', u: (b, W, D) => D - b.y - b.ey, len: (W, D) => D, dist: (b, W) => W - (b.x + b.ex), span: b => b.ey },
-];
+// ---------- projeções (geometria descritiva) ----------
+// Ponto de vista no centro da garagem (marcado na planta): quatro alçados, um para cada parede, vistos de dentro e
+// em projeção ortogonal, na ordem em que se rodaria no sítio (fundo › direita › frente › esquerda). Em cada um, a
+// direita do observador é a direita do desenho; só se veem as zonas que passam para lá do centro e as mais perto
+// do observador tapam as mais afastadas. A planta fica por baixo e as alturas estão ligadas por linhas de chamada.
 function elevationsSvg({ highlight, onpick, space } = {}) {
   const sp = space || curSpace();
-  const W = Number(sp.w) || 6, D = Number(sp.d) || 5, H = Number(sp.h) || 2.5;
+  const W = Number(sp.w) || 6, D = Number(sp.d) || 5, H = Number(sp.h) || 2.5, G = 0.4;
+  const cx = W / 2, cy = D / 2;
   const hl = new Set([].concat(highlight ?? []));
-  const zones = zoneChoices(sp.id).filter(onMap);
-  return h('div', { class: 'elevations' }, VIEWS.map(v => {
-    const L = v.len(W, D);
-    const svg = h('svg', { viewBox: `-0.1 -0.1 ${L + 0.2} ${H + 0.2}`, class: 'plan elev' },
-      h('rect', { x: 0, y: 0, width: L, height: H, class: 'floor' }));
-    const items = zones.map(l => ({ l, b: bbox(l) })).sort((a, b) => v.dist(b.b, W, D) - v.dist(a.b, W, D));
-    for (const { l, b } of items) {
-      const w = v.span(b), x = v.u(b, W, D), top = H - Math.min(H, b.z1), ht = Math.max(0.02, Math.min(H, b.z1) - Math.max(0, b.z0));
-      const fs = Math.max(0.1, Math.min(0.25, w / (l.name.length * 0.58), ht * 0.6));
-      svg.append(h('g', { class: 'zone' + (l.type === 'mezanine' ? ' mezz' : '') + (mezzOf(l) ? ' sub' : '') + (hl.has(l.id) ? ' hl' : ''), onclick: () => onpick && onpick(l) },
-        h('rect', { x, y: top, width: w, height: ht, rx: 0.03 }),
-        h('text', { x: x + w / 2, y: top + ht / 2, 'font-size': fs }, l.name)));
+  const zones = zoneChoices(sp.id).filter(onMap).map(l => ({ l, b: bbox(l) }));
+  const cls = l => 'zone' + (l.type === 'mezanine' ? ' mezz' : '') + (mezzOf(l) ? ' sub' : '') + (hl.has(l.id) ? ' hl' : '');
+  // u: posição na horizontal do desenho; len: largura da vista; far/near: distância do observador à face de trás/da frente
+  const VIEWS = [
+    { title: '① Para o fundo', len: W, u: b => b.x, w: b => b.ex, far: b => cy - b.y, near: b => cy - (b.y + b.ey) },
+    { title: '② Para a direita', len: D, u: b => b.y, w: b => b.ey, far: b => b.x + b.ex - cx, near: b => b.x - cx },
+    { title: '③ Para a frente (entrada)', len: W, u: b => W - b.x - b.ex, w: b => b.ex, far: b => b.y + b.ey - cy, near: b => b.y - cy },
+    { title: '④ Para a esquerda', len: D, u: b => D - b.y - b.ey, w: b => b.ey, far: b => cx - b.x, near: b => cx - (b.x + b.ex) },
+  ];
+  let off = 0;
+  for (const v of VIEWS) { v.off = off; off += v.len + G; }
+  const totW = off - G, planX = (totW - W) / 2, planY = H + G + 0.3, totH = planY + D;
+  const svg = h('svg', { viewBox: `-0.1 -0.4 ${totW + 0.2} ${totH + 1.1}`, class: 'plan monge' });
+  const frame = (x, y, w, hh, title) => svg.append(
+    h('rect', { x, y, width: w, height: hh, class: 'floor' }), h('text', { x: x + w / 2, y: y - 0.08, class: 'cap', 'font-size': 0.2 }, title));
+  const rect = (l, x, y, w, hh) => {
+    const fs = Math.max(0.09, Math.min(0.22, w / (l.name.length * 0.58), hh * 0.6));
+    return h('g', { class: cls(l), 'data-id': l.id, onclick: () => onpick && onpick(l) },
+      h('rect', { x, y, width: w, height: hh, rx: 0.03 }), h('text', { x: x + w / 2, y: y + hh / 2, 'font-size': fs }, l.name));
+  };
+  const guide = (x1, y1, x2, y2) => svg.append(h('line', { x1, y1, x2, y2, class: 'guide' }));
+  const zs = new Set();
+  for (const { b } of zones) { zs.add(Math.min(H, b.z1)); zs.add(Math.max(0, b.z0)); }
+  for (const v of VIEWS) frame(v.off, 0, v.len, H, v.title);
+  for (let i = 0; i < VIEWS.length - 1; i++) for (const z of zs) guide(VIEWS[i].off + VIEWS[i].len, H - z, VIEWS[i + 1].off, H - z);
+  for (const v of VIEWS) {
+    const seen = zones.filter(({ b }) => v.far(b) > EPS).sort((p, q) => v.near(q.b) - v.near(p.b));
+    for (const { l, b } of seen) {
+      const top = H - Math.min(H, b.z1), hh = Math.max(0.02, Math.min(H, b.z1) - Math.max(0, b.z0));
+      svg.append(rect(l, v.off + v.u(b), top, v.w(b), hh));
     }
-    return h('figure', {}, h('figcaption', {}, v.title), svg);
-  }));
+  }
+  // planta com o ponto de vista e as quatro direções
+  frame(planX, planY, W, D, '');
+  svg.append(h('text', { x: planX + W / 2, y: planY + D + 0.55, class: 'cap', 'font-size': 0.2 }, 'Planta · ponto de vista no centro (●)'));
+  const rank = l => (l.type === 'mezanine' ? 0 : mezzOf(l) ? 2 : 1);
+  for (const { l, b } of zones.slice().sort((p, q) => rank(p.l) - rank(q.l))) svg.append(rect(l, planX + b.x, planY + b.y, b.ex, b.ey));
+  const px = planX + cx, py = planY + cy;
+  [[px, planY, '①'], [planX + W, py, '②'], [px, planY + D, '③'], [planX, py, '④']].forEach(([x, y, n]) => {
+    guide(px, py, x, y);
+    svg.append(h('text', { x: x + (n === '②' ? 0.15 : n === '④' ? -0.15 : 0), y: y + (n === '①' ? -0.08 : n === '③' ? 0.22 : 0.07), class: 'cap', 'font-size': 0.2 }, n));
+  });
+  svg.append(h('circle', { cx: px, cy: py, r: 0.09, class: 'eye' }));
+  return h('div', { class: 'monge-wrap' }, svg);
 }
 function planSvg({ highlight, onpick, edit, space } = {}) {
   const sp = space || curSpace();
@@ -609,7 +635,7 @@ function planView(highlight, path3d, space) {
     } else {
       const hl = path3d || highlight;
       body.replaceChildren(planSvg({ highlight: hl, space, onpick: l => open(l.id) }),
-        h('h3', {}, 'Alçados'), elevationsSvg({ highlight: hl, space, onpick: l => open(l.id) }));
+        h('h3', {}, 'Alçados vistos do centro'), elevationsSvg({ highlight: hl, space, onpick: l => open(l.id) }));
     }
   };
   draw();
@@ -887,7 +913,7 @@ function viewMap2d() {
       ? `Arraste "${sel.name}" para a mover, ou arraste no vazio para desenhar a posição e as medidas${mezzOf(sel) ? ' dentro da mezanine' : ''}. Cada quadrícula é 1 m; encaixa de ${SNAP * 100} em ${SNAP * 100} cm. Não pode sobrepor outra zona ao mesmo nível.`
       : 'Escolha uma zona abaixo e depois arraste sobre a planta para a posicionar.'),
     h('div', { class: 'plan-wrap' }, svg),
-    h('h3', {}, 'Alçados'), elevationsSvg({ highlight: planSel, space: curSpace(), onpick: l => { planSel = l.id; render(); } }),
+    h('h3', {}, 'Alçados vistos do centro'), elevationsSvg({ highlight: planSel, space: curSpace(), onpick: l => { planSel = l.id; render(); } }),
     zoneChips(zones),
     sel ? coordsPanel(sel) : null,
     resetSection(),

@@ -410,3 +410,8 @@ def test_zonas_ao_mesmo_nivel_nao_se_sobrepoem(api):
     # girar uma zona também conta (a área no chão muda)
     c = api.novo("/locations", {"name": "C", "type": "estante", "plan_x": 3, "plan_y": 0, "plan_w": 2, "plan_h": 0.5, "plan_alt": 2})
     assert api.put(f"/locations/{c}", {"plan_wall": "esquerda", "plan_x": 0}).status_code == 409
+
+
+def test_interface_leva_a_versao_nos_ficheiros(api):
+    html = api.c.get(f"{A}/").text
+    assert re.search(r'src="app\.js\?v=\d+\.\d+\.\d+"', html) and re.search(r'href="style\.css\?v=\d+\.\d+\.\d+"', html)

@@ -207,10 +207,11 @@ button:disabled { opacity: .45; cursor: default; }
 .embed .sidebar .quick { padding: 0; }
 .embed .content { max-width: none; padding: 1rem; }
 
-/* alçados e edição sem sobreposição */
-.elevations { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; margin-top: 6px; }
-.elevations figure { margin: 0; }
-.elevations figcaption { font-size: .85rem; color: var(--muted, inherit); margin-bottom: 2px; }
-.plan.elev { max-height: 30vh; }
+/* projeções (alçados + planta) e edição sem sobreposição */
+.monge-wrap { overflow-x: auto; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 8px; margin-top: 6px; }
+.plan.monge { min-width: 760px; max-height: none; }
+.plan .cap { fill: var(--text); text-anchor: middle; opacity: .7; }
+.plan .eye { fill: #d33; }
+.plan .guide { stroke: var(--text); stroke-width: .012; stroke-dasharray: .06 .05; opacity: .35; }
 .plan .draft.bad { fill: #d33; opacity: .55; }
 .plan.edit .zone.hl { cursor: move; }
