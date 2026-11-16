@@ -215,3 +215,5 @@ button:disabled { opacity: .45; cursor: default; }
 .plan .guide { stroke: var(--text); stroke-width: .012; stroke-dasharray: .06 .05; opacity: .35; }
 .plan .draft.bad { fill: #d33; opacity: .55; }
 .plan.edit .zone.hl { cursor: move; }
+dialog .cards { display: grid; gap: 6px; max-height: 45vh; overflow-y: auto; margin: 8px 0; }
+.card.pick { width: 100%; text-align: left; border: 1px solid var(--line); cursor: pointer; color: inherit; font: inherit; }

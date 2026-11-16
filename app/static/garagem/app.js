@@ -221,17 +221,35 @@ function fieldEl(f, data) {
       ? [{ value: '', label: f.emptyLabel || '(Área temporária)' }, ...locationOptions(f.exclude)]
       : f.options;
     const conv = v => (f.type === 'location' ? (v === '' ? null : Number(v)) : v);
-    input = h('select', { onchange: e => set(conv(e.target.value)) },
-      opts.map(o => h('option', { value: o.value, selected: String(o.value) === String(data[f.key] ?? '') }, o.label)));
+    const draw = (list, keep) => list.map(o => h('option', { value: o.value, selected: String(o.value) === String(keep ?? '') }, o.label));
+    input = h('select', { onchange: e => set(conv(e.target.value)) }, draw(opts, data[f.key]));
     if (f.type === 'location') {
       const sel = input;
-      input = h('div', { class: 'row' }, sel, h('button', {
-        type: 'button', onclick: async () => {
-          try { const loc = await scanQR(); if (loc) { sel.value = loc.id; set(loc.id); toast('Localização: ' + pathText(loc.id)); } }
-          catch (e) { toast(e.message); }
+      // Pesquisa: filtra a lista pelo nome, pelo caminho (estante › prateleira › caixa) ou pelo código da etiqueta.
+      const search = h('input', {
+        type: 'search', placeholder: 'Pesquisar localização…', autocomplete: 'off', 'aria-label': 'Pesquisar localização',
+        oninput: e => {
+          const terms = norm(e.target.value).split(/\s+/).filter(Boolean);
+          if (!terms.length) { sel.replaceChildren(...draw(opts, data[f.key])); return; }
+          const hits = locationOptions(f.exclude).filter(o => o.value !== '' && terms.every(t =>
+            norm(pathText(o.value) + ' ' + (byId.get(o.value) || {}).code).includes(t)));
+          sel.replaceChildren(...hits.map((o, i) => h('option', { value: o.value, selected: i === 0 },
+            `${icon(byId.get(o.value))} ${pathText(o.value)}`)));
+          if (hits.length) set(hits[0].value);
+          note.textContent = hits.length ? `${hits.length} ${hits.length === 1 ? 'resultado' : 'resultados'}` : 'Nada encontrado';
         },
-      }, 'Ler QR da caixa/gaveta'));
-      sel.style.flex = '1 1 200px';
+        onkeydown: e => { if (e.key === 'Enter') e.preventDefault(); },
+      });
+      const note = h('small', { class: 'muted' }, '');
+      input = h('div', {},
+        h('div', { class: 'row' }, search, note),
+        h('div', { class: 'row' }, sel, h('button', {
+          type: 'button', onclick: async () => {
+            try { const loc = await scanQR(); if (loc) { search.value = ''; sel.replaceChildren(...draw(opts, loc.id)); sel.value = loc.id; set(loc.id); toast('Localização: ' + pathText(loc.id)); } }
+            catch (e) { toast(e.message); }
+          },
+        }, 'Ler QR da caixa/gaveta')));
+      search.style.flex = '1 1 200px'; sel.style.flex = '1 1 200px';
     }
   } else if (f.type === 'textarea') {
     input = h('textarea', { oninput: e => set(e.target.value) }, data[f.key] || '');
@@ -280,6 +298,58 @@ const newItem = locId => act(async () => {
   const { id } = await api('POST', '/api/items', d);
   location.hash = '#/item/' + id;
 });
+// «+ Artigo aqui»: pesquisar no inventário um artigo que já existe e pô-lo nesta localização, ou criar um novo.
+const addItem = locId => {
+  if (locId == null) return newItem(null);
+  const loc = byId.get(locId);
+  return act(() => new Promise(resolve => {
+    const list = h('div', { class: 'cards' });
+    const note = h('small', { class: 'muted' }, '');
+    const search = h('input', { type: 'search', placeholder: 'Pesquisar no inventário (nome, categoria, notas, localização)…', autocomplete: 'off', 'aria-label': 'Pesquisar no inventário' });
+    const dlg = h('dialog', {}, h('div', {},
+      h('h2', {}, `Artigo em "${loc ? loc.name : 'esta localização'}"`),
+      h('p', { class: 'muted' }, 'Procure um artigo que já existe para o pôr aqui, ou crie um novo.'),
+      search, note, list,
+      h('div', { class: 'row end' },
+        h('button', { type: 'button', class: 'ghost', onclick: () => dlg.close('') }, 'Cancelar'),
+        h('button', { type: 'button', class: 'primary', onclick: () => dlg.close('novo') }, '+ Novo artigo'))));
+    let picked = null;
+    const draw = () => {
+      const terms = norm(search.value).split(/\s+/).filter(Boolean);
+      const hits = S.items.filter(i => i.location_id !== locId && terms.every(t =>
+        norm([i.name, i.category, i.notes, i.quantity, pathText(i.location_id)].join(' ')).includes(t)));
+      note.textContent = terms.length ? `${hits.length} ${hits.length === 1 ? 'resultado' : 'resultados'}${hits.length > 30 ? ' (primeiros 30)' : ''}` : `${hits.length} artigos no inventário`;
+      list.replaceChildren(...hits.slice(0, 30).map(it => h('button', {
+        type: 'button', class: 'card pick', onclick: () => { picked = it; dlg.close('mover'); },
+      }, it.photo ? h('img', { class: 'thumb', src: PHOTOS + it.photo, loading: 'lazy', alt: '' }) : h('div', { class: 'thumb' }, '🔩'),
+      h('div', { class: 'body' }, h('div', { class: 'title' }, it.name),
+        h('div', { class: 'sub' }, [it.quantity && `Qtd: ${it.quantity}`, it.category].filter(Boolean).join(' · ')),
+        h('div', { class: 'sub' }, '📍 ' + pathText(it.location_id))))));
+    };
+    search.addEventListener('input', draw);
+    search.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); const f = list.querySelector('button'); if (f) f.click(); } });
+    dlg.addEventListener('close', async () => {
+      dlg.remove();
+      try {
+        if (dlg.returnValue === 'mover' && picked) {
+          await api('PUT', '/api/items/' + picked.id, { location_id: locId });
+          toast(`"${picked.name}" passou para ${pathText(locId)}.`);
+          resolve(true);
+        } else if (dlg.returnValue === 'novo') {
+          const d = await formDialog('Novo artigo', itemFields(), { location_id: locId });
+          if (!d) return resolve(false);
+          const { id } = await api('POST', '/api/items', d);
+          location.hash = '#/item/' + id;
+          resolve(true);
+        } else resolve(false);
+      } catch (e) { toast(e.message); resolve(false); }
+    });
+    document.body.append(dlg);
+    dlg.showModal();
+    draw();
+    search.focus();
+  }));
+};
 const editItem = it => act(async () => {
   const d = await formDialog('Editar artigo', itemFields(), it);
   if (!d) return false;
@@ -750,7 +820,7 @@ function viewLocation(id) {
     h('div', { class: 'muted' }, `${(TYPES[loc.type] || TYPES.outro)[0]} · código ${loc.code}`),
     loc.notes ? h('p', {}, loc.notes) : null,
     h('div', { class: 'row actions' },
-      h('button', { class: 'primary', onclick: () => newItem(id) }, '+ Artigo aqui'),
+      h('button', { class: 'primary', onclick: () => addItem(id) }, '+ Artigo aqui'),
       h('button', { onclick: () => newLocation(id) }, '+ Sub-localização'),
       loc.grid_rows ? [
         h('a', { class: 'btn', href: '#/matrix/' + id }, 'Rever matriz'),
@@ -1438,7 +1508,7 @@ $('#btn-scan').addEventListener('click', async () => {
 });
 $('#btn-new').addEventListener('click', () => {
   const [, view, arg] = location.hash.split('/');
-  newItem(view === 'loc' && byId.has(Number(arg)) ? Number(arg) : null);
+  addItem(view === 'loc' && byId.has(Number(arg)) ? Number(arg) : null);
 });
 
 reload().then(render, e => {
