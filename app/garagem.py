@@ -505,6 +505,8 @@ def atualizar_local(ctx: Ctx, id_, body: dict, rotulo: str = "alterar localizaç
         _verifica_parede(o)
         if "parent_id" in o:
             _checar_pai(ctx, cur.id, o["parent_id"])
+            if o["parent_id"] is not None and _dentro_de_matriz(ctx, o["parent_id"]) and _tem_matriz(ctx, cur.id):
+                raise GaragemErro(MSG_MATRIZ + " Não pode pôr aqui uma localização que tem matriz.", 409)
             if o["parent_id"] is not None:
                 o["space_id"] = None                       # só as zonas de topo pertencem a um espaço
             elif o.get("space_id") is None:
@@ -536,12 +538,42 @@ def apagar_local(ctx: Ctx, id_) -> None:
         ctx.db.delete(l)
 
 
+MSG_MATRIZ = "Uma matriz não pode conter outra matriz."
+
+
+def _dentro_de_matriz(ctx: Ctx, id_) -> bool:
+    """True se a localização `id_` é uma posição de matriz ou está dentro de uma (a qualquer nível)."""
+    p = _loc(ctx, id_) if id_ else None
+    while p:
+        if p.grid_row is not None:
+            return True
+        p = _loc(ctx, p.parent_id) if p.parent_id else None
+    return False
+
+
+def _tem_matriz(ctx: Ctx, id_: int) -> bool:
+    """True se a localização ou algo do que tem dentro tem matriz."""
+    filhos: dict[int | None, list[GarLocal]] = {}
+    for l in ctx.db.scalars(select(GarLocal).where(GarLocal.entidade_id == ctx.ent)):
+        filhos.setdefault(l.parent_id, []).append(l)
+    pilha = [id_]
+    while pilha:
+        atual = pilha.pop()
+        l = _loc(ctx, atual)
+        if l is not None and l.grid_rows:
+            return True
+        pilha.extend(f.id for f in filhos.get(atual, []))
+    return False
+
+
 def grelha_criar(ctx: Ctx, id_, body: dict) -> None:
     """Cria (ou altera) a matriz de sub-localizações, ex.: caixa de arquivo com 5 × 4 gavetas. Reduzir só apaga posições vazias."""
     with mutacao(ctx, "alterar matriz"):
         loc = _loc(ctx, id_)
         if not loc:
             raise GaragemErro("Localização inexistente.", 404)
+        if _dentro_de_matriz(ctx, loc.id):
+            raise GaragemErro(MSG_MATRIZ + " Esta localização já está dentro de uma matriz.", 409)
         try:
             linhas, colunas = int(body.get("rows")), int(body.get("cols"))
         except (TypeError, ValueError):

@@ -393,6 +393,7 @@ const editLocation = loc => act(async () => {
   await api('PUT', '/api/locations/' + loc.id, { name, type, parent_id, photo, notes, space_id });
 });
 const makeGrid = loc => act(async () => {
+  if (inMatrix(loc.id)) { toast('Uma matriz não pode conter outra matriz.'); return false; }
   // Numa zona do mapa sem parede, a frente (onde ficam as gavetas) escolhe-se aqui.
   const faceable = !loc.parent_id && loc.plan_w > 0 && !loc.plan_wall;
   const d = await formDialog(`Matriz de "${loc.name}"`, [
@@ -579,10 +580,24 @@ function elevationsSvg({ highlight, onpick, space } = {}) {
   svg.append(h('circle', { cx: px, cy: py, r: 0.09, class: 'eye' }));
   return h('div', { class: 'monge-wrap' }, svg);
 }
+// Planta com as medidas numa coluna à esquerda e o desenho encostado à direita, ao seu espaço interno.
+// Mostra as medidas do espaço e, havendo uma zona destacada (a mais interior que está no mapa), as dela.
+function planFrame(drawing, space, hlIds) {
+  const sp = space || curSpace();
+  const m = n => (Math.round(Number(n || 0) * 100) / 100).toString().replace('.', ',') + ' m';
+  const row = (k, v) => h('div', { class: 'meas-row' }, h('span', {}, k), h('b', {}, v));
+  const z = [].concat(hlIds ?? []).map(id => byId.get(id)).filter(l => l && onMap(l)).pop();
+  return h('div', { class: 'plan-row' },
+    h('div', { class: 'plan-meas' },
+      h('h4', {}, sp.name), row('Largura', m(sp.w)), row('Profundidade', m(sp.d)), row('Altura', m(sp.h)),
+      z ? [h('h4', {}, z.name), row('Largura', m(z.plan_w)), row('Profundidade', m(z.plan_h)), row('Altura', m(z.plan_alt || defaultAlt(z))),
+        row('X', m(absXY(z).x)), row('Y', m(absXY(z).y)), row('Z', m(baseZ(z)))] : null),
+    h('div', { class: 'plan-draw' }, drawing));
+}
 function planSvg({ highlight, onpick, edit, space } = {}) {
   const sp = space || curSpace();
   const W = Number(sp.w) || 6, D = Number(sp.d) || 5;
-  const svg = h('svg', { viewBox: `-0.1 -0.1 ${W + 0.2} ${D + 0.2}`, class: 'plan' + (edit ? ' edit' : '') },
+  const svg = h('svg', { viewBox: `-0.1 -0.1 ${W + 0.2} ${D + 0.2}`, preserveAspectRatio: 'xMaxYMid meet', class: 'plan' + (edit ? ' edit' : '') },
     h('rect', { x: 0, y: 0, width: W, height: D, class: 'floor' }));
   for (let x = 1; x < W; x++) svg.append(h('line', { x1: x, y1: 0, x2: x, y2: D, class: 'grid' }));
   for (let y = 1; y < D; y++) svg.append(h('line', { x1: 0, y1: y, x2: W, y2: y, class: 'grid' }));
@@ -643,19 +658,26 @@ const defaultAlt = l => DEFAULT_ALT[l.type] || 1;
 function contentsOf(l) {
   if (l.type === 'mezanine') return []; // os filhos da mezanine são zonas na planta, não conteúdo do piso
   const kidsAll = childrenOf(l.id);
-  const real = kidsAll.filter(c => !(l.grid_rows && c.grid_row != null)); // as células da matriz desenham-se como grelha
-  const mk = c => ({
-    id: c.id, name: c.name, type: c.type, rows: c.grid_rows || 0, cols: c.grid_cols || 0, n: countItems(c.id),
-    cells: childrenOf(c.id).filter(x => x.grid_row != null).map(x => ({ id: x.id, row: x.grid_row, col: x.grid_col })),
-  });
-  const mkItem = i => ({ id: i.id, name: i.name });
+  const real = kidsAll.filter(c => c.grid_row == null); // as células da matriz desenham-se como grelha
   const shelves = real.filter(c => c.type === 'prateleira');
   return (shelves.length ? shelves : [null]).map((s, i) => {
-    let ts = s ? childrenOf(s.id).map(mk) : [], its = s ? itemsIn(s.id) : [];
-    if (i === 0) { ts = ts.concat(real.filter(c => c.type !== 'prateleira').map(mk)); its = its.concat(itemsIn(l.id)); }
-    return { id: s ? s.id : null, things: ts, items: its.slice(0, 12).map(mkItem) };
+    let ts = s ? childrenOf(s.id).filter(c => c.grid_row == null).map(mkThing) : [], its = s ? itemsIn(s.id) : [];
+    if (i === 0) { ts = ts.concat(real.filter(c => c.type !== 'prateleira').map(mkThing)); its = its.concat(itemsIn(l.id)); }
+    return { id: s ? s.id : null, things: ts, items: its.slice(0, 12).map(mkItem),
+      rows: s ? s.grid_rows || 0 : 0, cols: s ? s.grid_cols || 0 : 0, cells: s ? cellsOf(s) : [] };
   });
 }
+const mkItem = i => ({ id: i.id, name: i.name });
+const mkThing = c => ({
+  id: c.id, name: c.name, type: c.type, rows: c.grid_rows || 0, cols: c.grid_cols || 0, n: countItems(c.id), cells: cellsOf(c),
+});
+// Células de uma matriz com o que têm dentro (caixas e artigos), para se verem no desenho.
+const cellsOf = p => childrenOf(p.id).filter(c => c.grid_row != null).map(c => ({
+  id: c.id, row: c.grid_row, col: c.grid_col,
+  things: childrenOf(c.id).filter(x => x.grid_row == null).map(mkThing), items: itemsIn(c.id).slice(0, 6).map(mkItem),
+}));
+// Uma matriz não pode conter outra: dentro de uma posição de matriz (ou do que ela tem) já não se cria matriz.
+const inMatrix = id => pathOf(id).some(l => l.grid_row != null);
 function scene3d(highlight, onpick, edit, space) {
   const sp = space || curSpace();
   return {
@@ -667,7 +689,7 @@ function scene3d(highlight, onpick, edit, space) {
       z: baseZ(l), h: l.plan_alt || defaultAlt(l),
       kind: l.type === 'mezanine' ? 'mezz' : mezzOf(l) ? 'sub' : null, fixed: !!mezzOf(l), parent: l.parent_id,
       contents: contentsOf(l), rows: l.grid_rows || 0, cols: l.grid_cols || 0,
-      cells: childrenOf(l.id).filter(c => c.grid_row != null).map(c => ({ id: c.id, row: c.grid_row, col: c.grid_col })),
+      cells: cellsOf(l),
     })),
   };
 }
@@ -707,7 +729,7 @@ function planView(highlight, path3d, space) {
       body.replaceChildren(box, bar3d(box, !!(path3d || highlight)), h('div', { class: 'muted' }, 'Arraste para rodar, belisque ou use a roda para aproximar, toque numa zona para a abrir.'));
     } else {
       const hl = path3d || highlight;
-      body.replaceChildren(planSvg({ highlight: hl, space, onpick: l => open(l.id) }),
+      body.replaceChildren(planFrame(planSvg({ highlight: hl, space, onpick: l => open(l.id) }), space, hl),
         h('h3', {}, 'Alçados vistos do centro'), elevationsSvg({ highlight: hl, space, onpick: l => open(l.id) }));
     }
   };
@@ -829,7 +851,7 @@ function viewLocation(id) {
         h('a', { class: 'btn', href: '#/matrix/' + id }, 'Rever matriz'),
         h('button', { onclick: () => makeGrid(loc) }, 'Alterar matriz'),
         h('button', { class: 'danger', onclick: () => deleteGrid(loc) }, 'Apagar matriz'),
-      ] : h('button', { onclick: () => makeGrid(loc) }, 'Criar matriz'),
+      ] : inMatrix(id) ? null : h('button', { onclick: () => makeGrid(loc) }, 'Criar matriz'),
       h('a', { class: 'btn', href: '#/labels/' + id }, 'Etiquetas QR'),
       h('button', { onclick: () => editLocation(loc) }, 'Editar'),
       h('button', { onclick: () => duplicateLocation(loc) }, 'Duplicar'),
@@ -985,7 +1007,7 @@ function viewMap2d() {
     h('p', { class: 'muted' }, sel
       ? `Arraste "${sel.name}" para a mover, ou arraste no vazio para desenhar a posição e as medidas${mezzOf(sel) ? ' dentro da mezanine' : ''}. Cada quadrícula é 1 m; encaixa de ${SNAP * 100} em ${SNAP * 100} cm. Não pode sobrepor outra zona ao mesmo nível.`
       : 'Escolha uma zona abaixo e depois arraste sobre a planta para a posicionar.'),
-    h('div', { class: 'plan-wrap' }, svg),
+    h('div', { class: 'plan-wrap' }, planFrame(svg, curSpace(), planSel)),
     h('h3', {}, 'Alçados vistos do centro'), elevationsSvg({ highlight: planSel, space: curSpace(), onpick: l => { planSel = l.id; render(); } }),
     zoneChips(zones),
     sel ? coordsPanel(sel) : null,

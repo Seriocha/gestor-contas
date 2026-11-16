@@ -107,7 +107,8 @@ export function mount(el, { W, D, H, zones, highlight, onpick, editable, onmove,
   const darkLine = new THREE.LineBasicMaterial({ color: 0x1b1f26 });
 
   // Grelha de gavetas desenhada na face da frente (+z); as células em `hl` ficam a laranja.
-  const frontGrid = (parent, x, y, zf, w, h, rows, cols, cells) => {
+  const cellHl = cs => (cs || []).some(c => hl.has(c.id) || (c.things || []).some(t => hl.has(t.id)));
+  const frontGrid = (parent, x, y, zf, w, h, rows, cols, cells, zone) => {
     const lp = [];
     for (let i = 0; i <= cols; i++) lp.push(x + w * i / cols, y, zf + 0.002, x + w * i / cols, y + h, zf + 0.002);
     for (let j = 0; j <= rows; j++) lp.push(x, y + h * j / rows, zf + 0.002, x + w, y + h * j / rows, zf + 0.002);
@@ -119,6 +120,31 @@ export function mount(el, { W, D, H, zones, highlight, onpick, editable, onmove,
       const p = new THREE.Mesh(new THREE.PlaneGeometry(w / cols, h / rows), new THREE.MeshBasicMaterial({ color: hlCol }));
       p.position.set(x + w * (c.col + 0.5) / cols, y + h * (1 - (c.row + 0.5) / rows), zf + 0.004);
       parent.add(p);
+    }
+    // Caixas e artigos que estão numa célula: saem um pouco da face para se verem (e escolherem) no desenho.
+    const cw = w / cols, ch = h / rows;
+    for (const c of cells || []) {
+      if (c.row >= rows || c.col >= cols) continue;
+      const entries = [...(c.things || []).map(t => ({ t })), ...(c.items || []).slice(0, 3).map(it => ({ it }))];
+      const n = entries.length;
+      if (!n) continue;
+      const depth = Math.min(0.16, Math.max(0.05, cw * 0.5));
+      entries.forEach((en, k) => {
+        const sw = cw * 0.9 / n, sh = en.it ? ch * 0.4 : ch * 0.82;
+        const on = hl.has(c.id) || (en.t && hl.has(en.t.id));
+        const bg = new THREE.BoxGeometry(sw, sh, depth);
+        const m = new THREE.Mesh(bg, en.it ? new THREE.MeshBasicMaterial({ color: TYPE_COLOR.item })
+          : new THREE.MeshLambertMaterial({ color: on ? hlCol : (TYPE_COLOR[en.t.type] || '#8fa7bf') }));
+        m.position.set(x + cw * c.col + cw * 0.05 + sw * (k + 0.5),
+          y + ch * (rows - 1 - c.row) + ch / 2 - (en.it ? ch * 0.2 : 0), zf + depth / 2 + 0.006);
+        m.userData.zone = zone;
+        m.userData.thing = en.t ? { id: en.t.id, itemId: null, name: en.t.name + (en.t.n ? ` · ${en.t.n} artigos` : '') }
+          : { id: null, itemId: en.it.id, name: en.it.name };
+        const e = new THREE.LineSegments(new THREE.EdgesGeometry(bg), darkLine);
+        e.position.copy(m.position);
+        parent.add(m, e);
+        things.push(m);
+      });
     }
   };
 
@@ -136,9 +162,9 @@ export function mount(el, { W, D, H, zones, highlight, onpick, editable, onmove,
   for (const z of zones) {
     const levels = z.contents || [];
     const L = Math.max(1, levels.length), lh = z.h / L;
-    const hasContents = !!z.rows || levels.some(l => l.things.length || l.items.length);
-    const contentHl = (z.cells || []).some(c => hl.has(c.id)) || levels.some(l => (l.id && hl.has(l.id)) ||
-      l.things.some(t => hl.has(t.id) || t.cells.some(c => hl.has(c.id))));
+    const hasContents = !!z.rows || levels.some(l => l.rows || l.things.length || l.items.length);
+    const contentHl = cellHl(z.cells) || levels.some(l => (l.id && hl.has(l.id)) || cellHl(l.cells) ||
+      l.things.some(t => hl.has(t.id) || cellHl(t.cells)));
     const subHl = z.kind === 'mezz' && zones.some(q => q.parent === z.id && hl.has(q.id)); // zona da mezanine destacada
     const zoneHl = hl.has(z.id) && !contentHl && !subHl;
     const mezz = z.kind === 'mezz';
@@ -174,7 +200,7 @@ export function mount(el, { W, D, H, zones, highlight, onpick, editable, onmove,
       lg.setAttribute('position', new THREE.Float32BufferAttribute(lp, 3));
       grp.add(new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ color: lineCol })));
     }
-    if (z.rows) frontGrid(grp, 0, 0, z.d, z.w, z.h, z.rows, z.cols, z.cells);
+    if (z.rows) frontGrid(grp, 0, 0, z.d, z.w, z.h, z.rows, z.cols, z.cells, z);
 
     // Conteúdo de cada nível: caixas/outros objetos e artigos soltos, em fila ao longo do lado maior.
     const alongX = z.w >= z.d, len = alongX ? z.w : z.d, across = alongX ? z.d : z.w;
@@ -185,6 +211,7 @@ export function mount(el, { W, D, H, zones, highlight, onpick, editable, onmove,
         slab.position.set(z.w / 2, y0 + 0.02, z.d / 2);
         grp.add(slab);
       }
+      if (lv.rows) frontGrid(grp, 0, y0, z.d, z.w, lh, lv.rows, lv.cols, lv.cells, z); // matriz na prateleira
       const entries = [...lv.things.map(t => ({ t })), ...lv.items.map(it => ({ it }))];
       const slot = len / Math.max(1, entries.length);
       entries.forEach((en, k) => {
@@ -195,7 +222,7 @@ export function mount(el, { W, D, H, zones, highlight, onpick, editable, onmove,
         const sx = alongX ? sAlong : sThick, sz = alongX ? sThick : sAlong;
         const cx = alongX ? (k + 0.5) * slot : z.w / 2, cz = alongX ? z.d / 2 : (k + 0.5) * slot;
         const by = y0 + (lv.id ? 0.04 : 0.01);
-        const on = t && (hl.has(t.id) || t.cells.some(c => hl.has(c.id)));
+        const on = t && (hl.has(t.id) || cellHl(t.cells));
         const bg = new THREE.BoxGeometry(sx, sy, sz);
         // Os artigos soltos usam um verde vivo sem sombreado (MeshBasic) para se verem bem no meio do resto.
         const m = new THREE.Mesh(bg, item ? new THREE.MeshBasicMaterial({ color: TYPE_COLOR.item })
@@ -207,7 +234,7 @@ export function mount(el, { W, D, H, zones, highlight, onpick, editable, onmove,
         e.position.copy(m.position);
         grp.add(m, e);
         things.push(m);
-        if (t && t.rows) frontGrid(grp, cx - sx / 2, by, cz + sz / 2, sx, sy, t.rows, t.cols, t.cells);
+        if (t && t.rows) frontGrid(grp, cx - sx / 2, by, cz + sz / 2, sx, sy, t.rows, t.cols, t.cells, z);
       });
     });
 

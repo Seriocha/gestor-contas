@@ -137,6 +137,24 @@ def test_espaco_inicial_e_imovel(api, app):
     assert api.post("/spaces", {"name": "", "w": 2, "d": 2, "h": 2}).status_code == 400
 
 
+def test_matriz_nao_contem_matriz(api):
+    arm = api.novo("/locations", {"name": "Armário", "type": "armario", "plan_x": 0, "plan_y": 0, "plan_w": 1, "plan_h": 0.5, "plan_alt": 2})
+    assert api.post(f"/locations/{arm}/grid", {"rows": 1, "cols": 2}).status_code == 200        # armário pode ter matriz
+    celula = next(l["id"] for l in api.estado()["locations"] if l["parent_id"] == arm and l["grid_col"] == 0)
+    caixa = api.novo("/locations", {"name": "Caixa", "type": "caixa", "parent_id": celula})
+    sub = api.novo("/locations", {"name": "Sub", "type": "caixa", "parent_id": caixa})
+    for alvo in (celula, caixa, sub):                                                             # dentro de uma matriz: não
+        r = api.post(f"/locations/{alvo}/grid", {"rows": 2, "cols": 2})
+        assert r.status_code == 409 and "outra matriz" in r.json()["error"]
+    # nem mover para dentro de uma matriz algo que já tem matriz
+    solta = api.novo("/locations", {"name": "Caixa B", "type": "caixa", "parent_id": arm})
+    outra = api.novo("/locations", {"name": "Caixa C", "type": "caixa"})
+    assert api.post(f"/locations/{outra}/grid", {"rows": 1, "cols": 1}).status_code == 200
+    r = api.put(f"/locations/{outra}", {"parent_id": caixa})
+    assert r.status_code == 409 and "outra matriz" in r.json()["error"]
+    assert api.put(f"/locations/{solta}", {"parent_id": caixa}).status_code == 200               # sem matriz: pode
+
+
 # --- fluxo completo ----------------------------------------------------------------------------------------------------
 def test_fluxo_localizacoes_matriz_artigos(api):
     arm = api.novo("/locations", {"name": "Armário", "type": "armario", "plan_x": 0, "plan_y": 0, "plan_w": 1, "plan_h": 0.5, "plan_alt": 2})

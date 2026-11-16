@@ -100,6 +100,15 @@ textarea { min-height: 70px; resize: vertical; }
 .plan-wrap { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 8px; }
 .plan { display: block; width: 100%; max-height: 62vh; }
 .plan.edit { touch-action: none; cursor: crosshair; }
+/* planta: medidas numa coluna à esquerda, desenho encostado à direita */
+.plan-row { display: flex; gap: 10px; align-items: flex-start; }
+.plan-meas { flex: 0 0 132px; font-size: .82rem; }
+.plan-meas h4 { margin: 8px 0 4px; font-size: .86rem; overflow-wrap: anywhere; }
+.plan-meas h4:first-child { margin-top: 0; }
+.plan-meas .meas-row { display: flex; justify-content: space-between; gap: 6px; padding: 1px 0; border-bottom: 1px dotted var(--line); }
+.plan-meas .meas-row span { color: var(--muted); }
+.plan-draw { flex: 1 1 auto; min-width: 0; margin-left: auto; }
+@media (max-width: 520px) { .plan-meas { flex-basis: 104px; font-size: .76rem; } }
 .plan .floor { fill: var(--bg); stroke: var(--text); stroke-width: .06; }
 .plan .grid { stroke: var(--line); stroke-width: .015; }
 .plan .zone rect { fill: var(--zone); stroke: var(--accent); stroke-width: .04; }
