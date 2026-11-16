@@ -102,7 +102,7 @@ export function mount(el, { W, D, H, zones, highlight, onpick, editable, onmove,
   const boxes = [], things = [];
   const hl = new Set([].concat(highlight ?? []));
   const lineCol = col('--accent'), textCol = col('--text'), hlCol = col('--hl');
-  const TYPE_COLOR = { caixa: '#b9854f', gaveta: '#8fa7bf', item: '#d9b44a', armario: '#7d8fa3', estante: '#7d8fa3', bancada: '#a08a6a' };
+  const TYPE_COLOR = { caixa: '#b9854f', gaveta: '#8fa7bf', item: '#00e676', armario: '#7d8fa3', estante: '#7d8fa3', bancada: '#a08a6a' };
   const TYPE_H = { caixa: 0.3, armario: 0.6, estante: 0.8, bancada: 0.3, gaveta: 0.15 };
   const darkLine = new THREE.LineBasicMaterial({ color: 0x1b1f26 });
 
@@ -189,15 +189,17 @@ export function mount(el, { W, D, H, zones, highlight, onpick, editable, onmove,
       const slot = len / Math.max(1, entries.length);
       entries.forEach((en, k) => {
         const t = en.t, item = en.it;
-        const sAlong = t ? slot * 0.88 : Math.min(slot * 0.8, 0.14);
-        const sThick = t ? across * 0.8 : Math.min(across * 0.8, 0.14);
-        const sy = t ? Math.min(lh * 0.85, TYPE_H[t.type] || 0.3) : Math.min(lh * 0.8, 0.14);
+        const sAlong = t ? slot * 0.88 : Math.min(slot * 0.8, 0.18);
+        const sThick = t ? across * 0.8 : Math.min(across * 0.8, 0.18);
+        const sy = t ? Math.min(lh * 0.85, TYPE_H[t.type] || 0.3) : Math.min(lh * 0.8, 0.18);
         const sx = alongX ? sAlong : sThick, sz = alongX ? sThick : sAlong;
         const cx = alongX ? (k + 0.5) * slot : z.w / 2, cz = alongX ? z.d / 2 : (k + 0.5) * slot;
         const by = y0 + (lv.id ? 0.04 : 0.01);
         const on = t && (hl.has(t.id) || t.cells.some(c => hl.has(c.id)));
         const bg = new THREE.BoxGeometry(sx, sy, sz);
-        const m = new THREE.Mesh(bg, new THREE.MeshLambertMaterial({ color: on ? hlCol : (TYPE_COLOR[t ? t.type : 'item'] || '#8fa7bf') }));
+        // Os artigos soltos usam um verde vivo sem sombreado (MeshBasic) para se verem bem no meio do resto.
+        const m = new THREE.Mesh(bg, item ? new THREE.MeshBasicMaterial({ color: TYPE_COLOR.item })
+          : new THREE.MeshLambertMaterial({ color: on ? hlCol : (TYPE_COLOR[t ? t.type : 'item'] || '#8fa7bf') }));
         m.position.set(cx, by + sy / 2, cz);
         m.userData.zone = z;
         m.userData.thing = { id: t ? t.id : null, itemId: item ? item.id : null, name: t ? t.name + (t.n ? ` · ${t.n} artigos` : '') : item.name };

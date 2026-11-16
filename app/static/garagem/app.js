@@ -596,7 +596,10 @@ function planSvg({ highlight, onpick, edit, space } = {}) {
     const fs = Math.max(0.12, Math.min(0.3, ex / (l.name.length * 0.58), ey * 0.6));
     svg.append(h('g', { class: 'zone' + (l.type === 'mezanine' ? ' mezz' : '') + (mezzOf(l) ? ' sub' : '') + (lit ? ' hl' : ''), 'data-id': l.id, onclick: () => onpick && onpick(l) },
       h('rect', { x, y, width: ex, height: ey, rx: 0.05 }),
-      h('text', { x: x + ex / 2, y: y + ey / 2, 'font-size': fs }, l.name)));
+      h('text', { x: x + ex / 2, y: y + ey / 2, 'font-size': fs }, l.name),
+      // marca verde com o nº de artigos que a zona (e o que tem dentro) já contém
+      countItems(l.id) ? [h('circle', { cx: x + ex - 0.02, cy: y + 0.02, r: 0.13, class: 'badge' }),
+        h('text', { x: x + ex - 0.02, y: y + 0.02, 'font-size': 0.15, class: 'badge-n' }, String(Math.min(99, countItems(l.id))))] : null));
   }
   return svg;
 }

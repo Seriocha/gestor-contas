@@ -217,3 +217,5 @@ button:disabled { opacity: .45; cursor: default; }
 .plan.edit .zone.hl { cursor: move; }
 dialog .cards { display: grid; gap: 6px; max-height: 45vh; overflow-y: auto; margin: 8px 0; }
 .card.pick { width: 100%; text-align: left; border: 1px solid var(--line); cursor: pointer; color: inherit; font: inherit; }
+.plan .badge { fill: #00e676; stroke: #0b3d24; stroke-width: .02; pointer-events: none; }
+.plan .zone text.badge-n { fill: #04210f; font-weight: 800; }
