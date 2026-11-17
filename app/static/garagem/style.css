@@ -107,7 +107,7 @@ textarea { min-height: 70px; resize: vertical; }
 .sugg-pic img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .pick3d { margin-top: 8px; }
 /* coluna da direita com a planta (todas as páginas, menos as que têm o seu mapa) */
-.side-plan { flex: 0 0 clamp(300px, 30vw, 440px); position: sticky; top: 0; align-self: flex-start; height: 100vh; overflow-y: auto;
+.side-plan { flex: 0 0 60%; min-width: 0; overflow-x: hidden; position: sticky; top: 0; align-self: flex-start; height: 100vh; overflow-y: auto;
   padding: 1.25rem .9rem 2rem; border-left: 1px solid rgba(127,127,127,.25); background: rgba(127,127,127,.03); }
 .side-plan h3 { margin: 0 0 .5rem; font-size: 1rem; }
 .side-plan .plan { max-height: 52vh; }
@@ -118,10 +118,16 @@ textarea { min-height: 70px; resize: vertical; }
   .side-plan { flex: 1 0 100%; position: static; height: auto; border-left: none; border-top: 1px solid rgba(127,127,127,.25); padding: 1rem .75rem 2rem; }
 }
 @media (max-width: 860px) { .side-plan { flex-basis: auto; } }
+/* Desenho (Edição de Mapas): a mesma lógica — controlos à esquerda, desenho a 60 % à direita */
+.split { display: flex; gap: 16px; align-items: flex-start; }
+.split-left { flex: 1 1 0; min-width: 0; }
+.split-right { flex: 0 0 60%; min-width: 0; position: sticky; top: .5rem; }
+.content:has(.split) { max-width: none; }
+@media (max-width: 1000px) { .split { flex-direction: column; } .split-right { flex: none; width: 100%; position: static; } }
 /* Mapa 2D: planta e alçados no mesmo ecrã */
-.stage { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr); gap: 10px; align-items: start; }
-.stage .plan { max-height: calc(100vh - 15rem); }
-.stage .plan.monge { min-width: 0; max-height: calc(100vh - 15rem); }
+.stage { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; align-items: start; }
+.stage .plan { max-height: calc(54vh - 2rem); }
+.stage .plan.monge { min-width: 0; max-height: calc(40vh - 2rem); }
 .stage .monge-wrap { overflow: visible; margin-top: 0; }
 .stage-title { margin: 0 0 4px; font-size: .95rem; }
 @media (max-width: 1000px) { .stage { grid-template-columns: 1fr; } .stage .plan, .stage .plan.monge { max-height: none; } }

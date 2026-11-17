@@ -1069,21 +1069,20 @@ function viewMap2d() {
   svg.addEventListener('pointerup', end);
   svg.addEventListener('pointercancel', end);
 
-  return [
+  return h('div', { class: 'split' }, h('div', { class: 'split-left' },
     h('h1', {}, 'Edição de Mapas · 2D'),
     dimsForm(),
     h('p', { class: 'muted' }, sel
       ? `Arraste "${sel.name}" para a mover, ou arraste no vazio para desenhar a posição e as medidas${mezzOf(sel) ? ' dentro da mezanine' : ''}. Cada quadrícula é 1 m; encaixa de ${SNAP * 100} em ${SNAP * 100} cm. Não pode sobrepor outra zona ao mesmo nível.`
       : 'Escolha uma zona abaixo e depois arraste sobre a planta para a posicionar.'),
-    // planta e alçados lado a lado, ajustados à altura do ecrã (sem scroll)
-    h('div', { class: 'stage' },
-      h('div', { class: 'plan-wrap' }, planFrame(svg, curSpace(), planSel)),
-      h('div', {}, h('h3', { class: 'stage-title' }, 'Alçados vistos do centro'),
-        elevationsSvg({ highlight: planSel, space: curSpace(), onpick: l => { planSel = l.id; render(); } }))),
     zoneChips(zones),
     sel ? coordsPanel(sel) : null,
-    resetSection(),
-  ];
+    resetSection()),
+  // o desenho ocupa 60 % (como a planta das outras páginas): planta e alçados, ajustados ao ecrã (sem scroll)
+  h('div', { class: 'split-right' }, h('div', { class: 'stage' },
+    h('div', { class: 'plan-wrap' }, planFrame(svg, curSpace(), planSel)),
+    h('div', {}, h('h3', { class: 'stage-title' }, 'Alçados vistos do centro'),
+      elevationsSvg({ highlight: planSel, space: curSpace(), onpick: l => { planSel = l.id; render(); } })))));
 }
 
 // Imóvel do espaço: no Gestor de Contas escolhe-se um dos imóveis (Bens) da entidade; sem lista, é texto livre.
@@ -1238,16 +1237,14 @@ function viewMap3d() {
     ondrag: (id, x, y) => { if (id === planSel) { setField('plan_x', x); setField('plan_y', y); } },
     onmove: (id, x, y) => { planSel = id; act(() => api('PUT', '/api/locations/' + id, { plan_x: x, plan_y: y })); },
   });
-  return [
+  return h('div', { class: 'split' }, h('div', { class: 'split-left' },
     h('h1', {}, 'Edição de Mapas · 3D'),
     dimsForm(),
     h('p', { class: 'muted' }, 'Arraste uma zona para a mover no chão (encaixa de 5 em 5 cm); arraste fora das zonas para rodar a vista. Um toque escolhe a zona e mostra as coordenadas X, Y e Z para acerto fino. As zonas de uma mezanine posicionam-se na planta (Mapa 2D).'),
-    h('div', { class: 'plan-wrap' }, view),
-    bar3d(view, !!planSel),
     zoneChips(zones),
     sel ? coordsPanel(sel) : null,
-    resetSection(),
-  ];
+    resetSection()),
+  h('div', { class: 'split-right' }, h('div', { class: 'plan-wrap' }, view), bar3d(view, !!planSel)));
 }
 
 function viewLabels(id) {
