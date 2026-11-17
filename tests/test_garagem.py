@@ -172,6 +172,52 @@ def test_corrigir_categoria_e_juntar_duplicados(api):
     assert api.post("/undo").status_code == 200 and len(api.estado()["items"]) == 3                    # tudo desfaz-se
 
 
+def test_artigo_de_valor_liga_ao_recheio_da_casa(api, app):
+    from app.models import GarEspaco, ItemRecheio
+    with app.state.SessionLocal() as db:
+        casa = Bem(entidade_id=1, tipo="casa", nome="Casa Povoa")
+        outra = Bem(entidade_id=1, tipo="casa", nome="Casa da Aldeia")
+        db.add_all([casa, outra])
+        db.flush()
+        r1 = ItemRecheio(entidade_id=1, bem_id=casa.id, nome="Bicicleta elétrica", valor=250000)
+        r2 = ItemRecheio(entidade_id=1, bem_id=outra.id, nome="Televisão")
+        db.add_all([r1, r2])
+        db.flush()
+        db.scalar(select(GarEspaco)).bem_id = casa.id                      # a garagem é subzona da Casa Povoa
+        db.commit()
+        rid1, rid2 = r1.id, r2.id
+    assert [r["nome"] for r in api.estado()["recheio"]] == ["Bicicleta elétrica", "Televisão"]
+    arm = api.novo("/locations", {"name": "Arrumos", "type": "armario"})
+    # sem a marca «de valor» não liga
+    r = api.post("/items", {"name": "Bike", "location_id": arm, "recheio_id": rid1})
+    assert r.status_code == 400 and "de valor" in r.json()["error"]
+    bike = api.novo("/items", {"name": "Bike", "location_id": arm, "valuable": True, "recheio_id": rid1})
+    it = next(i for i in api.estado()["items"] if i["id"] == bike)
+    assert it["valuable"] is True and it["recheio_id"] == rid1
+    # de outra casa: recusado
+    r = api.put(f"/items/{bike}", {"recheio_id": rid2})
+    assert r.status_code == 409 and "outra casa" in r.json()["error"]
+    # tirar a marca desliga
+    assert api.put(f"/items/{bike}", {"valuable": False}).status_code == 200
+    it = next(i for i in api.estado()["items"] if i["id"] == bike)
+    assert it["valuable"] is False and it["recheio_id"] is None
+    # sobrevive à exportação e ao desfazer
+    api.put(f"/items/{bike}", {"valuable": True, "recheio_id": rid1})
+    assert next(i for i in api.get("/export").json()["items"] if i["id"] == bike)["recheio_id"] == rid1
+    api.put(f"/items/{bike}", {"name": "Bike nova"})
+    api.post("/undo")
+    assert next(i for i in api.estado()["items"] if i["id"] == bike)["recheio_id"] == rid1
+
+
+def test_zona_de_bike_no_piso_nao_colide(api):
+    arm = api.novo("/locations", {"name": "Armário", "type": "armario", "plan_x": 0, "plan_y": 0, "plan_w": 1, "plan_h": 1, "plan_alt": 2})
+    piso = api.novo("/locations", {"name": "Lugar da bike", "type": "bike_piso", "plan_x": 0, "plan_y": 0, "plan_w": 0.6, "plan_h": 1.8})
+    susp = api.novo("/locations", {"name": "Bike suspensa", "type": "bike_suspensa", "plan_x": 3, "plan_y": 0, "plan_w": 0.6, "plan_h": 0.5, "plan_z": 0.3, "plan_alt": 1.8})
+    assert api.put(f"/locations/{piso}", {"plan_x": 0.2}).status_code == 200            # por baixo do armário: permitido
+    assert api.put(f"/locations/{susp}", {"plan_x": 0}).status_code == 409             # a suspensa ocupa volume
+    assert api.put(f"/locations/{susp}", {"plan_x": 3.2}).status_code == 200
+
+
 # --- fluxo completo ----------------------------------------------------------------------------------------------------
 def test_fluxo_localizacoes_matriz_artigos(api):
     arm = api.novo("/locations", {"name": "Armário", "type": "armario", "plan_x": 0, "plan_y": 0, "plan_w": 1, "plan_h": 0.5, "plan_alt": 2})

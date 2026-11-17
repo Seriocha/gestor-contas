@@ -346,3 +346,14 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .dup-row .thumb { width: 36px; height: 36px; border-radius: 6px; object-fit: cover; display: grid; place-items: center; background: var(--bg); flex: 0 0 auto; }
 .dup-info { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .dup-info small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Bikes, artigos de valor */
+.plan .zone.t-bike_piso rect { fill: rgba(20, 184, 166, .22); stroke: #14b8a6; stroke-dasharray: .12 .08; }
+.plan .zone.t-bike_suspensa rect { fill: rgba(59, 130, 246, .28); stroke: #3b82f6; }
+.plan .zone.t-bike_piso.hl rect, .plan .zone.t-bike_suspensa.hl rect { fill: var(--hl); stroke: var(--text); }
+.field.check { display: flex; align-items: center; gap: var(--sp-2); cursor: pointer; }
+.field.check input { width: 18px; height: 18px; flex: 0 0 auto; accent-color: var(--accent); }
+.field.check > span { margin: 0; font-size: .95rem; color: var(--text); }
+.value-badge { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-3); margin: var(--sp-2) 0; }
+.badge.value { color: var(--text); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); font-weight: 600; }
+.val-mark { font-size: .85em; }

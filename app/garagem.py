@@ -21,7 +21,7 @@ from pathlib import Path
 from sqlalchemy import delete, func, insert, select, text
 from sqlalchemy.orm import Session
 
-from .models import PAPEIS, Bem, GarArtigo, GarEspaco, GarLocal, GarRascunho
+from .models import PAPEIS, Bem, GarArtigo, GarEspaco, GarLocal, GarRascunho, ItemRecheio
 
 ALFABETO = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 PAREDES = ("fundo", "esquerda", "direita", "frente")
@@ -33,10 +33,10 @@ MAX_HISTORICO = 50
 LOC_COLS = ("id", "parent_id", "name", "type", "code", "notes", "photo", "grid_rows", "grid_cols", "grid_row", "grid_col",
             "plan_x", "plan_y", "plan_w", "plan_h", "plan_z", "plan_alt", "plan_wall", "plan_face", "space_id")
 LOC_CAMPOS = tuple(c for c in LOC_COLS if c not in ("id", "code"))
-LOC_INT = ("parent_id", "grid_rows", "grid_cols", "grid_row", "grid_col", "space_id")
+LOC_INT = ("parent_id", "grid_rows", "grid_cols", "grid_row", "grid_col", "space_id", "recheio_id")
 LOC_FLOAT = ("plan_x", "plan_y", "plan_w", "plan_h", "plan_z", "plan_alt")
-ITEM_COLS = ("id", "name", "quantity", "category", "notes", "photo", "location_id", "updated")
-ITEM_CAMPOS = ("name", "quantity", "category", "notes", "photo", "location_id")
+ITEM_COLS = ("id", "name", "quantity", "category", "notes", "photo", "location_id", "updated", "valuable", "recheio_id")
+ITEM_CAMPOS = ("name", "quantity", "category", "notes", "photo", "location_id", "valuable", "recheio_id")
 DRAFT_COLS = ("id", "name", "quantity", "category", "notes", "location_id", "created")
 DRAFT_CAMPOS = ("name", "quantity", "category", "notes", "location_id")
 ESP_COLS = ("id", "name", "w", "d", "h", "bem_id", "imovel_nome", "imovel_ref")
@@ -100,6 +100,8 @@ def _pick(body: dict, campos) -> dict:
                 v = int(v)
             except (TypeError, ValueError):
                 raise GaragemErro(f"Valor inválido em {f}.")
+        elif f == "valuable":
+            v = bool(v) and str(v).lower() not in ("0", "false", "")
         elif v is not None and f in LOC_FLOAT:
             try:
                 v = float(v)
@@ -250,7 +252,9 @@ def repor(db: Session, ent: int, snap: dict) -> None:
     if snap["locations"]:
         db.execute(insert(GarLocal), [{**r, "entidade_id": ent} for r in _pais_primeiro(snap["locations"])])
     if snap["items"]:
-        db.execute(insert(GarArtigo), [{**r, "entidade_id": ent} for r in snap["items"]])
+        rech = set(db.scalars(select(ItemRecheio.id)))
+        db.execute(insert(GarArtigo), [{**r, "entidade_id": ent, "recheio_id": r.get("recheio_id") if r.get("recheio_id") in rech else None}
+                                       for r in snap["items"]])
     if snap["drafts"]:
         db.execute(insert(GarRascunho), [{**r, "entidade_id": ent} for r in snap["drafts"]])
 
@@ -320,6 +324,7 @@ def estado(ctx: Ctx) -> dict:
         "items": sorted(_linhas(db, GarArtigo, ITEM_COLS, ent), key=lambda i: (i["updated"], i["id"]), reverse=True),
         "drafts": _linhas(db, GarRascunho, DRAFT_COLS, ent),
         "bens": [{"id": b.id, "nome": b.nome, "tipo": b.tipo} for b in imoveis(db, ent)],
+        "recheio": recheio_da_entidade(db, ent),
         "history": {"undo": len(h.undo), "redo": len(h.redo),
                     "undoLabel": h.undo[-1][1] if h.undo else None, "redoLabel": h.redo[-1][1] if h.redo else None},
     }
@@ -442,7 +447,9 @@ def criar_local(ctx: Ctx, body: dict) -> int:
         return l.id
 
 # Alturas por omissão (iguais às da interface) e verificação de sobreposição no mapa.
-ALT_PADRAO = {"estante": 2, "armario": 2, "bancada": 0.9, "prateleira": 0.4, "caixa": 0.4, "gaveta": 0.2, "mezanine": 0.15}
+ALT_PADRAO = {"estante": 2, "armario": 2, "bancada": 0.9, "prateleira": 0.4, "caixa": 0.4, "gaveta": 0.2, "mezanine": 0.15,
+              "bike_suspensa": 1.8, "bike_piso": 0.02}
+SEM_COLISAO = ("bike_piso",)      # demarcação no piso: não ocupa volume, por isso pode estar por baixo de outras zonas
 _FACE_PAREDE = {"entrada": "fundo", "fundo": "frente", "esquerda": "direita", "direita": "esquerda"}
 _PLAN = ("plan_x", "plan_y", "plan_w", "plan_h", "plan_z", "plan_alt", "plan_wall", "plan_face")
 
@@ -471,6 +478,8 @@ def _verifica_sobreposicao(ctx: Ctx, cur: GarLocal, o: dict) -> None:
     for k, v in o.items():
         if k in novo.__dict__:
             setattr(novo, k, v)
+    if novo.type in SEM_COLISAO:
+        return
     pai = ctx.db.get(GarLocal, novo.parent_id) if novo.parent_id else None
     if pai is not None and pai.type != "mezanine":
         return                                     # só as zonas do mapa (topo ou sobre uma mezanine) têm planta
@@ -485,7 +494,7 @@ def _verifica_sobreposicao(ctx: Ctx, cur: GarLocal, o: dict) -> None:
     e = 1e-6
     for x in outras:
         xp = por_id.get(x.parent_id)
-        if x.grid_row is not None or (x.parent_id is not None and (xp is None or xp.type != "mezanine")):
+        if x.type in SEM_COLISAO or x.grid_row is not None or (x.parent_id is not None and (xp is None or xp.type != "mezanine")):
             continue
         if (xp.space_id if xp is not None else x.space_id) != espaco:
             continue
@@ -652,7 +661,7 @@ def _copiar_arvore(ctx: Ctx, src_id: int, pai_id, nome, modo: str, sobre: dict |
     if modo == "full":
         for a in list(ctx.db.scalars(select(GarArtigo).where(GarArtigo.location_id == src_id))):
             ctx.db.add(GarArtigo(entidade_id=ctx.ent, name=a.name, quantity=a.quantity, category=a.category, notes=a.notes,
-                                 photo=a.photo, location_id=novo.id, updated=agora()))
+                                 photo=a.photo, location_id=novo.id, updated=agora(), valuable=a.valuable))
     return novo.id
 
 
@@ -695,12 +704,49 @@ def _local_valido(ctx: Ctx, lid) -> int | None:
     return int(lid)
 
 
+def recheio_da_entidade(db: Session, ent: int) -> list[dict]:
+    """Os itens do recheio das casas da entidade (os que ainda existem), para ligar os artigos de valor."""
+    q = select(ItemRecheio).where(ItemRecheio.entidade_id == ent, ItemRecheio.estado != "ignorado").order_by(ItemRecheio.nome)
+    return [{"id": r.id, "nome": r.nome, "marca": r.marca, "modelo": r.modelo, "valor": r.valor, "bem_id": r.bem_id,
+             "estado": r.estado} for r in db.scalars(q)]
+
+
+def _casa_do_local(ctx: Ctx, location_id) -> int | None:
+    """A casa (imóvel) a que pertence uma localização: a do espaço (garagem, arrecadação…) onde está."""
+    l = _loc(ctx, location_id) if location_id else None
+    while l is not None and l.parent_id is not None:
+        l = _loc(ctx, l.parent_id)
+    e = _espaco(ctx, l.space_id) if l is not None and l.space_id else None
+    return e.bem_id if e is not None else None
+
+
+def _verifica_recheio(ctx: Ctx, o: dict, atual: GarArtigo | None) -> None:
+    """Só um artigo marcado «de valor» liga ao recheio, e a um item da mesma casa da garagem/arrecadação onde está."""
+    valuable = o["valuable"] if "valuable" in o else (atual.valuable if atual else False)
+    rid = o["recheio_id"] if "recheio_id" in o else (atual.recheio_id if atual else None)
+    if not valuable and "valuable" in o:
+        o["recheio_id"] = None                                    # tirou a marca: desliga
+        return
+    if rid is None:
+        return
+    if not valuable:
+        raise GaragemErro("Marque o artigo como «de valor» para o ligar ao recheio da casa.")
+    r = ctx.db.get(ItemRecheio, rid)
+    if r is None or r.entidade_id != ctx.ent:
+        raise GaragemErro("Item do recheio inexistente.", 404)
+    loc = o["location_id"] if "location_id" in o else (atual.location_id if atual else None)
+    casa = _casa_do_local(ctx, loc)
+    if casa is not None and r.bem_id is not None and r.bem_id != casa:
+        raise GaragemErro("Esse item do recheio é de outra casa (a garagem/arrecadação onde o artigo está pertence a outra).", 409)
+
+
 def criar_artigo(ctx: Ctx, body: dict) -> int:
     with mutacao(ctx, "criar artigo"):
         o = _pick(body, ITEM_CAMPOS)
         _exige_nome(o, True)
         _verifica_foto(o)
         o["location_id"] = _local_valido(ctx, o.get("location_id"))
+        _verifica_recheio(ctx, o, None)
         a = GarArtigo(entidade_id=ctx.ent, updated=agora(), **o)
         ctx.db.add(a)
         ctx.db.flush()
@@ -717,6 +763,7 @@ def atualizar_artigo(ctx: Ctx, id_, body: dict) -> None:
         _verifica_foto(o)
         if "location_id" in o:
             o["location_id"] = _local_valido(ctx, o["location_id"])
+        _verifica_recheio(ctx, o, a)
         for k, v in o.items():
             setattr(a, k, v)
         a.updated = agora()
@@ -775,6 +822,8 @@ def juntar_duplicados(ctx: Ctx, body: dict) -> dict:
             fica.photo = fica.photo or x.photo
             fica.category = fica.category or x.category
             fica.notes = fica.notes or x.notes
+            fica.valuable = fica.valuable or x.valuable
+            fica.recheio_id = fica.recheio_id or x.recheio_id
             ctx.db.delete(x)
         fica.updated = agora()
         return {"removed": len(outros), "quantity": fica.quantity}
@@ -982,7 +1031,9 @@ def importar(ctx: Ctx, b: dict, modo: str) -> dict:
             db.add(GarArtigo(entidade_id=ctx.ent, name=_txt(it.get("name"), 200), quantity=_txt(it.get("quantity"), 60),
                              category=_txt(it.get("category"), 80), notes=_txt(it.get("notes")), photo=foto(it.get("photo")),
                              location_id=mapa_loc.get(lid) if lid is not None else None,
-                             updated=_txt(it.get("updated"), 19) or agora()))
+                             updated=_txt(it.get("updated"), 19) or agora(), valuable=bool(it.get("valuable")),
+                             recheio_id=(inteiro(it.get("recheio_id")) if db.scalar(select(ItemRecheio.id).where(
+                                 ItemRecheio.id == inteiro(it.get("recheio_id")), ItemRecheio.entidade_id == ctx.ent)) else None)))
             contagem["items"] += 1
         for d in b.get("drafts") or []:
             if not isinstance(d, dict):
@@ -1000,7 +1051,7 @@ def importar(ctx: Ctx, b: dict, modo: str) -> dict:
 # menu (o mesmo de public/menu-def.js: espaços › zonas, Consulta, Registo, Mapas, Dados)
 # ---------------------------------------------------------------------------------------------------------------------
 ICONE_TIPO = {"estante": "🗄️", "armario": "🚪", "bancada": "🛠️", "prateleira": "🪜", "caixa": "📦", "gaveta": "🗃️",
-              "mezanine": "🏗️", "zona": "📍", "outro": "📌"}
+              "mezanine": "🏗️", "bike_suspensa": "🚲", "bike_piso": "🅿️", "zona": "📍", "outro": "📌"}
 
 
 def construir_menu(espacos_: list[dict], locais: list[dict], n_temp: int, n_rascunhos: int, prefixo: str = "",

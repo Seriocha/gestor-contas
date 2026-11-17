@@ -5,7 +5,8 @@ const SVGNS = 'http://www.w3.org/2000/svg';
 const SVG_TAGS = new Set(['svg', 'rect', 'line', 'text', 'g', 'circle', 'polygon']);
 const TYPES = {
   zona: ['Zona', '📍'], estante: ['Estante', '🗄️'], armario: ['Armário', '🚪'], bancada: ['Bancada', '🛠️'],
-  prateleira: ['Prateleira', '🪜'], caixa: ['Caixa', '📦'], gaveta: ['Gaveta', '🗃️'], mezanine: ['Mezanine', '🏗️'], outro: ['Outro', '📌'],
+  prateleira: ['Prateleira', '🪜'], caixa: ['Caixa', '📦'], gaveta: ['Gaveta', '🗃️'], mezanine: ['Mezanine', '🏗️'],
+  bike_suspensa: ['Bike suspensa', '🚲'], bike_piso: ['Lugar de bike (piso)', '🅿️'], outro: ['Outro', '📌'],
 };
 const TYPE_OPTIONS = Object.entries(TYPES).map(([value, [label, icon]]) => ({ value, label: `${icon} ${label}` }));
 const SNAP = 0.25; // metros
@@ -31,6 +32,7 @@ const baseZ = l => { const m = mezzOf(l); return (l.plan_z || 0) + (m ? (m.plan_
 const subZones = m => childrenOf(m.id).filter(c => c.grid_row == null);
 const zoneChoices = sid => rootsOf(sid).flatMap(r => (r.type === 'mezanine' ? [r, ...subZones(r)] : [r]));
 const onMap = l => l.plan_w > 0 && (!mezzOf(l) || mezzOf(l).plan_w > 0);
+const isFloorMark = l => l.type === 'bike_piso'; // demarcação no piso: não ocupa volume, pode estar por baixo de outras zonas
 // Vista 3D: guarda o ponto de vista entre redesenhos do mesmo ecrã (esvazia-se ao mudar de ecrã).
 const cam3d = { v: null };
 let byId = new Map(), kids = new Map(), itemsAt = new Map();
@@ -209,9 +211,39 @@ async function scanQR() {
 
 // ---------- formulários ----------
 let pick3dUsed = false; // o seletor 3D de um formulário foi aberto (só há uma vista 3D de cada vez)
+const eur = c => (Number(c || 0) / 100).toLocaleString('pt-PT', { style: 'currency', currency: 'EUR' });
+// A casa (imóvel) de uma localização: a do espaço (garagem, arrecadação…) onde está. null se o espaço não está ligado a uma casa.
+function houseOfLocation(locId) {
+  const root = locId ? pathOf(locId)[0] : null;
+  const sp = root && root.space_id != null ? S.spaces.find(x => x.id === root.space_id) : null;
+  const bem = sp && (S.bens || []).find(b => String(b.id) === String(sp.property_id));
+  return bem ? bem.id : null;
+}
 function fieldEl(f, data) {
-  const set = v => { data[f.key] = v; };
+  const set = v => { data[f.key] = v; (data.__subs || []).forEach(fn => fn()); };
   let input;
+  if (f.type === 'checkbox') {
+    return h('label', { class: 'field check' }, h('input', { type: 'checkbox', checked: !!data[f.key], onchange: e => set(e.target.checked) }), h('span', {}, f.label));
+  }
+  if (f.type === 'recheio') { // item do recheio da casa a que o artigo de valor pertence (só os da casa da garagem/arrecadação)
+    const sel = h('select', { 'aria-label': f.label, onchange: e => { data[f.key] = e.target.value ? Number(e.target.value) : null; } });
+    const note = h('small', { class: 'muted' }, '');
+    const wrap = h('div', { class: 'field', hidden: !data.valuable }, h('span', {}, f.label), sel, note);
+    const fillSel = () => {
+      const casa = houseOfLocation(data.location_id);
+      const list = (S.recheio || []).filter(r => casa == null || r.bem_id == null || r.bem_id === casa);
+      if (data[f.key] != null && !list.some(r => r.id === data[f.key])) data[f.key] = null;
+      const name = r => (S.bens || []).find(b => b.id === r.bem_id);
+      sel.replaceChildren(h('option', { value: '' }, list.length ? '(não ligado)' : '(sem itens de recheio)'),
+        ...list.map(r => h('option', { value: r.id, selected: r.id === data[f.key] },
+          [r.nome, [r.marca, r.modelo].filter(Boolean).join(' '), r.valor ? eur(r.valor) : '', name(r) ? name(r).nome : ''].filter(Boolean).join(' · '))));
+      const c = casa != null ? (S.bens || []).find(b => b.id === casa) : null;
+      note.textContent = c ? `Recheio de ${c.nome} (a garagem/arrecadação faz parte da casa).` : 'Recheio de todas as casas (o espaço não está ligado a uma casa).';
+    };
+    (data.__subs || []).push(() => { wrap.hidden = !data.valuable; fillSel(); });
+    fillSel();
+    return wrap;
+  }
   if (f.type === 'photo') {
     const img = h('img', { alt: 'Foto' });
     const show = () => { img.hidden = !data[f.key]; if (data[f.key]) img.src = PHOTOS + data[f.key]; };
@@ -339,6 +371,7 @@ function fieldEl(f, data) {
 function formDialog(title, fields, values = {}, okLabel = 'Guardar') {
   return new Promise(resolve => {
     const data = { ...values };
+    Object.defineProperty(data, '__subs', { value: [], enumerable: false }); // campos que dependem de outros (ex.: recheio ← «de valor»)
     const dlg = h('dialog', {},
       h('form', { onsubmit: e => { e.preventDefault(); dlg.close('ok'); } },
         h('h2', {}, title),
@@ -364,6 +397,8 @@ function itemFields() {
     { key: 'quantity', label: 'Quantidade', placeholder: 'ex.: 50, ~200, 1 caixa' },
     { key: 'category', label: 'Categoria', list: cats, placeholder: 'ex.: Parafusos' },
     { key: 'location_id', label: 'Localização', type: 'location', emptyLabel: '(Área temporária — arrumar depois)' },
+    { key: 'valuable', label: '💎 Artigo de valor (faz parte do recheio da casa)', type: 'checkbox' },
+    { key: 'recheio_id', label: 'Ligar ao item do recheio da casa', type: 'recheio' },
     { key: 'notes', label: 'Notas', type: 'textarea' },
   ];
 }
@@ -715,8 +750,9 @@ const boxesClash = (a, b) => a.x < b.x + b.ex - EPS && b.x < a.x + a.ex - EPS &&
 // Zona do mesmo espaço que choca com `l` depois de lhe aplicar `body` (ou undefined).
 const clashWith = (l, body = {}) => {
   const t = { ...l, ...body }, b = bbox(t);
+  if (isFloorMark(t)) return undefined;
   const root = mezzOf(t) ? mezzOf(t) : t;
-  return zoneChoices(root.space_id ?? curSpace().id).find(o => o.id !== l.id && onMap(o) && boxesClash(b, bbox(o)));
+  return zoneChoices(root.space_id ?? curSpace().id).find(o => o.id !== l.id && onMap(o) && !isFloorMark(o) && boxesClash(b, bbox(o)));
 };
 // Primeiro sítio livre (de 25 em 25 cm) para uma zona com estas medidas; null se não houver.
 function freeSpot(l, body) {
@@ -740,7 +776,7 @@ function elevationsSvg({ highlight, onpick, space } = {}) {
   const cx = W / 2, cy = D / 2;
   const hl = new Set([].concat(highlight ?? []));
   const zones = zoneChoices(sp.id).filter(onMap).map(l => ({ l, b: bbox(l) }));
-  const cls = l => 'zone' + (l.type === 'mezanine' ? ' mezz' : '') + (mezzOf(l) ? ' sub' : '') + (hl.has(l.id) ? ' hl' : '');
+  const cls = l => 'zone t-' + l.type + (l.type === 'mezanine' ? ' mezz' : '') + (mezzOf(l) ? ' sub' : '') + (hl.has(l.id) ? ' hl' : '');
   // u: posição na horizontal do desenho; len: largura da vista; far/near: distância do observador à face de trás/da frente
   const VIEWS = [
     { title: '① Para o fundo', len: W, u: b => b.x, w: b => b.ex, far: b => cy - b.y, near: b => cy - (b.y + b.ey) },
@@ -774,7 +810,7 @@ function elevationsSvg({ highlight, onpick, space } = {}) {
   // planta com o ponto de vista e as quatro direções
   frame(planX, planY, W, D, '');
   svg.append(h('text', { x: planX + W / 2, y: planY + D + 0.55, class: 'cap', 'font-size': 0.2 }, 'Planta · ponto de vista no centro (●)'));
-  const rank = l => (l.type === 'mezanine' ? 0 : mezzOf(l) ? 2 : 1);
+  const rank = l => (isFloorMark(l) ? -1 : l.type === 'mezanine' ? 0 : mezzOf(l) ? 2 : 1);
   for (const { l, b } of zones.slice().sort((p, q) => rank(p.l) - rank(q.l))) svg.append(rect(l, planX + b.x, planY + b.y, b.ex, b.ey));
   const px = planX + cx, py = planY + cy;
   [[px, planY, '①'], [planX + W, py, '②'], [px, planY + D, '③'], [planX, py, '④']].forEach(([x, y, n]) => {
@@ -807,13 +843,13 @@ function planSvg({ highlight, onpick, edit, space } = {}) {
   for (let y = 1; y < D; y++) svg.append(h('line', { x1: 0, y1: y, x2: W, y2: y, class: 'grid' }));
   // Desenha primeiro as mezanines (por baixo), depois as zonas normais e por fim as zonas das mezanines.
   const hlSet = new Set([].concat(highlight ?? []));
-  const order = l => (l.type === 'mezanine' ? 0 : mezzOf(l) ? 2 : 1);
+  const order = l => (isFloorMark(l) ? -1 : l.type === 'mezanine' ? 0 : mezzOf(l) ? 2 : 1);
   const placed = zoneChoices(sp.id).filter(onMap).sort((a, b) => order(a) - order(b));
   for (const l of placed) {
     const { ex, ey } = ext(l), { x, y } = absXY(l);
     const lit = hlSet.has(l.id) && !(l.type === 'mezanine' && subZones(l).some(c => hlSet.has(c.id)));
     const fs = Math.max(0.12, Math.min(0.3, ex / (l.name.length * 0.58), ey * 0.6));
-    svg.append(h('g', { class: 'zone' + (l.type === 'mezanine' ? ' mezz' : '') + (mezzOf(l) ? ' sub' : '') + (lit ? ' hl' : ''), 'data-id': l.id, onclick: () => onpick && onpick(l) },
+    svg.append(h('g', { class: 'zone t-' + l.type + (l.type === 'mezanine' ? ' mezz' : '') + (mezzOf(l) ? ' sub' : '') + (lit ? ' hl' : ''), 'data-id': l.id, onclick: () => onpick && onpick(l) },
       h('rect', { x, y, width: ex, height: ey, rx: 0.05 }),
       h('text', { x: x + ex / 2, y: y + ey / 2, 'font-size': fs }, l.name),
       // marca verde com o nº de artigos que a zona (e o que tem dentro) já contém
@@ -856,7 +892,9 @@ function snapWall(wall, x, y, ex, ey, space) {
 }
 
 // ---------- vista 3D ----------
-const DEFAULT_ALT = { estante: 2, armario: 2, bancada: 0.9, prateleira: 0.4, caixa: 0.4, gaveta: 0.2, mezanine: 0.15 };
+const DEFAULT_ALT = { estante: 2, armario: 2, bancada: 0.9, prateleira: 0.4, caixa: 0.4, gaveta: 0.2, mezanine: 0.15, bike_suspensa: 1.8, bike_piso: 0.02 };
+// Medidas de partida ao colocar no mapa: a marca no piso é do tamanho de uma bike (0,6 × 1,8 m) e a suspensa fica a 0,3 m do chão.
+const FIRST_PLACE = { bike_piso: { plan_w: 0.6, plan_h: 1.8, plan_z: 0, plan_alt: 0.02 }, bike_suspensa: { plan_w: 0.6, plan_h: 0.5, plan_z: 0.3, plan_alt: 1.8 } };
 const defaultAlt = l => DEFAULT_ALT[l.type] || 1;
 // O que cada zona contém (para desenhar): níveis = prateleiras (ou um só), com caixas/objetos e artigos soltos.
 function contentsOf(l) {
@@ -1117,6 +1155,15 @@ function viewMatrix(id) {
   ];
 }
 
+// «De valor» e, se existe, o item do recheio da casa a que está ligado (abre a ficha no Gestor).
+function valueBadge(it) {
+  if (!it.valuable) return null;
+  const r = (S.recheio || []).find(x => x.id === it.recheio_id);
+  return h('div', { class: 'value-badge' }, h('span', { class: 'badge value' }, '💎 De valor'),
+    r ? h('a', { href: '/patrimonio/recheio/' + r.id, target: '_top', title: 'Abrir no recheio da casa' },
+      `📦 Recheio: ${r.nome}${r.valor ? ' · ' + eur(r.valor) : ''}`)
+      : h('span', { class: 'muted' }, 'Ainda não ligado ao recheio da casa — edite o artigo para o ligar.'));
+}
 function viewItem(id) {
   const it = S.items.find(i => i.id === id);
   if (!it) return [h('p', {}, 'Artigo não encontrado.'), h('a', { href: '#/' }, 'Voltar ao início')];
@@ -1124,6 +1171,7 @@ function viewItem(id) {
     it.location_id ? crumbs(it.location_id, true) : h('div', { class: 'crumbs' }, h('a', { href: '#/temporaria' }, 'Área temporária')),
     h('h1', {}, it.name),
     h('div', { class: 'muted' }, [it.quantity && `Quantidade: ${it.quantity}`, it.category].filter(Boolean).join(' · ')),
+    valueBadge(it),
     h('div', { class: 'row actions' },
       h('button', { class: 'primary', onclick: () => moveItem(it) }, 'Mover'),
       h('button', { onclick: () => editItem(it) }, 'Editar'),
@@ -1283,6 +1331,20 @@ function dimsForm() {
       h('button', { onclick: newSpace }, '+ Novo espaço'),
       S.spaces.length > 1 ? h('button', { class: 'danger', onclick: delSpace }, `Apagar espaço "${sp.name}"`) : null));
 }
+// Demarca no piso um lugar para uma bike (0,6 × 1,8 m): cria a marca num sítio livre do chão, pronta a arrastar no Mapa 2D.
+const markBikeSpot = () => act(async () => {
+  const sp = curSpace(), { plan_w: ex, plan_h: ey } = FIRST_PLACE.bike_piso;
+  const n = S.locations.filter(l => l.type === 'bike_piso' && (l.space_id ?? sp.id) === sp.id).length + 1;
+  const W = Number(sp.w) || 6, D = Number(sp.d) || 5;
+  const floor = zoneChoices(sp.id).filter(o => onMap(o) && !isFloorMark(o) ? baseZ(o) < 0.3 : isFloorMark(o) && onMap(o));
+  const free = (x, y) => !floor.some(o => { const b = bbox(o); return x < b.x + b.ex - EPS && b.x < x + ex - EPS && y < b.y + b.ey - EPS && b.y < y + ey - EPS; });
+  let pos = null;
+  for (let x = 0; x <= W - ex + EPS && !pos; x += SNAP) for (let y = 0; y <= D - ey + EPS && !pos; y += SNAP) if (free(x, y)) pos = { plan_x: x, plan_y: y };
+  const { id } = await api('POST', '/api/locations', { name: `Lugar de bike ${n}`, type: 'bike_piso', space_id: sp.id });
+  await api('PUT', '/api/locations/' + id, { ...FIRST_PLACE.bike_piso, ...(pos || { plan_x: 0, plan_y: 0 }) });
+  planSel = id;
+  toast(pos ? 'Lugar de bike marcado no piso: arraste-o para onde a bike fica.' : 'Não há chão livre: marquei no canto, arraste-o para onde quiser.');
+});
 // Escolha da zona: uma lista (com «‹ ›» para passar à anterior/seguinte) em vez de dezenas de botões.
 function zoneChips(zones) {
   const cur = byId.get(planSel), mz = cur && (cur.type === 'mezanine' ? cur : mezzOf(cur));
@@ -1298,6 +1360,7 @@ function zoneChips(zones) {
       h('button', { type: 'button', title: 'Zona anterior', onclick: () => step(-1), disabled: zones.length < 2 }, '‹'), pick,
       h('button', { type: 'button', title: 'Zona seguinte', onclick: () => step(1), disabled: zones.length < 2 }, '›'),
       h('button', { class: 'primary', onclick: () => newLocation(null) }, '+ Zona'),
+      h('button', { onclick: markBikeSpot, title: 'Demarcar no piso um lugar (0,6 × 1,8 m) onde fica uma bike' }, '🅿️ Lugar de bike'),
       mz ? h('button', { onclick: () => newLocation(mz.id) }, `+ Zona em "${mz.name}"`) : null));
 }
 // Objeto de referência: uma estante num canto da sala, com cada medida marcada na cor do campo correspondente.
@@ -1338,7 +1401,7 @@ function coordsPanel(sel) {
     if (mz && !(mz.plan_w > 0)) return h('p', { class: 'muted' }, `Posicione primeiro a mezanine "${mz.name}" no mapa.`);
     const first = isMezz
       ? { plan_x: 0, plan_y: 0, plan_w: 2, plan_h: 1.5, plan_z: Math.min(2.2, (Number(curSpace().h) || 2.5) * 0.7), plan_alt: defaultAlt(sel) }
-      : { plan_x: 0, plan_y: 0, plan_w: 1, plan_h: 0.5, plan_z: 0, plan_alt: defaultAlt(sel) };
+      : { plan_x: 0, plan_y: 0, plan_w: 1, plan_h: 0.5, plan_z: 0, plan_alt: defaultAlt(sel), ...FIRST_PLACE[sel.type] };
     const place = () => {
       const pos = freeSpot(sel, first);
       if (!pos) return toast('Não há espaço livre ao mesmo nível para esta zona. Reduza as medidas ou mude a altura (Z).');
@@ -1462,7 +1525,7 @@ function viewLabels(id) {
 }
 
 // ---------- inventário completo ----------
-const inv = { q: '', cat: '', sort: 'name', dir: 1, sel: null };
+const inv = { q: '', cat: '', val: '', sort: 'name', dir: 1, sel: null };
 function viewInventory() {
   const cats = [...new Set(S.items.map(i => i.category).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt'));
   const rows = S.items.map(i => ({
@@ -1499,6 +1562,7 @@ function viewInventory() {
   const draw = () => {
     const terms = norm(inv.q).split(/\s+/).filter(Boolean);
     shown = rows.filter(r => (!inv.cat || r.category === inv.cat) &&
+      (!inv.val || (r.it.valuable && (inv.val === 'valor' || !r.it.recheio_id))) &&
       terms.every(t => norm([r.name, r.quantity, r.category, r.loc, r.it.notes].join(' ')).includes(t)));
     shown.sort((a, b) => inv.dir * a[inv.sort].localeCompare(b[inv.sort], 'pt', { numeric: true }));
     if (!shown.some(r => r.it.id === inv.sel)) { // ao pesquisar, mostra logo o primeiro resultado já arrumado
@@ -1514,7 +1578,8 @@ function viewInventory() {
     },
       h('td', { class: 'name' },
         r.it.photo ? h('img', { src: PHOTOS + r.it.photo, loading: 'lazy', alt: '' }) : h('span', { class: 'ph' }, '🔩'),
-        h('a', { href: '#/item/' + r.it.id, title: 'Abrir artigo', onclick: e => e.stopPropagation() }, r.name)),
+        h('a', { href: '#/item/' + r.it.id, title: 'Abrir artigo', onclick: e => e.stopPropagation() }, r.name),
+        r.it.valuable ? h('span', { class: 'val-mark', title: r.it.recheio_id ? 'De valor · ligado ao recheio da casa' : 'De valor · ainda não ligado ao recheio' }, r.it.recheio_id ? ' 💎✓' : ' 💎') : null),
       h('td', {}, r.quantity),
       h('td', {}, h('button', { class: 'ghost cat-btn', title: 'Corrigir categoria', onclick: e => { e.stopPropagation(); fixItemCategory(r.it); } },
         r.category || h('span', { class: 'muted' }, '+ categoria'), ' ✎')),
@@ -1543,12 +1608,15 @@ function viewInventory() {
     h('h1', {}, 'Inventário completo'),
     h('div', { class: 'summary' },
       stat(S.items.length, 'artigos'), stat(cats.length, 'categorias'), stat(S.locations.length, 'localizações'),
-      stat(S.items.filter(i => i.photo).length, 'com foto'), stat(itemsIn(0).length, 'na área temporária')),
+      stat(S.items.filter(i => i.photo).length, 'com foto'), stat(itemsIn(0).length, 'na área temporária'),
+      stat(S.items.filter(i => i.valuable).length, 'de valor'), stat(S.items.filter(i => i.recheio_id).length, 'ligados ao recheio')),
     h('div', { class: 'row filters actions' },
       h('input', { type: 'search', value: inv.q, placeholder: 'Filtrar por nome, localização, notas…', oninput: e => { inv.q = e.target.value; draw(); } }),
       h('select', { onchange: e => { inv.cat = e.target.value; draw(); } },
         h('option', { value: '' }, 'Todas as categorias'),
         cats.map(c => h('option', { value: c, selected: c === inv.cat }, c))),
+      h('select', { 'aria-label': 'Artigos de valor', onchange: e => { inv.val = e.target.value; draw(); } },
+        [['', 'Todos os artigos'], ['valor', '💎 Só de valor'], ['sem', '💎 De valor sem recheio']].map(([v, t]) => h('option', { value: v, selected: v === inv.val }, t))),
       h('button', { onclick: duplicatesTool, title: 'Artigos com o mesmo nome' }, `🔁 Duplicados${dupGroups().length ? ' (' + dupGroups().length + ')' : ''}`),
       h('button', { onclick: categoriesTool, title: 'Renomear ou juntar categorias' }, '🏷️ Categorias'),
       h('button', { onclick: exportCsv }, 'Exportar CSV')),

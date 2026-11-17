@@ -243,7 +243,8 @@ export function mount(el, { W, D, H, zones, highlight, onpick, editable, onmove,
     place(grp, z, z.x, z.y);
     const g = new THREE.BoxGeometry(z.w, z.h, z.d);
     const mesh = new THREE.Mesh(g, new THREE.MeshLambertMaterial({
-      color: zoneHl ? hlCol : mezz ? new THREE.Color('#8d7b68') : col('--zone'), transparent: true, opacity: zoneHl ? 0.95 : mezz ? 0.95 : hasContents ? 0.22 : 0.85,
+      color: zoneHl ? hlCol : mezz ? new THREE.Color('#8d7b68') : z.type === 'bike_piso' ? new THREE.Color('#14b8a6') : col('--zone'), transparent: true,
+      opacity: zoneHl ? 0.95 : mezz ? 0.95 : z.type === 'bike_piso' ? 0.7 : hasContents ? 0.22 : 0.85,
       depthWrite: !hasContents,
     }));
     mesh.position.set(z.w / 2, z.h / 2, z.d / 2);
@@ -252,6 +253,16 @@ export function mount(el, { W, D, H, zones, highlight, onpick, editable, onmove,
     edges.position.copy(mesh.position);
     grp.add(mesh, edges);
     boxes.push(mesh);
+    if (z.type === 'bike_suspensa') { // bike pendurada: duas rodas e o quadro
+      const r = Math.max(0.1, Math.min(0.34, Math.max(z.w, z.d) / 2, z.h / 5)), wm = new THREE.MeshBasicMaterial({ color: 0x1b1f26 });
+      const vertical = z.h >= 1.2;
+      const a = vertical ? [z.w / 2, r + 0.03, z.d / 2] : [r + 0.03, z.h / 2, z.d / 2];
+      const b = vertical ? [z.w / 2, z.h - r - 0.03, z.d / 2] : [z.w - r - 0.03, z.h / 2, z.d / 2];
+      for (const c of [a, b]) { const w = new THREE.Mesh(new THREE.TorusGeometry(r, 0.022, 8, 28), wm); w.position.set(...c); grp.add(w); }
+      const fg = new THREE.BufferGeometry();
+      fg.setAttribute('position', new THREE.Float32BufferAttribute([...a, ...b], 3));
+      grp.add(new THREE.LineSegments(fg, new THREE.LineBasicMaterial({ color: 0x1b1f26 })));
+    }
     if (mezz && z.z > 0.15) { // pernas de apoio da mezanine até ao chão
       const leg = new THREE.MeshLambertMaterial({ color: 0x6b6b6b });
       for (const [lx, lz] of [[0.05, 0.05], [z.w - 0.05, 0.05], [0.05, z.d - 0.05], [z.w - 0.05, z.d - 0.05]]) {

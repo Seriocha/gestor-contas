@@ -1502,6 +1502,8 @@ class GarArtigo(Base):
     photo: Mapped[str | None] = mapped_column(String(40))
     location_id: Mapped[int | None] = mapped_column(ForeignKey("gar_local.id", ondelete="SET NULL"), index=True)
     updated: Mapped[str] = mapped_column(String(19))                     # AAAA-MM-DD HH:MM:SS (UTC), como na app Garagem
+    valuable: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")   # artigo de valor (parte do recheio)
+    recheio_id: Mapped[int | None] = mapped_column(ForeignKey("item_recheio.id", ondelete="SET NULL"), index=True)  # o item do recheio da casa
 
 
 class GarRascunho(Base):

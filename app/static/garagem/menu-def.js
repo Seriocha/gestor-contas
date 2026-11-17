@@ -3,7 +3,7 @@
 // - No servidor (require) alimenta GET /api/menu, para uma app anfitriã (ex.: o Gestor de Contas) desenhar o mesmo
 //   menu como um grupo isolado do seu, sem conhecer a estrutura interna deste módulo.
 (function (root) {
-  const ICON = { estante: '🗄️', armario: '🚪', bancada: '🛠️', prateleira: '🪜', caixa: '📦', gaveta: '🗃️', mezanine: '🏗️', zona: '📍', outro: '📌' };
+  const ICON = { estante: '🗄️', armario: '🚪', bancada: '🛠️', prateleira: '🪜', caixa: '📦', gaveta: '🗃️', mezanine: '🏗️', bike_suspensa: '🚲', bike_piso: '🅿️', zona: '📍', outro: '📌' };
   const byName = (a, b) => a.name.localeCompare(b.name, 'pt', { numeric: true });
 
   // state: { spaces, locations, items, drafts }
