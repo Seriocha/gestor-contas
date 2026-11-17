@@ -213,10 +213,41 @@ function fieldEl(f, data) {
       catch (e) { toast(e.message); }
     };
     show();
+    // Sugestões da internet (Wikimedia Commons) a partir do nome do artigo; a escolhida é guardada como foto do artigo.
+    const sugg = h('div', { class: 'sugg', hidden: true }), suggNote = h('small', { class: 'muted' }, '');
+    const suggest = async () => {
+      const q = (data.name || '').trim();
+      if (!q) { toast('Escreva primeiro o nome do artigo.'); return; }
+      sugg.hidden = false; sugg.replaceChildren(suggNote);
+      suggNote.textContent = `A procurar imagens de "${q}"…`;
+      try {
+        const url = 'https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrnamespace=6&gsrlimit=12&prop=imageinfo' +
+          `&iiprop=url|mime&iiurlwidth=480&format=json&origin=*&gsrsearch=${encodeURIComponent(q)}`;
+        const r = await (await fetch(url)).json();
+        const pics = Object.values((r.query || {}).pages || {}).map(p => (p.imageinfo || [])[0])
+          .filter(i => i && /^image\/(jpeg|png|webp)$/.test(i.mime) && i.thumburl);
+        suggNote.textContent = pics.length ? 'Toque numa imagem para a usar (fonte: Wikimedia Commons).' : `Nada encontrado para "${q}". Tente um nome mais simples.`;
+        sugg.append(...pics.map(i => h('button', {
+          type: 'button', class: 'sugg-pic', title: 'Usar esta imagem',
+          onclick: async () => {
+            suggNote.textContent = 'A guardar a imagem…';
+            try {
+              const c = await toCanvas(await (await fetch(i.thumburl)).blob(), 1600);
+              const blob = await new Promise(res => c.toBlob(res, 'image/jpeg', 0.85));
+              const up = await fetch(BASE + '/api/photos', { method: 'POST', headers: { ...csrfHeaders(), 'Content-Type': 'image/jpeg' }, body: blob });
+              const d = await up.json().catch(() => ({}));
+              if (!up.ok) throw new Error(d.error || 'Falha ao guardar a imagem.');
+              set(d.file); show(); sugg.hidden = true;
+            } catch (e) { suggNote.textContent = e.message; }
+          },
+        }, h('img', { src: i.thumburl, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer' }))));
+      } catch (e) { suggNote.textContent = 'Não consegui procurar imagens na internet.'; }
+    };
     input = h('div', { class: 'photo-field' }, img, h('div', { class: 'row' },
       h('button', { type: 'button', onclick: take(true) }, '📷 Tirar foto'),
       h('button', { type: 'button', onclick: take(false) }, 'Escolher imagem'),
-      h('button', { type: 'button', class: 'ghost', onclick: () => { set(null); show(); } }, 'Remover')));
+      f.suggest ? h('button', { type: 'button', onclick: suggest }, '🌐 Sugerir da internet') : null,
+      h('button', { type: 'button', class: 'ghost', onclick: () => { set(null); show(); } }, 'Remover')), sugg);
   } else if (f.type === 'select' || f.type === 'location') {
     const opts = f.type === 'location'
       ? [{ value: '', label: f.emptyLabel || '(Área temporária)' }, ...locationOptions(f.exclude)]
@@ -312,7 +343,7 @@ function formDialog(title, fields, values = {}, okLabel = 'Guardar') {
 function itemFields() {
   const cats = [...new Set(S.items.map(i => i.category).filter(Boolean))].sort();
   return [
-    { key: 'photo', label: 'Foto', type: 'photo' },
+    { key: 'photo', label: 'Foto', type: 'photo', suggest: true },
     { key: 'name', label: 'Nome', required: true, placeholder: 'ex.: Parafuso M4x20 sextavado' },
     { key: 'quantity', label: 'Quantidade', placeholder: 'ex.: 50, ~200, 1 caixa' },
     { key: 'category', label: 'Categoria', list: cats, placeholder: 'ex.: Parafusos' },
@@ -744,7 +775,7 @@ function bar3d(box, canFocus) {
     h('button', { onclick: () => box.handle && box.handle.reset() }, '⟲ Vista inicial'),
     canFocus ? h('button', { onclick: () => box.handle && box.handle.focus() }, '🔍 Aproximar da zona') : null);
 }
-function planView(highlight, path3d, space) {
+function planView(highlight, path3d, space, compact) {
   const open = (zid, tid, iid) => { location.hash = iid ? '#/item/' + iid : '#/loc/' + (tid || zid); };
   const tabs = h('div', { class: 'row tabs' }), body = h('div', {});
   const draw = () => {
@@ -758,16 +789,22 @@ function planView(highlight, path3d, space) {
     } else {
       const hl = path3d || highlight;
       body.replaceChildren(planFrame(planSvg({ highlight: hl, space, onpick: l => open(l.id) }), space, hl),
-        h('h3', {}, 'Alçados vistos do centro'), elevationsSvg({ highlight: hl, space, onpick: l => open(l.id) }));
+        compact ? null : [h('h3', {}, 'Alçados vistos do centro'), elevationsSvg({ highlight: hl, space, onpick: l => open(l.id) })]);
     }
   };
   draw();
   return h('div', { class: 'plan-wrap' }, tabs, body);
 }
-function miniPlan(locId) {
-  const root = pathOf(locId)[0];
-  if (!root || !(root.plan_w > 0)) return null;
-  return planView(root.id, pathOf(locId).map(l => l.id), spaceById(root.space_id));
+// Coluna da direita (em todas as páginas, menos as que têm o seu próprio mapa): a planta do espaço atual, com a
+// localização/artigo que se está a ver destacado.
+function sidePlan(placeId) {
+  const root = placeId ? pathOf(placeId)[0] : null;
+  const sp = root ? spaceById(root.space_id) : curSpace();
+  const hl = placeId ? pathOf(placeId).map(l => l.id) : null;
+  const placed = zoneChoices(sp.id).some(onMap);
+  return [h('h3', {}, `🗺️ ${sp.name}`),
+    placed ? planView(null, hl, sp, true)
+      : h('p', { class: 'muted' }, 'Ainda não há zonas na planta. Abra "Edição de Mapas" para posicionar estantes, armários e bancadas.')];
 }
 
 // ---------- ecrãs ----------
@@ -788,12 +825,7 @@ function viewHome() {
       return;
     }
     const zones = rootsOf(curSpace().id);
-    const hasPlan = zones.some(z => z.plan_w > 0);
     fill(results,
-      h('h2', {}, 'Planta'),
-      hasPlan
-        ? planView(null, null, curSpace())
-        : h('p', { class: 'muted' }, 'Ainda não há zonas na planta. Abra "Edição de Mapas" para definir o espaço da garagem e posicionar estantes, armários e bancadas.'),
       h('h2', {}, 'Zonas'),
       h('div', { class: 'list' }, zones.map(locCard)),
       h('div', { class: 'actions' }, h('button', { onclick: () => newLocation(null) }, '+ Zona')),
@@ -889,7 +921,6 @@ function viewLocation(id) {
     (() => { const t = contentTree(loc); return t ? [h('h2', {}, `Conteúdo por hierarquia (${countItems(id)} artigos)`), t] : null; })(),
     h('h2', {}, `Artigos aqui (${items.length})`),
     items.length ? h('div', { class: 'list' }, items.map(itemCard)) : h('p', { class: 'muted' }, 'Nenhum artigo diretamente nesta localização.'),
-    miniPlan(id) ? [h('h2', {}, 'Na planta'), miniPlan(id)] : null,
   ];
 }
 
@@ -951,7 +982,6 @@ function viewItem(id) {
     it.notes ? h('p', {}, it.notes) : null,
     h('h2', {}, 'Onde está'),
     h('p', {}, '📍 ' + pathText(it.location_id)),
-    miniPlan(it.location_id),
   ];
 }
 
@@ -1035,8 +1065,11 @@ function viewMap2d() {
     h('p', { class: 'muted' }, sel
       ? `Arraste "${sel.name}" para a mover, ou arraste no vazio para desenhar a posição e as medidas${mezzOf(sel) ? ' dentro da mezanine' : ''}. Cada quadrícula é 1 m; encaixa de ${SNAP * 100} em ${SNAP * 100} cm. Não pode sobrepor outra zona ao mesmo nível.`
       : 'Escolha uma zona abaixo e depois arraste sobre a planta para a posicionar.'),
-    h('div', { class: 'plan-wrap' }, planFrame(svg, curSpace(), planSel)),
-    h('h3', {}, 'Alçados vistos do centro'), elevationsSvg({ highlight: planSel, space: curSpace(), onpick: l => { planSel = l.id; render(); } }),
+    // planta e alçados lado a lado, ajustados à altura do ecrã (sem scroll)
+    h('div', { class: 'stage' },
+      h('div', { class: 'plan-wrap' }, planFrame(svg, curSpace(), planSel)),
+      h('div', {}, h('h3', { class: 'stage-title' }, 'Alçados vistos do centro'),
+        elevationsSvg({ highlight: planSel, space: curSpace(), onpick: l => { planSel = l.id; render(); } }))),
     zoneChips(zones),
     sel ? coordsPanel(sel) : null,
     resetSection(),
@@ -1529,6 +1562,9 @@ function render() {
     : view === 'item' && placeId == null ? 'view:temp' : placeId != null ? null : 'view:home';
   renderNav(activeKey, placeId ? pathOf(placeId).map(l => l.id) : []);
   $('#main').replaceChildren(...[content].flat(Infinity).filter(c => c != null && c !== false));
+  const side = $('#side-plan'), ownMap = ['mapa2d', 'mapa3d', 'plan', 'inventario', 'dados'].includes(view);
+  side.hidden = ownMap;
+  if (ownMap) side.replaceChildren(); else side.replaceChildren(...sidePlan(placeId).flat(Infinity).filter(Boolean));
 }
 let lastHash = null;
 window.addEventListener('hashchange', async () => {

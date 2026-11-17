@@ -263,21 +263,20 @@ def test_fotos_etiquetas_e_qr(api, app, admin):
 
 
 # --- permissões e isolamento entre entidades --------------------------------------------------------------------------
-def test_permissoes_por_papel(api, app):
+def test_garagem_so_para_a_conta_admin(api, app):
     api.novo("/locations", {"name": "Armário"})
-    ver = _utilizador(app, "ana", "ver")
-    assert [l["name"] for l in ver.estado()["locations"]] == ["Armário"]
-    assert ver.post("/locations", {"name": "X"}).status_code == 403
-    assert ver.post("/undo").status_code == 403
-    assert ver.get("/export").status_code == 200                                                         # ler/exportar basta «ver»
-    editor = _utilizador(app, "rui", "editar")
-    assert editor.post("/locations", {"name": "Prateleira"}).status_code == 200
-    assert editor.post("/reset", {"confirm": "APAGAR"}).status_code == 403
-    bundle = editor.get("/export").json()
-    assert editor.post("/import?mode=replace", bundle).status_code == 403                                # substituir só administradores
-    assert editor.post("/import?mode=merge", bundle).status_code == 200
-    adm = _utilizador(app, "eva", "admin")
-    assert adm.post("/import?mode=replace", bundle).status_code == 200
+    for login, papel in (("ana", "ver"), ("rui", "editar"), ("eva", "admin")):          # o papel na entidade não chega
+        with app.state.SessionLocal() as db:
+            u = Utilizador(nome=login.title(), login=login, password_hash=hash_password(PW), is_admin=False)
+            db.add(u)
+            db.flush()
+            db.add(Permissao(utilizador_id=u.id, entidade_id=1, papel=papel))
+            db.commit()
+        c = TestClient(app)
+        _post(c, "/login", login=login, password=PW)
+        assert c.get(f"{A}/api/state").status_code == 404 and c.get("/garagem/").status_code == 404
+        assert "gg-espaco" not in c.get("/inicio").text
+    assert [l["name"] for l in api.estado()["locations"]] == ["Armário"]
 
 
 def test_entidades_isoladas(api, app):

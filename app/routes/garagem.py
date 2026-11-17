@@ -38,7 +38,7 @@ def _historicos(request: Request) -> dict:
 
 def contexto(request: Request, db: Session, u: Utilizador) -> g.Ctx:
     """A entidade da Garagem: a última escolhida (se ainda tiver o módulo e o utilizador a vir) ou a 1.ª."""
-    visiveis = [(e, p) for e, p in entidades_visiveis(db, u) if e.tem("garagem")]
+    visiveis = g.entidades_garagem(db, u)
     if not visiveis:
         raise g.GaragemErro("O módulo Garagem não está ligado a nenhuma das suas entidades (Administração › Entidades).", 404)
     escolha = request.session.get("garagem_entidade")
@@ -92,7 +92,7 @@ def pagina(request: Request, ctx: g.Ctx = Depends(ctx_pagina), u: Utilizador = D
 
 @router.get("/garagem/entidade/{entidade_id}", include_in_schema=False)
 def mudar_entidade(entidade_id: int, request: Request, db: Session = Depends(get_db), u: Utilizador = Depends(utilizador_atual)):
-    if any(e.id == entidade_id and e.tem("garagem") for e, _ in entidades_visiveis(db, u)):
+    if any(e.id == entidade_id for e, _ in g.entidades_garagem(db, u)):
         request.session["garagem_entidade"] = entidade_id
     return RedirectResponse("/garagem/", status_code=303)
 
@@ -116,7 +116,7 @@ def interface(request: Request, ctx: g.Ctx = Depends(ctx_pagina)):
 def etiqueta(codigo: str, request: Request, db: Session = Depends(get_db), u: Utilizador = Depends(utilizador_atual)):
     """O QR de uma etiqueta abre a localização (mudando para a entidade a que pertence, se o utilizador a vir)."""
     loc = db.scalar(select(GarLocal).where(GarLocal.code == codigo.upper()))
-    if loc and any(e.id == loc.entidade_id and e.tem("garagem") for e, _ in entidades_visiveis(db, u)):
+    if loc and any(e.id == loc.entidade_id for e, _ in g.entidades_garagem(db, u)):
         request.session["garagem_entidade"] = loc.entidade_id
         return RedirectResponse(f"/garagem/#/loc/{loc.id}", status_code=303)
     return RedirectResponse("/garagem/", status_code=303)

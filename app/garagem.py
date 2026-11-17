@@ -1006,10 +1006,17 @@ def menu_da_entidade(ctx: Ctx, prefixo: str = "/garagem/", espaco_atual: int | N
     return construir_menu(esp, locais, n_temp or 0, n_rasc or 0, prefixo, espaco_atual, imovel)
 
 
+def entidades_garagem(db: Session, u) -> list:
+    """As entidades onde o utilizador pode usar a Garagem: só a conta administradora (e só onde o módulo está ligado)."""
+    if not u.is_admin:
+        return []
+    from .deps import entidades_visiveis
+    return [(e, p) for e, p in entidades_visiveis(db, u) if e.tem("garagem")]
+
+
 def menu_para_utilizador(db: Session, u, request) -> dict | None:
     """O grupo «Garagem» do menu do Gestor: None se o utilizador não vê nenhuma entidade com o módulo ligado."""
-    from .deps import entidades_visiveis
-    visiveis = [(e, p) for e, p in entidades_visiveis(db, u) if e.tem("garagem")]
+    visiveis = entidades_garagem(db, u)
     if not visiveis:
         return None
     escolha = request.session.get("garagem_entidade")
