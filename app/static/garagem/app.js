@@ -470,8 +470,9 @@ const editLocation = loc => act(async () => {
 const makeGrid = loc => act(async () => {
   if (inMatrix(loc.id)) { toast('Uma matriz não pode conter outra matriz.'); return false; }
   // Numa zona do mapa sem parede, a frente (onde ficam as gavetas) escolhe-se aqui.
-  const faceable = !loc.parent_id && loc.plan_w > 0 && !loc.plan_wall;
-  const d = await formDialog(`Matriz de "${loc.name}"`, [
+  const onTop = ['bancada', 'mezanine'].includes(loc.type); // nestas a matriz fica sempre no topo: não há «frente»
+  const faceable = !onTop && !loc.parent_id && loc.plan_w > 0 && !loc.plan_wall;
+  const d = await formDialog(`Matriz de "${loc.name}"${onTop ? ' (no topo)' : ''}`, [
     { key: 'rows', label: 'Linhas (A, B, C…)', type: 'number', min: 1, max: 26, step: 1, required: true },
     { key: 'cols', label: 'Colunas (1, 2, 3…)', type: 'number', min: 1, max: 40, step: 1, required: true },
     { key: 'type', label: 'Tipo de cada posição', type: 'select', options: TYPE_OPTIONS },

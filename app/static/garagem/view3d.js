@@ -112,7 +112,7 @@ export function mount(el, { W, D, H, zones, highlight, onpick, editable, onmove,
   // linha A atrás, colunas da esquerda para a direita; as caixas e artigos das células assentam em cima.
   const TOPO = new Set(['bancada', 'mezanine']);
   const topGrid = (parent, x, yTop, z0, w, d, rows, cols, cells, zone) => {
-    const yy = yTop + 0.003, cw = w / cols, cd = d / rows;
+    const yy = yTop + 0.02, cw = w / cols, cd = d / rows; // por cima das placas de cada célula
     const lp = [];
     for (let i = 0; i <= cols; i++) lp.push(x + cw * i, yy, z0, x + cw * i, yy, z0 + d);
     for (let j = 0; j <= rows; j++) lp.push(x, yy, z0 + cd * j, x + w, yy, z0 + cd * j);
@@ -120,6 +120,16 @@ export function mount(el, { W, D, H, zones, highlight, onpick, editable, onmove,
     lg.setAttribute('position', new THREE.Float32BufferAttribute(lp, 3));
     parent.add(new THREE.LineSegments(lg, darkLine));
     const cx = c => x + cw * (c.col + 0.5), cz = c => z0 + cd * (c.row + 0.5);
+    // Cada posição é uma placa baixa e bem visível no topo (mais clara se tem conteúdo, laranja se está destacada).
+    const have = new Map((cells || []).map(c => [c.row + ':' + c.col, c]));
+    for (let r = 0; r < rows; r++) for (let k = 0; k < cols; k++) {
+      const c = have.get(r + ':' + k);
+      const full = c && ((c.things || []).length || (c.items || []).length);
+      const tile = new THREE.Mesh(new THREE.BoxGeometry(cw * 0.94, 0.016, cd * 0.94), new THREE.MeshLambertMaterial({
+        color: c && hl.has(c.id) ? hlCol : full ? '#7ea2cc' : '#3d556f' }));
+      tile.position.set(x + cw * (k + 0.5), yTop + 0.008, z0 + cd * (r + 0.5));
+      parent.add(tile);
+    }
     for (const c of cells || []) {
       if (c.row >= rows || c.col >= cols) continue;
       const flat = (color, opacity, dy) => {
@@ -424,7 +434,9 @@ export function mount(el, { W, D, H, zones, highlight, onpick, editable, onmove,
       const ex = z.ex ?? z.w, ey = z.ey ?? z.d;
       const c = new THREE.Vector3(z.x + ex / 2, z.z + z.h / 2, z.y + ey / 2);
       controls.target.copy(c);
-      camera.position.copy(c).add(new THREE.Vector3(0.25, 0.35, 1).normalize().multiplyScalar(Math.max(ex, ey, z.h, 0.8) * 2.4 + 0.8));
+      // matriz no topo (bancada, mezanine): a câmara sobe para se ver de cima
+      const dir = z.rows && ['bancada', 'mezanine'].includes(z.type) ? new THREE.Vector3(0.1, 1.1, 0.7) : new THREE.Vector3(0.25, 0.35, 1);
+      camera.position.copy(c).add(dir.normalize().multiplyScalar(Math.max(ex, ey, z.h, 0.8) * 2.4 + 0.8));
       controls.update();
       render();
     },
