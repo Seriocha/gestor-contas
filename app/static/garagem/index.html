@@ -19,6 +19,7 @@
   </script>
 </head>
 <body>
+  <a class="skip" href="#main" onclick="event.preventDefault();document.getElementById('main').focus()">Saltar para o conteúdo</a>
   <div class="app-shell">
     <aside class="sidebar">
       <a class="brand" href="#/"><img src="icon.svg" alt="" width="24" height="24"><span id="brand">Gestão de Espaços</span></a>
@@ -36,7 +37,7 @@
         <nav aria-label="Menu principal" class="nav-groups" id="nav-dynamic"></nav>
       </details>
     </aside>
-    <main id="main" class="content"></main>
+    <main id="main" class="content" tabindex="-1" aria-busy="true"><div class="loading" role="status"><span class="spinner" aria-hidden="true"></span>A carregar…</div></main>
     <aside id="side-plan" class="side-plan" aria-label="Planta" hidden></aside>
   </div>
   <div id="toast" role="status"></div>

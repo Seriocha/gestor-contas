@@ -38,6 +38,11 @@ let query = '';
 let planSel = null;
 
 // ---------- utilitários ----------
+// Estado vazio com ícone, texto e (opcional) uma ação; e indicador de carregamento.
+const emptyState = (icon, title, text, action) => h('div', { class: 'empty-state', role: 'note' },
+  h('div', { class: 'es-icon', 'aria-hidden': 'true' }, icon), h('b', {}, title),
+  text ? h('p', { class: 'muted' }, text) : null, action || null);
+const loadingBox = text => h('div', { class: 'loading', role: 'status' }, h('span', { class: 'spinner', 'aria-hidden': 'true' }), text);
 function h(tag, attrs, ...children) {
   const svg = SVG_TAGS.has(tag);
   const e = svg ? document.createElementNS(SVGNS, tag) : document.createElement(tag);
@@ -565,7 +570,7 @@ function locCard(l) {
 function crumbs(id, includeSelf) {
   const p = pathOf(id);
   if (!includeSelf) p.pop();
-  return h('div', { class: 'crumbs' }, h('a', { href: '#/' }, spaceById((pathOf(id)[0] || {}).space_id).name),
+  return h('nav', { class: 'crumbs', 'aria-label': 'Localização' }, h('a', { href: '#/' }, spaceById((pathOf(id)[0] || {}).space_id).name),
     p.map(l => h('a', { href: '#/loc/' + l.id }, l.name)));
 }
 // ---------- sobreposição ----------
@@ -764,7 +769,7 @@ function scene3d(highlight, onpick, edit, space) {
   };
 }
 function box3d(highlight, onpick, edit, space) {
-  const box = h('div', { class: 'view3d' }, h('p', { class: 'muted' }, 'A carregar vista 3D…'));
+  const box = h('div', { class: 'view3d' }, loadingBox('A carregar vista 3D…'));
   requestAnimationFrame(async () => {
     if (!box.isConnected) return;
     try {
@@ -772,7 +777,7 @@ function box3d(highlight, onpick, edit, space) {
       if (box.isConnected) box.handle = m.mount(box, scene3d(highlight, onpick, edit, space));
     } catch (e) {
       console.error(e);
-      box.replaceChildren(h('p', { class: 'muted' }, 'Não foi possível mostrar a vista 3D neste dispositivo.'));
+      box.replaceChildren(emptyState('🧊', 'Vista 3D indisponível', 'Este dispositivo não consegue mostrar a vista 3D. A planta 2D continua disponível.'));
     }
   });
   return box;
@@ -816,7 +821,7 @@ function sidePlan(placeId) {
   const placed = zoneChoices(sp.id).some(onMap);
   return [h('h3', {}, `🗺️ ${sp.name}`),
     placed ? planView(null, hl, sp, true)
-      : h('p', { class: 'muted' }, 'Ainda não há zonas na planta. Abra "Edição de Mapas" para posicionar estantes, armários e bancadas.')];
+      : emptyState('🗺️', 'Planta vazia', 'Ainda não há zonas posicionadas neste espaço.', h('a', { class: 'btn primary', href: '#/mapa2d' }, 'Posicionar no Mapa 2D'))];
 }
 
 // ---------- ecrãs ----------
@@ -832,15 +837,17 @@ function viewHome() {
       fill(results,
         h('h2', {}, `Artigos (${items.length})`),
         h('div', { class: 'list' }, items.slice(0, 100).map(itemCard)),
-        items.length ? null : h('p', { class: 'muted' }, 'Nenhum artigo encontrado.'),
+        items.length ? null : emptyState('🔍', 'Nenhum artigo encontrado', 'Experimente outro nome, categoria ou parte do caminho.'),
         locs.length ? [h('h2', {}, `Localizações (${locs.length})`), h('div', { class: 'list' }, locs.slice(0, 50).map(locCard))] : null);
       return;
     }
     const zones = rootsOf(curSpace().id);
     fill(results,
       h('h2', {}, 'Zonas'),
-      h('div', { class: 'list' }, zones.map(locCard)),
-      h('div', { class: 'actions' }, h('button', { onclick: () => newLocation(null) }, '+ Zona')),
+      zones.length ? h('div', { class: 'list' }, zones.map(locCard))
+        : emptyState('🗄️', 'Ainda não há zonas', 'Crie a primeira estante, armário ou bancada deste espaço.',
+          h('button', { class: 'primary', onclick: () => newLocation(null) }, '+ Criar zona')),
+      zones.length ? h('div', { class: 'actions' }, h('button', { onclick: () => newLocation(null) }, '+ Zona')) : null,
       itemsIn(0).length ? [h('h2', {}, 'Área temporária (' + itemsIn(0).length + ')'), h('p', { class: 'muted' }, 'Artigos ainda por arrumar. ', h('a', { href: '#/temporaria' }, 'Arrumar agora')), h('div', { class: 'list' }, itemsIn(0).slice(0, 10).map(itemCard))] : null,
       h('h2', {}, `Artigos recentes (${S.items.length} no total)`),
       h('div', { class: 'list' }, S.items.slice(0, 30).map(itemCard)));
@@ -932,7 +939,9 @@ function viewLocation(id) {
     matrix,
     (() => { const t = contentTree(loc); return t ? [h('h2', {}, `Conteúdo por hierarquia (${countItems(id)} artigos)`), t] : null; })(),
     h('h2', {}, `Artigos aqui (${items.length})`),
-    items.length ? h('div', { class: 'list' }, items.map(itemCard)) : h('p', { class: 'muted' }, 'Nenhum artigo diretamente nesta localização.'),
+    items.length ? h('div', { class: 'list' }, items.map(itemCard))
+      : emptyState('📦', 'Nada guardado diretamente aqui', 'Adicione um artigo a esta localização.',
+        h('button', { class: 'primary', onclick: () => addItem(id) }, '+ Artigo aqui')),
   ];
 }
 
@@ -1381,8 +1390,10 @@ function viewInventory() {
       h('td', {}, r.loc || h('span', { class: 'muted' }, 'Área temporária')),
       h('td', {}, r.updated))));
     if (!shown.length) {
-      tbody.append(h('tr', {}, h('td', { colspan: cols.length, class: 'muted' },
-        rows.length ? 'Nenhum artigo corresponde ao filtro.' : 'Ainda não há artigos registados.')));
+      tbody.append(h('tr', { class: 'empty-row' }, h('td', { colspan: cols.length },
+        rows.length ? emptyState('🔍', 'Nenhum artigo corresponde ao filtro', 'Limpe a pesquisa ou escolha outra categoria.')
+          : emptyState('📦', 'Ainda não há artigos registados', 'Comece por registar o primeiro artigo.',
+            h('button', { class: 'primary', onclick: () => newItem(null) }, '+ Artigo')))));
     }
     count.textContent = shown.length === rows.length ? `${rows.length} artigos` : `${shown.length} de ${rows.length} artigos`;
     showMap();
@@ -1534,7 +1545,7 @@ function viewTemp() {
       const cb = h('input', { type: 'checkbox', onchange: e => { if (e.target.checked) sel.add(it.id); else sel.delete(it.id); update(); } });
       boxes.push(cb);
       return h('div', { class: 'sel-row' }, cb, itemCard(it));
-    })) : h('p', { class: 'muted' }, 'A área temporária está vazia. Tudo está arrumado.'),
+    })) : emptyState('✅', 'Tudo arrumado', 'A área temporária está vazia.', h('a', { class: 'btn', href: '#/inventario' }, 'Ver inventário')),
   ];
 }
 
@@ -1613,6 +1624,7 @@ function render() {
     : view === 'item' && placeId == null ? 'view:temp' : placeId != null ? null : 'view:home';
   renderNav(activeKey, placeId ? pathOf(placeId).map(l => l.id) : []);
   $('#main').replaceChildren(...[content].flat(Infinity).filter(c => c != null && c !== false));
+  $('#main').removeAttribute('aria-busy');
   const side = $('#side-plan'), ownMap = ['mapa2d', 'mapa3d', 'plan', 'inventario', 'dados'].includes(view);
   side.hidden = ownMap;
   if (ownMap) side.replaceChildren(); else side.replaceChildren(...sidePlan(placeId).flat(Infinity).filter(Boolean));
