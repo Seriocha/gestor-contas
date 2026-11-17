@@ -108,6 +108,54 @@ export function mount(el, { W, D, H, zones, highlight, onpick, editable, onmove,
 
   // Grelha de gavetas desenhada na face da frente (+z); as células em `hl` ficam a laranja.
   const cellHl = cs => (cs || []).some(c => hl.has(c.id) || (c.things || []).some(t => hl.has(t.id)));
+  // Bancadas e mezanines (áreas de armazenamento): a matriz fica sempre no topo do objeto, vista de cima —
+  // linha A atrás, colunas da esquerda para a direita; as caixas e artigos das células assentam em cima.
+  const TOPO = new Set(['bancada', 'mezanine']);
+  const topGrid = (parent, x, yTop, z0, w, d, rows, cols, cells, zone) => {
+    const yy = yTop + 0.003, cw = w / cols, cd = d / rows;
+    const lp = [];
+    for (let i = 0; i <= cols; i++) lp.push(x + cw * i, yy, z0, x + cw * i, yy, z0 + d);
+    for (let j = 0; j <= rows; j++) lp.push(x, yy, z0 + cd * j, x + w, yy, z0 + cd * j);
+    const lg = new THREE.BufferGeometry();
+    lg.setAttribute('position', new THREE.Float32BufferAttribute(lp, 3));
+    parent.add(new THREE.LineSegments(lg, darkLine));
+    const cx = c => x + cw * (c.col + 0.5), cz = c => z0 + cd * (c.row + 0.5);
+    for (const c of cells || []) {
+      if (c.row >= rows || c.col >= cols) continue;
+      const flat = (color, opacity, dy) => {
+        const m = new THREE.Mesh(new THREE.PlaneGeometry(cw, cd), new THREE.MeshBasicMaterial(
+          opacity === 0 ? { transparent: true, opacity: 0, depthWrite: false } : { color }));
+        m.rotation.x = -Math.PI / 2;
+        m.position.set(cx(c), yy + dy, cz(c));
+        parent.add(m);
+        return m;
+      };
+      if (hl.has(c.id)) flat(hlCol, 1, 0.002);
+      if (rows * cols <= 400) { // célula escolhível
+        const pm = flat(null, 0, 0.001);
+        pm.userData.zone = zone;
+        pm.userData.thing = { id: c.id, itemId: null, name: c.name || 'Posição' };
+        things.push(pm);
+      }
+      const entries = [...(c.things || []).map(t => ({ t })), ...(c.items || []).slice(0, 3).map(it => ({ it }))];
+      const n = entries.length;
+      entries.forEach((en, k) => {
+        const sw = cw * 0.9 / n, sd = en.it ? cd * 0.4 : cd * 0.82, sh = Math.min(0.16, Math.max(0.05, Math.min(cw, cd) * 0.5));
+        const on = hl.has(c.id) || (en.t && hl.has(en.t.id));
+        const bg = new THREE.BoxGeometry(sw, sh, sd);
+        const m = new THREE.Mesh(bg, en.it ? new THREE.MeshBasicMaterial({ color: TYPE_COLOR.item })
+          : new THREE.MeshLambertMaterial({ color: on ? hlCol : (TYPE_COLOR[en.t.type] || '#8fa7bf') }));
+        m.position.set(x + cw * c.col + cw * 0.05 + sw * (k + 0.5), yy + sh / 2 + 0.006, cz(c));
+        m.userData.zone = zone;
+        m.userData.thing = en.t ? { id: en.t.id, itemId: null, name: en.t.name + (en.t.n ? ` · ${en.t.n} artigos` : '') }
+          : { id: null, itemId: en.it.id, name: en.it.name };
+        const e = new THREE.LineSegments(new THREE.EdgesGeometry(bg), darkLine);
+        e.position.copy(m.position);
+        parent.add(m, e);
+        things.push(m);
+      });
+    }
+  };
   const frontGrid = (parent, x, y, zf, w, h, rows, cols, cells, zone) => {
     const lp = [];
     for (let i = 0; i <= cols; i++) lp.push(x + w * i / cols, y, zf + 0.002, x + w * i / cols, y + h, zf + 0.002);
@@ -213,7 +261,10 @@ export function mount(el, { W, D, H, zones, highlight, onpick, editable, onmove,
       lg.setAttribute('position', new THREE.Float32BufferAttribute(lp, 3));
       grp.add(new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ color: lineCol })));
     }
-    if (z.rows) frontGrid(grp, 0, 0, z.d, z.w, z.h, z.rows, z.cols, z.cells, z);
+    if (z.rows) {
+      if (TOPO.has(z.type)) topGrid(grp, 0, z.h, 0, z.w, z.d, z.rows, z.cols, z.cells, z);
+      else frontGrid(grp, 0, 0, z.d, z.w, z.h, z.rows, z.cols, z.cells, z);
+    }
 
     // Conteúdo de cada nível: caixas/outros objetos e artigos soltos, em fila ao longo do lado maior.
     const alongX = z.w >= z.d, len = alongX ? z.w : z.d, across = alongX ? z.d : z.w;
@@ -252,7 +303,10 @@ export function mount(el, { W, D, H, zones, highlight, onpick, editable, onmove,
         e.position.copy(m.position);
         grp.add(m, e);
         things.push(m);
-        if (t && t.rows) frontGrid(grp, cx - sx / 2, by, cz + sz / 2, sx, sy, t.rows, t.cols, t.cells, z);
+        if (t && t.rows) {
+          if (TOPO.has(t.type)) topGrid(grp, cx - sx / 2, by + sy, cz - sz / 2, sx, sz, t.rows, t.cols, t.cells, z);
+          else frontGrid(grp, cx - sx / 2, by, cz + sz / 2, sx, sy, t.rows, t.cols, t.cells, z);
+        }
       });
     });
 

@@ -11,6 +11,8 @@ const TYPE_OPTIONS = Object.entries(TYPES).map(([value, [label, icon]]) => ({ va
 const SNAP = 0.25; // metros
 // Prefixo sob o qual a app está servida (o servidor põe-no no <base>): '' ou, por exemplo, '/garagem'.
 const BASE = new URL('.', document.baseURI).pathname.replace(/\/$/, '');
+// Versão com que o servidor serviu este ficheiro (?v=…): vai também no endereço da vista 3D, para o browser não a guardar velha.
+const VER = (() => { try { return new URL(document.currentScript.src).searchParams.get('v') || ''; } catch { return ''; } })();
 const PHOTOS = BASE + '/photos/';
 
 let S = { spaces: [], locations: [], items: [], drafts: [] };
@@ -753,7 +755,7 @@ function scene3d(highlight, onpick, edit, space) {
     W: Number(sp.w) || 6, D: Number(sp.d) || 5, H: Number(sp.h) || 2.5,
     highlight, onpick,
     zones: zoneChoices(sp.id).filter(onMap).map(l => ({
-      id: l.id, name: l.name, ...absXY(l), w: l.plan_w, d: l.plan_h, wall: l.plan_wall || null, orient: orientOf(l), ...ext(l),
+      id: l.id, name: l.name, type: l.type, ...absXY(l), w: l.plan_w, d: l.plan_h, wall: l.plan_wall || null, orient: orientOf(l), ...ext(l),
       z: baseZ(l), h: l.plan_alt || defaultAlt(l),
       kind: l.type === 'mezanine' ? 'mezz' : mezzOf(l) ? 'sub' : null, fixed: !!mezzOf(l), parent: l.parent_id,
       contents: contentsOf(l), rows: l.grid_rows || 0, cols: l.grid_cols || 0,
@@ -766,7 +768,7 @@ function box3d(highlight, onpick, edit, space) {
   requestAnimationFrame(async () => {
     if (!box.isConnected) return;
     try {
-      const m = await import('./view3d.js');
+      const m = await import('./view3d.js' + (VER ? '?v=' + VER : ''));
       if (box.isConnected) box.handle = m.mount(box, scene3d(highlight, onpick, edit, space));
     } catch (e) {
       console.error(e);
