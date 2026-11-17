@@ -2,7 +2,7 @@
 // Gestão de Garagem — web app (telemóvel e PC). Sem passo de compilação.
 
 const SVGNS = 'http://www.w3.org/2000/svg';
-const SVG_TAGS = new Set(['svg', 'rect', 'line', 'text', 'g', 'circle']);
+const SVG_TAGS = new Set(['svg', 'rect', 'line', 'text', 'g', 'circle', 'polygon']);
 const TYPES = {
   zona: ['Zona', '📍'], estante: ['Estante', '🗄️'], armario: ['Armário', '🚪'], bancada: ['Bancada', '🛠️'],
   prateleira: ['Prateleira', '🪜'], caixa: ['Caixa', '📦'], gaveta: ['Gaveta', '🗃️'], mezanine: ['Mezanine', '🏗️'], outro: ['Outro', '📌'],
@@ -1124,7 +1124,10 @@ function dimsForm() {
     await api('DELETE', '/api/spaces/' + sp.id);
     setSpace(null); planSel = null; cam3d.v = null;
   });
-  return h('div', {},
+  const m = n => String(Math.round(Number(n || 0) * 100) / 100).replace('.', ',');
+  return h('details', { class: 'dims-box' },
+    h('summary', {}, `⚙️ Espaço «${sp.name}» · ${m(sp.w)} × ${m(sp.d)} × ${m(sp.h)} m` + (sp.property_name ? ` · ${sp.property_name}` : ''),
+      h('span', { class: 'muted' }, ' (largura × profundidade × altura) — tocar para alterar')),
     h('form', { class: 'row', onsubmit: e => { e.preventDefault(); act(() => api('PUT', '/api/spaces/' + sp.id, withPropertyName(dims))); } },
       f('name', 'Espaço (nome)', {}, '2 1 160px'),
       S.bens && S.bens.length
@@ -1142,14 +1145,47 @@ function dimsForm() {
       h('button', { onclick: newSpace }, '+ Novo espaço'),
       S.spaces.length > 1 ? h('button', { class: 'danger', onclick: delSpace }, `Apagar espaço "${sp.name}"`) : null));
 }
+// Escolha da zona: uma lista (com «‹ ›» para passar à anterior/seguinte) em vez de dezenas de botões.
 function zoneChips(zones) {
   const cur = byId.get(planSel), mz = cur && (cur.type === 'mezanine' ? cur : mezzOf(cur));
-  return h('div', { class: 'chips' },
-    zones.map(z => h('button', {
-      class: 'chip' + (z.id === planSel ? ' sel' : ''), onclick: () => { planSel = z.id === planSel ? null : z.id; render(); },
-    }, `${mezzOf(z) ? '↳ ' : ''}${icon(z)} ${z.name}${z.plan_w > 0 ? '' : ' (por posicionar)'}`)),
-    h('button', { class: 'chip primary', onclick: () => newLocation(null) }, '+ Zona'),
-    mz ? h('button', { class: 'chip primary', onclick: () => newLocation(mz.id) }, `+ Zona em "${mz.name}"`) : null);
+  const label = z => `${mezzOf(z) ? '   ↳ ' : ''}${icon(z)} ${z.name}${z.plan_w > 0 ? '' : ' (por posicionar)'}`;
+  const go = id => { planSel = id; render(); };
+  const i = zones.findIndex(z => z.id === planSel);
+  const step = d => { if (zones.length) go(zones[(Math.max(i, 0) + d + zones.length) % zones.length].id); };
+  const pick = h('select', { 'aria-label': 'Zona a editar', onchange: e => go(e.target.value ? Number(e.target.value) : null) },
+    h('option', { value: '' }, zones.length ? `Escolher zona (${zones.length})…` : 'Ainda não há zonas'),
+    zones.map(z => h('option', { value: z.id, selected: z.id === planSel }, label(z))));
+  return h('div', { class: 'zone-picker' },
+    h('div', { class: 'row' },
+      h('button', { type: 'button', title: 'Zona anterior', onclick: () => step(-1), disabled: zones.length < 2 }, '‹'), pick,
+      h('button', { type: 'button', title: 'Zona seguinte', onclick: () => step(1), disabled: zones.length < 2 }, '›'),
+      h('button', { class: 'primary', onclick: () => newLocation(null) }, '+ Zona'),
+      mz ? h('button', { onclick: () => newLocation(mz.id) }, `+ Zona em "${mz.name}"`) : null));
+}
+// Objeto de referência: uma estante num canto da sala, com cada medida marcada na cor do campo correspondente.
+const COORD_COLORS = { plan_x: '#e5484d', plan_y: '#30a46c', plan_z: '#3e63dd', plan_w: '#f76b15', plan_h: '#8e4ec6', plan_alt: '#12a594' };
+function refObject() {
+  const s = 100, O = { x: 72, y: 112 };
+  const P = (x, y, z) => [O.x + x * s - y * 0.45 * s, O.y + y * 0.45 * s - z * s];
+  const pts = (...a) => a.map(q => q.join(',')).join(' ');
+  const X = 0.25, Y = 0.12, Z = 0.14, L = 0.5, D = 0.4, A = 0.45, RW = 1.4, RD = 0.9, RH = 0.9;
+  const line = (p, q, c) => h('line', { x1: p[0], y1: p[1], x2: q[0], y2: q[1], stroke: c, 'stroke-width': 2.2, 'stroke-linecap': 'round' });
+  const tag = (p, t, c, dx = 0, dy = 0) => h('text', { x: p[0] + dx, y: p[1] + dy, fill: c, 'font-size': 11, 'font-weight': 700, 'text-anchor': 'middle' }, t);
+  const mid = (p, q) => [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2];
+  const C = COORD_COLORS;
+  const x0 = X, x1 = X + L, y0 = Y, y1 = Y + D, z0 = Z, z1 = Z + A;
+  return h('svg', { viewBox: '0 0 230 170', class: 'ref-object', role: 'img', 'aria-label': 'Objeto de referência com as medidas X, Y, Z, largura, profundidade e altura' },
+    h('polygon', { points: pts(P(0, 0, 0), P(RW, 0, 0), P(RW, RD, 0), P(0, RD, 0)), class: 'ro-floor' }),
+    h('polygon', { points: pts(P(0, 0, 0), P(RW, 0, 0), P(RW, 0, RH), P(0, 0, RH)), class: 'ro-wall' }),
+    h('polygon', { points: pts(P(x1, y1, z0), P(x1, y0, z0), P(x1, y0, z1), P(x1, y1, z1)), class: 'ro-side' }),
+    h('polygon', { points: pts(P(x0, y0, z1), P(x1, y0, z1), P(x1, y1, z1), P(x0, y1, z1)), class: 'ro-top' }),
+    h('polygon', { points: pts(P(x0, y1, z0), P(x1, y1, z0), P(x1, y1, z1), P(x0, y1, z1)), class: 'ro-front' }),
+    line(P(0, 0, 0), P(x0, 0, 0), C.plan_x), tag(mid(P(0, 0, 0), P(x0, 0, 0)), 'X', C.plan_x, 0, -4),
+    line(P(x0, 0, 0), P(x0, y0, 0), C.plan_y), tag(mid(P(x0, 0, 0), P(x0, y0, 0)), 'Y', C.plan_y, -9, 4),
+    line(P(x0, y1, 0), P(x0, y1, z0), C.plan_z), tag(mid(P(x0, y1, 0), P(x0, y1, z0)), 'Z', C.plan_z, -8, 4),
+    line(P(x0, y1, z0), P(x1, y1, z0), C.plan_w), tag(mid(P(x0, y1, z0), P(x1, y1, z0)), 'Larg.', C.plan_w, 0, 13),
+    line(P(x1, y1, z0), P(x1, y0, z0), C.plan_h), tag(mid(P(x1, y1, z0), P(x1, y0, z0)), 'Prof.', C.plan_h, 16, 8),
+    line(P(x1, y0, z0), P(x1, y0, z1), C.plan_alt), tag(mid(P(x1, y0, z0), P(x1, y0, z1)), 'Alt.', C.plan_alt, 14, 0));
 }
 // Coordenadas e medidas da zona escolhida; cada campo grava ao sair dele (ou com Enter).
 function coordsPanel(sel) {
@@ -1184,7 +1220,8 @@ function coordsPanel(sel) {
     }
     return body;
   };
-  const f = (key, text, optional, placeholder) => h('label', { class: 'field coord' }, h('span', {}, text),
+  const f = (key, text, optional, placeholder) => h('label', { class: 'field coord', title: text }, h('span', {},
+    h('i', { class: 'dot', style: `background:${COORD_COLORS[key]}` }), text.split(' · ')[0].replace(/ \(m\)$/, ''), h('small', {}, ' m')),
     h('input', {
       type: 'number', step: 0.05, min: 0, max: 100, value: sel[key] ?? (optional ? placeholder : ''), placeholder, 'data-coord': key,
       onchange: e => {
@@ -1198,24 +1235,28 @@ function coordsPanel(sel) {
     const t = { ...sel, plan_wall: wall }, { ex, ey } = ext(t);
     put({ plan_wall: wall, ...(wall ? snapWall(wall, sel.plan_x, sel.plan_y, ex, ey) : { plan_face: WALL_TO_FACE[orientOf(sel)] }) });
   };
-  const wallField = h('label', { class: 'field coord' }, h('span', {}, 'Encostada à parede'),
+  const wallField = h('label', { class: 'field coord' }, h('span', {}, 'Parede'),
     h('select', { onchange: e => setWall(e.target.value || null) },
       WALL_OPTIONS.map(o => h('option', { value: o.value, selected: o.value === (sel.plan_wall || '') }, o.label))));
-  const faceField = h('label', { class: 'field coord' }, h('span', {}, 'Frente voltada para'),
+  const faceField = h('label', { class: 'field coord' }, h('span', {}, 'Frente para'),
     h('select', {
       disabled: !!sel.plan_wall, title: sel.plan_wall ? 'Encostada a uma parede: a frente olha para dentro da sala.' : '',
       onchange: e => put(fit(faceBody(sel, e.target.value))),
     }, FACE_OPTIONS.map(o => h('option', { value: o.value, selected: o.value === (sel.plan_wall ? WALL_TO_FACE[sel.plan_wall] : (sel.plan_face || 'entrada')) }, o.label))));
   return h('div', {},
-    h('h2', {}, `Coordenadas de "${sel.name}"`),
-    h('div', { class: 'coords' },
-      mz ? null : wallField, isMezz ? null : faceField,
+    h('h2', {}, `Medidas de "${sel.name}"`),
+    h('div', { class: 'coords-wrap' }, h('div', { class: 'coords-fields' },
+    h('div', { class: 'coords sel2' }, mz ? null : wallField, isMezz ? null : faceField),
+    h('div', { class: 'coords compact' },
       f('plan_x', mz ? 'X · do bordo esquerdo da mezanine (m)' : 'X · à parede esquerda (m)'),
       f('plan_y', mz ? 'Y · do bordo do fundo da mezanine (m)' : 'Y · à parede do fundo (m)'),
       f('plan_z', isMezz ? 'Z · elevação do piso ao chão (m)' : mz ? 'Z · acima do piso da mezanine (m)' : 'Z · ao chão (m)', true, '0'),
       f('plan_w', sel.plan_wall ? 'Largura · ao longo da parede (m)' : 'Largura (m)'),
       f('plan_h', sel.plan_wall ? 'Profundidade · da parede para dentro (m)' : 'Profundidade (m)'),
-      f(isMezz ? 'plan_alt' : 'plan_alt', isMezz ? 'Espessura do piso (m)' : 'Altura (m)', true, String(defaultAlt(sel)))),
+      f('plan_alt', isMezz ? 'Espessura do piso (m)' : 'Altura (m)', true, String(defaultAlt(sel)))),
+    h('p', { class: 'muted legend-note' }, 'Passe o rato (ou toque) num campo para ver o que mede. ',
+      h('b', {}, 'X, Y, Z'), ': posição · ', h('b', {}, 'Larg., Prof., Alt.'), ': medidas, em metros.')),
+    h('figure', { class: 'ref-fig' }, refObject(), h('figcaption', { class: 'muted' }, 'Objeto de referência'))),
     (() => { const t = contentTree(sel); return t ? [h('h2', {}, `Conteúdo de "${sel.name}"`), t] : null; })(),
     mz ? h('p', { class: 'muted' }, 'Esta zona posiciona-se e orienta-se na planta (Mapa 2D); aqui acerta-se por números.') : null,
     isMezz ? h('p', { class: 'muted' }, 'Mezanine: use "+ Zona em ..." para a dividir em zonas e desenhe-as no Mapa 2D.') : null,
@@ -1242,7 +1283,8 @@ function viewMap3d() {
   return h('div', { class: 'split' }, h('div', { class: 'split-left' },
     h('h1', {}, 'Edição de Mapas · 3D'),
     dimsForm(),
-    h('p', { class: 'muted' }, 'Arraste uma zona para a mover no chão (encaixa de 5 em 5 cm); arraste fora das zonas para rodar a vista. Um toque escolhe a zona e mostra as coordenadas X, Y e Z para acerto fino. As zonas de uma mezanine posicionam-se na planta (Mapa 2D).'),
+    h('details', { class: 'help' }, h('summary', {}, 'ℹ️ Como usar'),
+      h('p', { class: 'muted' }, 'Arraste uma zona para a mover no chão (encaixa de 5 em 5 cm); arraste fora das zonas para rodar a vista. Um toque escolhe a zona e mostra as medidas para acerto fino. As zonas de uma mezanine posicionam-se na planta (Mapa 2D).')),
     zoneChips(zones),
     sel ? coordsPanel(sel) : null,
     resetSection()),

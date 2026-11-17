@@ -262,3 +262,27 @@ dialog .cards { display: grid; gap: 6px; max-height: 45vh; overflow-y: auto; mar
 .card.pick { width: 100%; text-align: left; border: 1px solid var(--line); cursor: pointer; color: inherit; font: inherit; }
 .plan .badge { fill: #00e676; stroke: #0b3d24; stroke-width: .02; pointer-events: none; }
 .plan .zone text.badge-n { fill: #04210f; font-weight: 800; }
+
+/* Design 3D/2D: menus mais compactos e medidas com objeto de referência */
+.dims-box { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; margin: 8px 0; }
+.dims-box > summary { cursor: pointer; font-weight: 600; list-style-position: inside; }
+.dims-box[open] > summary { margin-bottom: 8px; }
+.help { margin: 6px 0; } .help > summary { cursor: pointer; color: var(--muted); }
+.zone-picker { margin: 10px 0; }
+.zone-picker select { flex: 1 1 200px; width: auto; min-width: 0; }
+.coords-wrap { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }
+.coords-fields { flex: 1 1 250px; min-width: 0; }
+.coords.sel2 { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 0; }
+.coords.compact { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 8px; margin-bottom: 4px; }
+.coords .field.coord { margin: 5px 0; }
+.coords .coord > span { display: flex; align-items: center; gap: 4px; margin-bottom: 2px; font-size: .78rem; }
+.coords .coord small { color: var(--muted); }
+.coords .coord input, .coords .coord select { padding: 5px 7px; }
+.dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
+.legend-note { margin: 4px 0 0; font-size: .8rem; }
+.ref-fig { margin: 0; flex: 0 0 190px; text-align: center; }
+.ref-object { width: 190px; height: auto; display: block; }
+.ro-floor { fill: var(--bg); stroke: var(--line); } .ro-wall { fill: rgba(127,127,127,.12); stroke: var(--line); }
+.ro-front { fill: var(--zone); stroke: var(--accent); } .ro-top { fill: var(--card); stroke: var(--accent); }
+.ro-side { fill: rgba(127,127,127,.25); stroke: var(--accent); }
+.ref-fig figcaption { font-size: .75rem; }
