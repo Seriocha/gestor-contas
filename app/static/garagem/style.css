@@ -329,3 +329,20 @@ tr.empty-row, tr.empty-row:hover { cursor: default; background: none; }
 .spinner { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--accent); animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; } }
+
+/* Inventário: duplicados e categorias */
+.cat-btn { padding: 2px 8px; min-height: 0; font-weight: 500; text-align: left; white-space: normal; }
+.cat-dialog, .dup-dialog { width: min(640px, 94vw); }
+.dup-dialog.wide { width: min(760px, 94vw); }
+.cat-scroll { max-height: 52vh; overflow: auto; margin: var(--sp-2) 0; border: 1px solid var(--line); border-radius: 8px; }
+.cat-scroll table td, .cat-scroll table th { padding: var(--sp-1) var(--sp-2); }
+.cat-scroll input { padding: 5px 8px; }
+td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.dup-list { display: grid; gap: var(--sp-3); max-height: 60vh; overflow: auto; margin: var(--sp-2) 0; }
+.dup-group { border: 1px solid var(--line); border-radius: 10px; padding: var(--sp-2) var(--sp-3); margin: 0; }
+.dup-group legend { font-weight: 600; padding: 0 var(--sp-1); }
+.dup-row { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-1) 0; cursor: pointer; }
+.dup-row input[type=radio] { width: auto; flex: 0 0 auto; }
+.dup-row .thumb { width: 36px; height: 36px; border-radius: 6px; object-fit: cover; display: grid; place-items: center; background: var(--bg); flex: 0 0 auto; }
+.dup-info { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.dup-info small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

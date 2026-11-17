@@ -367,9 +367,40 @@ function itemFields() {
     { key: 'notes', label: 'Notas', type: 'textarea' },
   ];
 }
+// Duplicados: o mesmo nome (sem maiúsculas, acentos nem pontuação) já registado.
+const dupKey = name => norm(name).replace(/[^a-z0-9]+/g, ' ').trim();
+const findDups = (name, excludeId) => { const k = dupKey(name); return k ? S.items.filter(i => i.id !== excludeId && dupKey(i.name) === k) : []; };
+// Pergunta o que fazer quando já existe: 'force' (criar/guardar mesmo assim), um id (abrir o existente) ou null (cancelar).
+function dupDialog(name, dups, verb) {
+  return new Promise(resolve => {
+    const dlg = h('dialog', { class: 'dup-dialog' }, h('div', {},
+      h('h2', {}, '⚠️ Já existe um artigo assim'),
+      h('p', { class: 'muted' }, `"${name}" é igual a ${dups.length === 1 ? 'um artigo já registado' : dups.length + ' artigos já registados'}. Evite repetir: use o que existe e acerte a quantidade.`),
+      h('div', { class: 'cards' }, dups.slice(0, 5).map(it => h('button', { type: 'button', class: 'card pick', onclick: () => dlg.close('open:' + it.id) },
+        it.photo ? h('img', { class: 'thumb', src: PHOTOS + it.photo, alt: '' }) : h('div', { class: 'thumb' }, '🔩'),
+        h('div', { class: 'body' }, h('div', { class: 'title' }, it.name),
+          h('div', { class: 'sub' }, [it.quantity && `Qtd: ${it.quantity}`, it.category].filter(Boolean).join(' · ')),
+          h('div', { class: 'sub' }, '📍 ' + pathText(it.location_id)))))),
+      h('div', { class: 'row end' },
+        h('button', { type: 'button', class: 'ghost', onclick: () => dlg.close('') }, 'Cancelar'),
+        h('button', { type: 'button', onclick: () => dlg.close('force') }, verb))));
+    dlg.addEventListener('close', () => { dlg.remove(); const v = dlg.returnValue; resolve(v === 'force' ? 'force' : v.startsWith('open:') ? Number(v.slice(5)) : null); });
+    document.body.append(dlg);
+    dlg.showModal();
+  });
+}
+// true = pode seguir; false = parou (cancelou ou foi abrir o artigo que já existe)
+async function confirmNoDup(name, excludeId, verb) {
+  const dups = findDups(name, excludeId);
+  if (!dups.length) return true;
+  const r = await dupDialog(name, dups, verb);
+  if (typeof r === 'number') location.hash = '#/item/' + r;
+  return r === 'force';
+}
 const newItem = locId => act(async () => {
   const d = await formDialog('Novo artigo', itemFields(), { location_id: locId ?? null });
   if (!d) return false;
+  if (!await confirmNoDup(d.name, null, 'Criar mesmo assim')) return false;
   const { id } = await api('POST', '/api/items', d);
   location.hash = '#/item/' + id;
 });
@@ -428,6 +459,7 @@ const addItem = locId => {
 const editItem = it => act(async () => {
   const d = await formDialog('Editar artigo', itemFields(), it);
   if (!d) return false;
+  if (dupKey(d.name) !== dupKey(it.name) && !await confirmNoDup(d.name, it.id, 'Guardar mesmo assim')) return false;
   await api('PUT', '/api/items/' + it.id, d);
 });
 const moveItem = it => act(async () => {
@@ -436,6 +468,102 @@ const moveItem = it => act(async () => {
   if (!d) return false;
   await api('PUT', '/api/items/' + it.id, { location_id: d.location_id });
 });
+// Corrigir a categoria de um artigo (sugere as que já existem).
+const fixItemCategory = it => act(async () => {
+  const cats = [...new Set(S.items.map(i => i.category).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt'));
+  const d = await formDialog(`Categoria de "${it.name}"`, [{ key: 'category', label: 'Categoria (escolha uma existente ou escreva)', list: cats, placeholder: 'ex.: Parafusos' }],
+    { category: it.category }, 'Corrigir');
+  if (!d) return false;
+  await api('PUT', '/api/items/' + it.id, { category: d.category || null });
+});
+const catKey = c => norm(c).replace(/[^a-z0-9]/g, '').replace(/(es|s)$/, '');
+// Corrigir categorias em bloco: renomear uma, ou juntar variantes («parafuso», «Parafusos») numa só.
+const categoriesTool = () => act(() => new Promise(resolve => {
+  const counts = new Map();
+  for (const i of S.items) if (i.category) counts.set(i.category, (counts.get(i.category) || 0) + 1);
+  const cats = [...counts.keys()].sort((a, b) => a.localeCompare(b, 'pt'));
+  const byKey = new Map();
+  for (const c of cats) { const k = catKey(c); if (!byKey.has(k)) byKey.set(k, []); byKey.get(k).push(c); }
+  const inputs = new Map();
+  const rows = cats.map(c => {
+    const like = (byKey.get(catKey(c)) || []).filter(x => x !== c);
+    const best = [c, ...like].sort((a, b) => (counts.get(b) - counts.get(a)) || a.localeCompare(b))[0];
+    const input = h('input', { value: c, autocomplete: 'off', 'aria-label': `Novo nome para ${c}` });
+    inputs.set(c, input);
+    return h('tr', {}, h('td', {}, c), h('td', { class: 'num' }, String(counts.get(c))), h('td', {}, input),
+      h('td', {}, like.length && best !== c
+        ? h('button', { type: 'button', class: 'ghost', title: 'Juntar com a variante mais usada', onclick: () => { input.value = best; } }, `⚠️ Juntar em "${best}"`)
+        : like.length ? h('span', { class: 'muted' }, 'variantes: ' + like.join(', ')) : null));
+  });
+  const dlg = h('dialog', { class: 'cat-dialog' }, h('div', {},
+    h('h2', {}, '🏷️ Corrigir categorias'),
+    h('p', { class: 'muted' }, 'Mude o nome para corrigir; dar o mesmo nome a duas categorias junta-as. Deixe vazio para tirar a categoria. Aplica-se a todos os artigos (pode desfazer).'),
+    cats.length ? h('div', { class: 'cat-scroll' }, h('table', {}, h('thead', {}, h('tr', {}, ['Categoria', 'Artigos', 'Novo nome', ''].map(t => h('th', {}, t)))), h('tbody', {}, rows)))
+      : emptyState('🏷️', 'Ainda não há categorias', 'Defina a categoria ao criar ou editar um artigo.'),
+    h('div', { class: 'row end' },
+      h('button', { type: 'button', class: 'ghost', onclick: () => dlg.close('') }, 'Cancelar'),
+      cats.length ? h('button', { type: 'button', class: 'primary', onclick: () => dlg.close('ok') }, 'Aplicar') : null)));
+  dlg.addEventListener('close', async () => {
+    dlg.remove();
+    if (dlg.returnValue !== 'ok') return resolve(false);
+    try {
+      let n = 0;
+      for (const [c, input] of inputs) {
+        const to = input.value.trim();
+        if (to === c) continue;
+        n += (await api('POST', '/api/items/category', { from: c, to })).changed;
+      }
+      if (!n) { resolve(false); return; }
+      toast(`${n} artigos corrigidos.`);
+      resolve();
+    } catch (e) { toast(e.message); resolve(); }
+  });
+  document.body.append(dlg);
+  dlg.showModal();
+}));
+// Artigos repetidos (mesmo nome): escolher o que fica; os outros juntam-se a ele (as quantidades somam-se).
+const dupGroups = () => {
+  const g = new Map();
+  for (const i of S.items) { const k = dupKey(i.name); if (!k) continue; if (!g.has(k)) g.set(k, []); g.get(k).push(i); }
+  return [...g.values()].filter(x => x.length > 1).sort((a, b) => a[0].name.localeCompare(b[0].name, 'pt'));
+};
+const duplicatesTool = () => act(() => new Promise(resolve => {
+  let changed = false;
+  const list = h('div', { class: 'dup-list' });
+  const draw = () => {
+    const groups = dupGroups();
+    list.replaceChildren(...(groups.length ? groups.map(items => {
+      const keep = { id: (items.find(i => i.photo) || items.find(i => i.location_id) || items[0]).id }; // por omissão, o que tem foto ou já está arrumado
+      const name = `dup-${items[0].id}`;
+      const btn = h('button', { type: 'button', class: 'primary' }, `Juntar ${items.length} em 1`);
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        try {
+          const r = await api('POST', '/api/items/merge', { keep: keep.id, remove: items.filter(i => i.id !== keep.id).map(i => i.id) });
+          changed = true;
+          toast(`Juntados. Quantidade final: ${r.quantity || '—'}.`);
+          await reload();
+          draw();
+        } catch (e) { toast(e.message); btn.disabled = false; }
+      });
+      return h('fieldset', { class: 'dup-group' }, h('legend', {}, `${items[0].name} · ${items.length} registos`),
+        items.map(i => h('label', { class: 'dup-row' },
+          h('input', { type: 'radio', name, checked: i.id === keep.id, onchange: () => { keep.id = i.id; } }),
+          i.photo ? h('img', { class: 'thumb', src: PHOTOS + i.photo, alt: '' }) : h('span', { class: 'thumb' }, '🔩'),
+          h('span', { class: 'dup-info' }, h('b', {}, i.name), h('small', { class: 'muted' }, [i.quantity && `Qtd ${i.quantity}`, i.category, '📍 ' + pathText(i.location_id)].filter(Boolean).join(' · '))),
+          h('a', { href: '#/item/' + i.id, onclick: () => dlg.close('') }, 'Abrir'))),
+        h('div', { class: 'row end' }, btn));
+    }) : [emptyState('✅', 'Sem duplicados', 'Não há artigos com o mesmo nome.')]));
+  };
+  const dlg = h('dialog', { class: 'dup-dialog wide' }, h('div', {},
+    h('h2', {}, '🔁 Artigos duplicados'),
+    h('p', { class: 'muted' }, 'Escolha o registo que fica (os outros são apagados e as quantidades somam-se). Pode desfazer.'),
+    list, h('div', { class: 'row end' }, h('button', { type: 'button', onclick: () => dlg.close('') }, 'Fechar'))));
+  dlg.addEventListener('close', () => { dlg.remove(); resolve(changed ? undefined : false); });
+  draw();
+  document.body.append(dlg);
+  dlg.showModal();
+}));
 const deleteItem = it => act(async () => {
   if (!confirm(`Apagar o artigo "${it.name}"?`)) return false;
   await api('DELETE', '/api/items/' + it.id);
@@ -1387,7 +1515,9 @@ function viewInventory() {
       h('td', { class: 'name' },
         r.it.photo ? h('img', { src: PHOTOS + r.it.photo, loading: 'lazy', alt: '' }) : h('span', { class: 'ph' }, '🔩'),
         h('a', { href: '#/item/' + r.it.id, title: 'Abrir artigo', onclick: e => e.stopPropagation() }, r.name)),
-      h('td', {}, r.quantity), h('td', {}, r.category),
+      h('td', {}, r.quantity),
+      h('td', {}, h('button', { class: 'ghost cat-btn', title: 'Corrigir categoria', onclick: e => { e.stopPropagation(); fixItemCategory(r.it); } },
+        r.category || h('span', { class: 'muted' }, '+ categoria'), ' ✎')),
       h('td', {}, r.loc || h('span', { class: 'muted' }, 'Área temporária')),
       h('td', {}, r.updated))));
     if (!shown.length) {
@@ -1419,6 +1549,8 @@ function viewInventory() {
       h('select', { onchange: e => { inv.cat = e.target.value; draw(); } },
         h('option', { value: '' }, 'Todas as categorias'),
         cats.map(c => h('option', { value: c, selected: c === inv.cat }, c))),
+      h('button', { onclick: duplicatesTool, title: 'Artigos com o mesmo nome' }, `🔁 Duplicados${dupGroups().length ? ' (' + dupGroups().length + ')' : ''}`),
+      h('button', { onclick: categoriesTool, title: 'Renomear ou juntar categorias' }, '🏷️ Categorias'),
       h('button', { onclick: exportCsv }, 'Exportar CSV')),
     mapPanel,
     h('div', { class: 'inv-section' }, count, h('table', {}, h('thead', {}, head), tbody)),

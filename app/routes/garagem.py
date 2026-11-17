@@ -205,6 +205,16 @@ async def api_artigos_mover(request: Request, ctx: g.Ctx = Depends(ctx_escrever)
     return {"moved": g.mover_artigos(ctx, await _body(request))}
 
 
+@router.post(P + "/api/items/category")
+async def api_categoria_corrigir(request: Request, ctx: g.Ctx = Depends(ctx_escrever)):
+    return {"changed": g.corrigir_categoria(ctx, await _body(request))}
+
+
+@router.post(P + "/api/items/merge")
+async def api_artigos_juntar(request: Request, ctx: g.Ctx = Depends(ctx_escrever)):
+    return g.juntar_duplicados(ctx, await _body(request))
+
+
 @router.post(P + "/api/items")
 async def api_artigo_criar(request: Request, ctx: g.Ctx = Depends(ctx_escrever)):
     return {"id": g.criar_artigo(ctx, await _body(request))}

@@ -155,6 +155,23 @@ def test_matriz_nao_contem_matriz(api):
     assert api.put(f"/locations/{solta}", {"parent_id": caixa}).status_code == 200               # sem matriz: pode
 
 
+def test_corrigir_categoria_e_juntar_duplicados(api):
+    ids = [api.novo("/items", {"name": n, "quantity": q, "category": c}) for n, q, c in
+           (("Parafuso M4", "10", "Parafusos"), ("parafuso m4", "5", "parafuso"), ("Fita", "1 rolo", "Parafusos"), ("Fita ", "2", None))]
+    r = api.post("/items/category", {"from": ["parafuso", "Parafusos"], "to": "Ferragens"})
+    assert r.status_code == 200 and r.json()["changed"] == 3
+    assert sorted({i["category"] for i in api.estado()["items"] if i["category"]}) == ["Ferragens"]
+    assert api.post("/items/category", {"from": []}).status_code == 400
+    assert api.post("/items/category", {"from": "Ferragens", "to": ""}).json()["changed"] == 3        # vazio = sem categoria
+    j = api.post("/items/merge", {"keep": ids[0], "remove": [ids[1]]}).json()
+    assert j == {"removed": 1, "quantity": "15"}
+    j = api.post("/items/merge", {"keep": ids[2], "remove": [ids[3]]}).json()
+    assert j["quantity"] == "1 rolo + 2"
+    assert len(api.estado()["items"]) == 2
+    assert api.post("/items/merge", {"keep": ids[0], "remove": [ids[0]]}).status_code == 400
+    assert api.post("/undo").status_code == 200 and len(api.estado()["items"]) == 3                    # tudo desfaz-se
+
+
 # --- fluxo completo ----------------------------------------------------------------------------------------------------
 def test_fluxo_localizacoes_matriz_artigos(api):
     arm = api.novo("/locations", {"name": "Armário", "type": "armario", "plan_x": 0, "plan_y": 0, "plan_w": 1, "plan_h": 0.5, "plan_alt": 2})

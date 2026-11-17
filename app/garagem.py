@@ -729,6 +729,57 @@ def apagar_artigo(ctx: Ctx, id_) -> None:
             ctx.db.delete(a)
 
 
+def corrigir_categoria(ctx: Ctx, body: dict) -> int:
+    """Renomeia (ou junta) categorias em todos os artigos: `from` (uma ou várias) passa a `to`; `to` vazio = sem categoria."""
+    with mutacao(ctx, "corrigir categoria"):
+        origem = body.get("from")
+        origem = [origem] if isinstance(origem, str) else origem
+        origem = [str(o).strip() for o in origem or [] if str(o).strip()]
+        if not origem:
+            raise GaragemErro("Indique a categoria a corrigir.")
+        destino = _txt(body.get("to"), 80)
+        n = 0
+        for a in ctx.db.scalars(select(GarArtigo).where(GarArtigo.entidade_id == ctx.ent, GarArtigo.category.in_(origem))):
+            if a.category != destino:
+                a.category, a.updated = destino, agora()
+                n += 1
+        return n
+
+
+def _numero(v) -> float | None:
+    try:
+        return float(str(v).strip().replace(",", ".")) if v not in (None, "") else None
+    except ValueError:
+        return None
+
+
+def juntar_duplicados(ctx: Ctx, body: dict) -> dict:
+    """Junta artigos repetidos: fica `keep` e os `remove` são apagados. Quantidades numéricas somam-se; senão ficam juntas
+    (ex.: «10 + 1 caixa»). A foto, categoria e notas em falta no que fica são herdadas."""
+    with mutacao(ctx, "juntar duplicados"):
+        fica = _artigo(ctx, body.get("keep"))
+        if not fica:
+            raise GaragemErro("Artigo a manter inexistente.", 404)
+        ids = [i for i in (body.get("remove") or []) if str(i).lstrip("-").isdigit() and int(i) != fica.id]
+        outros = [x for x in (_artigo(ctx, i) for i in ids) if x]
+        if not outros:
+            raise GaragemErro("Nenhum artigo para juntar.")
+        qtds = [q for q in [fica.quantity, *[x.quantity for x in outros]] if q not in (None, "")]
+        nums = [_numero(q) for q in qtds]
+        if qtds and all(n is not None for n in nums):
+            total = sum(nums)
+            fica.quantity = str(int(total)) if total == int(total) else str(round(total, 3)).replace(".", ",")
+        elif qtds:
+            fica.quantity = " + ".join(dict.fromkeys(str(q) for q in qtds))[:60]
+        for x in outros:
+            fica.photo = fica.photo or x.photo
+            fica.category = fica.category or x.category
+            fica.notes = fica.notes or x.notes
+            ctx.db.delete(x)
+        fica.updated = agora()
+        return {"removed": len(outros), "quantity": fica.quantity}
+
+
 def mover_artigos(ctx: Ctx, body: dict) -> int:
     """Move vários artigos de uma vez; sem destino = área temporária."""
     with mutacao(ctx, "mover artigos"):
