@@ -215,10 +215,14 @@ function fieldEl(f, data) {
     show();
     // Sugestões da internet (Wikimedia Commons) a partir do nome do artigo; a escolhida é guardada como foto do artigo.
     const sugg = h('div', { class: 'sugg', hidden: true }), suggNote = h('small', { class: 'muted' }, '');
-    const suggest = async () => {
-      const q = (data.name || '').trim();
-      if (!q) { toast('Escreva primeiro o nome do artigo.'); return; }
-      sugg.hidden = false; sugg.replaceChildren(suggNote);
+    const suggQ = h('input', { type: 'search', placeholder: 'Pesquisar imagens (pode mudar o termo)', autocomplete: 'off', 'aria-label': 'Pesquisar imagens' });
+    const suggGrid = h('div', { class: 'sugg-grid' });
+    sugg.append(h('div', { class: 'row' }, suggQ, h('button', { type: 'button', onclick: () => suggestSearch() }, 'Procurar')), suggNote, suggGrid);
+    suggQ.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); suggestSearch(); } });
+    const suggestSearch = async () => {
+      const q = suggQ.value.trim();
+      if (!q) { suggNote.textContent = 'Escreva o que procurar.'; return; }
+      suggGrid.replaceChildren();
       suggNote.textContent = `A procurar imagens de "${q}"…`;
       try {
         const url = 'https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrnamespace=6&gsrlimit=12&prop=imageinfo' +
@@ -226,8 +230,8 @@ function fieldEl(f, data) {
         const r = await (await fetch(url)).json();
         const pics = Object.values((r.query || {}).pages || {}).map(p => (p.imageinfo || [])[0])
           .filter(i => i && /^image\/(jpeg|png|webp)$/.test(i.mime) && i.thumburl);
-        suggNote.textContent = pics.length ? 'Toque numa imagem para a usar (fonte: Wikimedia Commons).' : `Nada encontrado para "${q}". Tente um nome mais simples.`;
-        sugg.append(...pics.map(i => h('button', {
+        suggNote.textContent = pics.length ? 'Toque numa imagem para a usar (fonte: Wikimedia Commons).' : `Nada encontrado para "${q}". Tente outro termo.`;
+        suggGrid.append(...pics.map(i => h('button', {
           type: 'button', class: 'sugg-pic', title: 'Usar esta imagem',
           onclick: async () => {
             suggNote.textContent = 'A guardar a imagem…';
@@ -242,6 +246,11 @@ function fieldEl(f, data) {
           },
         }, h('img', { src: i.thumburl, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer' }))));
       } catch (e) { suggNote.textContent = 'Não consegui procurar imagens na internet.'; }
+    };
+    const suggest = () => {
+      sugg.hidden = false;
+      if (!suggQ.value) suggQ.value = (data.name || '').trim();
+      suggestSearch();
     };
     input = h('div', { class: 'photo-field' }, img, h('div', { class: 'row' },
       h('button', { type: 'button', onclick: take(true) }, '📷 Tirar foto'),
@@ -788,8 +797,9 @@ function planView(highlight, path3d, space, compact) {
       body.replaceChildren(box, bar3d(box, !!(path3d || highlight)), h('div', { class: 'muted' }, 'Arraste para rodar, belisque ou use a roda para aproximar, toque numa zona para a abrir.'));
     } else {
       const hl = path3d || highlight;
-      body.replaceChildren(planFrame(planSvg({ highlight: hl, space, onpick: l => open(l.id) }), space, hl),
-        compact ? null : [h('h3', {}, 'Alçados vistos do centro'), elevationsSvg({ highlight: hl, space, onpick: l => open(l.id) })]);
+      body.replaceChildren(...[planFrame(planSvg({ highlight: hl, space, onpick: l => open(l.id) }), space, hl),
+        compact ? null : [h('h3', {}, 'Alçados vistos do centro'), elevationsSvg({ highlight: hl, space, onpick: l => open(l.id) })]]
+        .flat(Infinity).filter(Boolean));
     }
   };
   draw();

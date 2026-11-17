@@ -100,8 +100,9 @@ textarea { min-height: 70px; resize: vertical; }
 .plan-wrap { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 8px; }
 .plan { display: block; width: 100%; max-height: 62vh; }
 .plan.edit { touch-action: none; cursor: crosshair; }
-.sugg { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; margin-top: 8px; }
-.sugg small { grid-column: 1 / -1; }
+.sugg { margin-top: 8px; }
+.sugg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; margin-top: 6px; }
+.sugg .row input { flex: 1 1 160px; width: auto; }
 .sugg-pic { padding: 0; height: 84px; overflow: hidden; background: var(--bg); }
 .sugg-pic img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .pick3d { margin-top: 8px; }
