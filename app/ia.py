@@ -10,6 +10,7 @@ o modelo de GESTOR_IA_MODELO (por omissão claude-haiku-5-5).
 """
 import json
 import os
+import re
 import urllib.error
 import urllib.request
 
@@ -37,6 +38,27 @@ def modelo() -> str:
 
 def disponivel() -> bool:
     return bool(chave_api())
+
+
+# Dados pessoais que nunca são precisos para classificar e não devem sair da NAS (o NIF do emitente fica: é a pista
+# principal para reconhecer quem emitiu o documento).
+_PII = [
+    (re.compile(r"\b[A-Z]{2}\d{2}(?:[ ]?[A-Z0-9]{4}){4,7}(?:[ ]?[A-Z0-9]{1,3})?\b"), "[IBAN]"),
+    (re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+"), "[email]"),
+    (re.compile(r"(?<!\d)(?:\d{4}[ -]?){3}\d{4}(?!\d)"), "[cartão]"),
+    (re.compile(r"((?:\+351|00351)[ ]?)\d{3}[ ]?\d{3}[ ]?\d{3}(?!\d)"), "[telefone]"),
+    (re.compile(r"(?i)\b(tel(?:efone|em[oó]vel|m)?\.?|telm\.?|contacto|phone)(\s*[:.]?\s*)\d{3}[ ]?\d{3}[ ]?\d{3}(?!\d)"),
+     r"\1\2[telefone]"),
+    (re.compile(r"(?i)\b(NISS|n\.?º? ?(?:de )?utente|utente(?: n\.?º?)?|cart[aã]o de cidad[aã]o(?: n\.?º?)?|CC n\.?º?|BI n\.?º?)"
+                r"(\s*[:.]?\s*)\d{6,11}(?:[ ]?\d)?(?:[ ]?[A-Z]{2}\d)?\b"), r"\1\2[identificação]"),
+]
+
+
+def mascarar(texto: str) -> str:
+    """Tira de um texto (OCR de documentos) IBAN, emails, números de cartão, telefones e números de identificação."""
+    for padrao, subst in _PII:
+        texto = padrao.sub(subst, texto)
+    return texto
 
 
 def _chamar(sistema: str, mensagem: str, ferramentas: list | None = None, modelo_ia: str | None = None) -> str:
@@ -154,21 +176,31 @@ def chave_movimento(m) -> str:
     return f"{padrao}|{'ENTRADA' if m.montante > 0 else 'SAIDA'}"[:200]
 
 
+ESCALAS = [(1_000, "até 10"), (5_000, "10 a 50"), (20_000, "50 a 200"), (100_000, "200 a 1000"), (500_000, "1000 a 5000")]
+
+
+def escala_valor(montante: int) -> str:
+    """A ordem de grandeza de um montante (cêntimos), para a IA perceber o tipo de gasto sem saber o valor exato."""
+    v = abs(montante)
+    return next((rotulo for limite, rotulo in ESCALAS if v <= limite), "mais de 5000")
+
+
 def analise_de(db: Session, m) -> SugestaoIA | None:
     return db.scalar(select(SugestaoIA).where(SugestaoIA.chave == chave_movimento(m)))
 
 
 def analisar_movimento(db: Session, m) -> SugestaoIA:
-    """Pergunta à IA (com pesquisa web, se a conta o permitir) o que é este movimento. Só se envia a descrição, o
-    valor, a data e o tipo de conta. Guarda na cache por comerciante (substitui uma resposta anterior)."""
+    """Pergunta à IA (com pesquisa web, se a conta o permitir) o que é este movimento. Só se envia a descrição
+    (sem IBAN, emails nem telefones), a ordem de grandeza do valor e o tipo de conta — nunca o valor exato, a data ou o
+    banco. Guarda na cache por comerciante (substitui uma resposta anterior)."""
     if not disponivel():
         raise ErroIA("A chave da Claude API não está configurada (ANTHROPIC_API_KEY).")
     from .models import TIPOS_CONTA
     cats = db.scalars(select(Categoria)).all()
     natureza = "RECEITA" if m.montante > 0 else "DESPESA"
-    mensagem = (f"Movimento: «{m.descricao_original}»\nValor: {m.montante / 100:.2f} {m.moeda}\n"
-                f"Data: {m.data_mov:%d/%m/%Y}\nConta: {TIPOS_CONTA.get(m.conta.tipo, m.conta.tipo)} "
-                f"({m.conta.instituicao.nome})\n\nCategorias de {natureza} (id: nome):\n{_lista_categorias(cats, natureza)}")
+    mensagem = (f"Movimento: «{mascarar(m.descricao_original or '')}»\nValor: {escala_valor(m.montante)} ({m.moeda})\n"
+                f"Conta: {TIPOS_CONTA.get(m.conta.tipo, m.conta.tipo)}\n\n"
+                f"Categorias de {natureza} (id: nome):\n{_lista_categorias(cats, natureza)}")
     web = True
     try:
         texto = _chamar(SISTEMA_ANALISE, mensagem, ferramentas=PESQUISA_WEB)

@@ -67,3 +67,38 @@ def test_regra_liga_ao_bem_so_no_seu_universo(admin, app):
         m = db.scalar(select(Movimento).where(Movimento.montante == -4700))
         aplicar_regras(db, [m])
         assert m.bem_id == monte
+
+
+def test_regras_presas_a_outra_entidade(admin, app):
+    """Um editor só da Família não usa contas nem bens da herança nas regras, nem vê, edita ou apaga as regras presas a elas."""
+    from app.models import Permissao, Utilizador
+    from app.seguranca import hash_password
+    from tests.test_app import _csrf
+    monte = _bem(admin, 2, "rustico", "Monte", uso="exploracao")
+    r = _post(admin, "/regras/nova", padrao="DD EDP COMERC 222", modo="contem", conta_id="2", categoria_id="", bem_id=str(monte),
+              ativa="1", prioridade="50")
+    assert r.status_code == 303
+    with app.state.SessionLocal() as db:
+        alheia = db.scalar(select(Regra.id).where(Regra.conta_id == 2))
+        db.add(Utilizador(nome="Ana", login="ana", password_hash=hash_password(PW), is_admin=False))
+        db.flush()
+        db.add(Permissao(utilizador_id=db.scalar(select(Utilizador.id).where(Utilizador.login == "ana")), entidade_id=1, papel="editar"))
+        db.commit()
+    ana = TestClient(app)
+    _post(ana, "/login", login="ana", password=PW)
+    assert "DD EDP COMERC 222" not in ana.get("/regras").text and "Herança" not in ana.get("/regras").text
+    assert ana.get(f"/regras/{alheia}").status_code == 404
+    csrf = _csrf(ana.get("/regras"))
+    assert ana.post(f"/regras/{alheia}", data={"csrf": csrf, "padrao": "X", "modo": "contem", "excluir": "1"}).status_code == 404
+    assert ana.post(f"/regras/{alheia}/apagar", data={"csrf": csrf}).status_code == 404
+    ana.post("/regras/analise/apagar", data={"csrf": _csrf(ana.get("/regras")), "ids": [str(alheia)]})
+    # conta ou bem da herança numa regra nova: recusado, sem dizer o nome da conta
+    r = _post(ana, "/regras/nova", padrao="DD EDP", modo="contem", conta_id="2", excluir="1", ativa="1", prioridade="50")
+    assert r.status_code == 400 and "Conta ou bem inválido." in r.text and "Herança" not in r.text
+    r = _post(ana, "/regras/nova", padrao="DD EDP", modo="contem", bem_id=str(monte), excluir="1", ativa="1", prioridade="50")
+    assert r.status_code == 400 and "Conta ou bem inválido." in r.text
+    with app.state.SessionLocal() as db:
+        assert db.get(Regra, alheia) is not None and db.scalar(select(Regra.id).where(Regra.padrao == "DD EDP")) is None
+    # a sua própria conta continua a servir
+    assert _post(ana, "/regras/nova", padrao="DD EDP", modo="contem", conta_id="1", excluir="1", ativa="1",
+                 prioridade="50").status_code == 303

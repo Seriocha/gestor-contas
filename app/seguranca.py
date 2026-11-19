@@ -62,6 +62,22 @@ class Bloqueios:
         self._falhas.pop(login.lower(), None)
 
 
+LOCAIS = {"localhost", "127.0.0.1", "::1", "testserver"}
+
+
+def aviso_ligacao(request: Request) -> str | None:
+    """Aviso para os administradores quando a ligação não protege as passwords e o cookie da sessão."""
+    host = (request.url.hostname or "").lower()
+    if request.url.scheme != "https":
+        if host in LOCAIS:
+            return None
+        return ("A ligação a esta página não é cifrada (HTTP): as passwords e o cookie da sessão passam em claro na rede. "
+                "Usa um proxy com HTTPS (ex.: o da NAS) e define GESTOR_COOKIE_SECURE=1.")
+    if not request.app.state.defs.cookie_secure:
+        return "A página chega por HTTPS mas o cookie da sessão não está marcado como seguro: define GESTOR_COOKIE_SECURE=1."
+    return None
+
+
 def csrf_token(request: Request) -> str:
     token = request.session.get("csrf")
     if not token:

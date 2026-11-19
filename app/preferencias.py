@@ -34,7 +34,7 @@ OMISSAO = {
     # de que data (adicionados ao Paperless) os documentos entram no ciclo.
     "motor_ativo": "0",
     "motor_intervalo_minutos": "30",
-    "motor_ia": "1",
+    "motor_ia": "0",            # envia o texto OCR à Claude API: só com escolha explícita do administrador
     "motor_ligar": "1",
     "motor_desde": "",
     # Lar (Santa Casa): entidade da utente (movimentos do banco) e correspondentes no Paperless; vazio = deteta pelo nome.

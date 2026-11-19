@@ -98,10 +98,11 @@ def test_analise_do_movimento_pela_ia(admin, app, monkeypatch):
         mid, cat_id = galp.id, cat.id
     monkeypatch.setattr(ia, "disponivel", lambda: False)
     assert "precisa da chave da Claude API" in admin.get(f"/movimentos/{mid}/detalhe").text
-    chamadas = []
+    chamadas, mensagens = [], []
 
     def falso(sistema, mensagem, ferramentas=None, modelo_ia=None):
         chamadas.append(ferramentas)
+        mensagens.append(mensagem)
         if ferramentas:                                   # a conta não tem pesquisa web: a app tenta sem ela
             raise ia.ErroIA("Erro 400: web_search not enabled")
         return _json.dumps({"comerciante": "Galp", "atividade": "Posto de combustível", "localizacao": "Av. da República, Lisboa",
@@ -116,6 +117,9 @@ def test_analise_do_movimento_pela_ia(admin, app, monkeypatch):
     assert "Galp" in r.text and "Posto de combustível" in r.text and "Av. da República" in r.text and "92% de confiança" in r.text
     assert "sem pesquisa na web" in r.text and "nao-e-url" not in r.text and len(chamadas) == 2
     assert "Mensagem" not in r.text
+    # privacidade: a descrição e a ordem de grandeza do valor; nunca o valor exato, a data ou o banco
+    assert "GALP AV REPUBLICA" in mensagens[0] and "Valor: 50 a 200 (EUR)" in mensagens[0]
+    assert "84" not in mensagens[0].split("Categorias")[0] and "/20" not in mensagens[0] and "Santander" not in mensagens[0]
     # aplicar a categoria sugerida
     admin.post(f"/movimentos/{mid}/analise/aplicar", data={"csrf": _csrf(admin.get(f"/movimentos/{mid}/detalhe"))})
     with app.state.SessionLocal() as db:

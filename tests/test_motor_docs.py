@@ -159,11 +159,14 @@ def test_ia_propoe_e_cria_regra(app_admin, falso, monkeypatch):  # noqa: F811
     app, c = app_admin
     from app import ia
     monkeypatch.setattr(ia, "disponivel", lambda: True)
-    monkeypatch.setattr(ia, "_chamar", lambda s, m, *a, **k: json.dumps({
+    enviados = []
+    monkeypatch.setitem(app.state.prefs, "motor_ia", "1")          # desligada por omissão: o administrador liga-a
+    monkeypatch.setattr(ia, "_chamar", lambda s, m, *a, **k: enviados.append(m) or json.dumps({
         "correspondente": "Loja X", "tipo": "Fatura", "etiquetas": ["Compras"], "valor": "12,50", "data_emissao": "2026-10-01",
         "nif": "500000000", "numero": None, "confianca": 0.8, "motivo": "cabeçalho", "regra": {"algoritmo": "exato", "texto": "Loja X"}}))
     t = c.get("/admin/paperless/regras")
     c.post("/admin/paperless/regras/correr", data={"csrf": _csrf(t)})
+    assert enviados and "Texto:" in enviados[0]
     with app.state.SessionLocal() as db:
         cl = db.scalar(select(ClassificacaoDocumento).where(ClassificacaoDocumento.paperless_id == 303))
         assert cl.estado == "revisao" and cl.origem == "ia"

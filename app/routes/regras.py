@@ -22,6 +22,19 @@ def _entidades_editaveis(db: Session, u: Utilizador) -> list[int]:
     return [e.id for e, p in entidades_visiveis(db, u) if PAPEIS[p] >= PAPEIS["editar"]]
 
 
+def _alheia(r: Regra, editaveis) -> bool:
+    """Regra presa a uma conta ou a um bem de uma entidade que o utilizador não edita (as regras sem conta nem bem são
+    partilhadas por todos os editores)."""
+    return bool((r.conta and r.conta.entidade_id not in editaveis) or (r.bem and r.bem.entidade_id not in editaveis))
+
+
+def _regra(db: Session, u: Utilizador, regra_id: int) -> Regra:
+    r = db.get(Regra, regra_id)
+    if not r or _alheia(r, set(_entidades_editaveis(db, u))):
+        _404()
+    return r
+
+
 def _movimentos_editaveis(db: Session, u: Utilizador, so_nao_manuais: bool = True):
     q = (select(Movimento).join(Conta).where(Conta.entidade_id.in_(_entidades_editaveis(db, u)))
          .options(selectinload(Movimento.etiquetas)))
@@ -57,6 +70,8 @@ def lista(request: Request, u: Utilizador = Depends(exigir_editor), db: Session 
                                               selectinload(Regra.conta), selectinload(Regra.etiqueta),
                                               selectinload(Regra.bem))
                         .order_by(Regra.prioridade, Regra.id)).all()
+    editaveis = set(_entidades_editaveis(db, u))
+    regras = [r for r in regras if not _alheia(r, editaveis)]
     # contagens na base (carregar os movimentos todos para os contar levava segundos)
     nas_entidades = (select(func.count()).select_from(Movimento).join(Conta)
                      .where(Conta.entidade_id.in_(_entidades_editaveis(db, u))))
@@ -169,7 +184,7 @@ async def aplicar_todas(request: Request, u: Utilizador = Depends(exigir_editor)
 
 
 
-def _ler(form, db: Session) -> tuple[dict, list[str]]:
+def _ler(form, db: Session, u: Utilizador) -> tuple[dict, list[str]]:
     erros = []
     padrao = str(form.get("padrao", "")).strip()[:200]
     modo = str(form.get("modo", "contem"))
@@ -196,11 +211,21 @@ def _ler(form, db: Session) -> tuple[dict, list[str]]:
         v = str(form.get(campo, ""))
         return db.get(modelo, int(v)).id if v.isdigit() and db.get(modelo, int(v)) else None
 
+    editaveis = set(_entidades_editaveis(db, u))
+
+    def fk_entidade(campo, modelo):
+        """Conta ou bem: só das entidades que o utilizador edita."""
+        i = fk(campo, modelo)
+        if i and db.get(modelo, i).entidade_id not in editaveis:
+            erros.append("Conta ou bem inválido.")
+            return None
+        return i
+
     dados = {
         "padrao": padrao, "modo": modo, "sentido": sentido,
         "montante_min": montante("montante_min"), "montante_max": montante("montante_max"),
-        "conta_id": fk("conta_id", Conta), "categoria_id": fk("categoria_id", Categoria),
-        "etiqueta_id": fk("etiqueta_id", Etiqueta), "bem_id": fk("bem_id", Bem),
+        "conta_id": fk_entidade("conta_id", Conta), "categoria_id": fk("categoria_id", Categoria),
+        "etiqueta_id": fk("etiqueta_id", Etiqueta), "bem_id": fk_entidade("bem_id", Bem),
         "marcar_transferencia": form.get("marcar_transferencia") == "1", "excluir": form.get("excluir") == "1",
         "ativa": form.get("ativa") == "1",
         "prioridade": int(form["prioridade"]) if str(form.get("prioridade", "")).isdigit() else 100,
@@ -253,7 +278,8 @@ def analise(request: Request, u: Utilizador = Depends(exigir_editor), db: Sessio
 async def analise_agregar(request: Request, u: Utilizador = Depends(exigir_editor), db: Session = Depends(get_db)):
     from .. import analise_regras
     form = await ler_form(request)
-    regras = [r for r in (db.get(Regra, int(x)) for x in form.getlist("ids") if str(x).isdigit()) if r]
+    editaveis = set(_entidades_editaveis(db, u))
+    regras = [r for r in (db.get(Regra, int(x)) for x in form.getlist("ids") if str(x).isdigit()) if r and not _alheia(r, editaveis)]
     if len(regras) < 2 or len({(analise_regras.condicoes(r), analise_regras.acoes(r)) for r in regras}) != 1 \
             or any(r.modo == "regex" for r in regras):
         flash(request, "Estas regras não se podem agregar (condições ou ações diferentes).", "erro")
@@ -271,7 +297,8 @@ async def analise_agregar(request: Request, u: Utilizador = Depends(exigir_edito
 @router.post("/analise/apagar")
 async def analise_apagar(request: Request, u: Utilizador = Depends(exigir_editor), db: Session = Depends(get_db)):
     form = await ler_form(request)
-    regras = [r for r in (db.get(Regra, int(x)) for x in form.getlist("ids") if str(x).isdigit()) if r]
+    editaveis = set(_entidades_editaveis(db, u))
+    regras = [r for r in (db.get(Regra, int(x)) for x in form.getlist("ids") if str(x).isdigit()) if r and not _alheia(r, editaveis)]
     for r in regras:
         auditar(db, u, "regra_apagada", f"{r.id}: {r.padrao} (otimizar regras)")
         db.delete(r)
@@ -304,7 +331,7 @@ async def nova(request: Request, u: Utilizador = Depends(exigir_editor), db: Ses
 @router.get("/{regra_id}")
 def editar_form(request: Request, regra_id: int, u: Utilizador = Depends(exigir_editor),
                 db: Session = Depends(get_db)):
-    r = db.get(Regra, regra_id) or _404()
+    r = _regra(db, u, regra_id)
     n, exemplos = _exemplos(db, u, r)
     return render(request, "regras/form.html", regra=r, v=_valores(r), n=n, exemplos=exemplos, **_opcoes(db, u))
 
@@ -312,12 +339,12 @@ def editar_form(request: Request, regra_id: int, u: Utilizador = Depends(exigir_
 @router.post("/{regra_id}")
 async def editar(request: Request, regra_id: int, u: Utilizador = Depends(exigir_editor),
                  db: Session = Depends(get_db)):
-    return await _guardar(request, u, db, db.get(Regra, regra_id) or _404())
+    return await _guardar(request, u, db, _regra(db, u, regra_id))
 
 
 async def _guardar(request: Request, u: Utilizador, db: Session, r: Regra | None):
     form = await ler_form(request)
-    dados, erros = _ler(form, db)
+    dados, erros = _ler(form, db, u)
     teste = Regra(**dados)
     teste.bem = db.get(Bem, dados["bem_id"]) if dados["bem_id"] else None
     if erros or form.get("testar"):
@@ -345,7 +372,7 @@ async def _guardar(request: Request, u: Utilizador, db: Session, r: Regra | None
 @router.post("/{regra_id}/apagar")
 async def apagar(request: Request, regra_id: int, u: Utilizador = Depends(exigir_editor),
                  db: Session = Depends(get_db)):
-    r = db.get(Regra, regra_id) or _404()
+    r = _regra(db, u, regra_id)
     await ler_form(request)
     auditar(db, u, "regra_apagada", f"{r.id}: {r.padrao}")
     db.delete(r)

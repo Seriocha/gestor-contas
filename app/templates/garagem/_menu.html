@@ -13,7 +13,6 @@
       <summary><a href="{{ sp.href }}" data-gg="{{ sp.href }}">{{ icone('patrimonio') }}<span>{{ sp.title }}</span></a></summary>
       {% for z in sp.children %}
       <a class="gg-n1" href="{{ z.href }}" data-gg="{{ z.href }}"><span>{{ z.title }}</span></a>
-      {% for k in z.children %}<a class="gg-n2" href="{{ k.href }}" data-gg="{{ k.href }}"><span>{{ k.title }}</span></a>{% endfor %}
       {% endfor %}
     </details>
     {% endfor %}

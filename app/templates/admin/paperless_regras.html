@@ -17,7 +17,7 @@
       ciclo automático{% if not ciclo_possivel %} <span class="nota">(precisa do token partilhado GESTOR_PAPERLESS_TOKEN no paperless.env)</span>{% endif %}</label>
     <label>De quantos em quantos minutos <input name="intervalo" type="number" min="5" max="1440" value="{{ prefs.motor_intervalo_minutos }}" style="width: 7rem"></label>
     <label>Documentos adicionados desde <input name="desde" type="date" value="{{ prefs.motor_desde }}"><span class="nota">vazio = últimos 30 dias</span></label>
-    <label class="opcao"><input type="checkbox" name="motor_ia" {% if prefs.motor_ia == '1' %}checked{% endif %}> IA de apoio quando nenhuma regra serve{% if not ia_ok %} <span class="nota">(sem chave da API)</span>{% endif %}</label>
+    <label class="opcao"><input type="checkbox" name="motor_ia" {% if prefs.motor_ia == '1' %}checked{% endif %}> IA de apoio quando nenhuma regra serve <span class="nota">(envia à Claude API o texto do documento, sem IBAN, emails, telefones nem números de identificação)</span>{% if not ia_ok %} <span class="nota">(sem chave da API)</span>{% endif %}</label>
     <label class="opcao"><input type="checkbox" name="motor_ligar" {% if prefs.motor_ligar == '1' %}checked{% endif %}> ligar aos movimentos bancários</label>
     <div class="acoes-form"><button>Guardar</button></div>
   </form>

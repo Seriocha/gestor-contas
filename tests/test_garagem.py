@@ -470,7 +470,7 @@ def test_construir_menu_hierarquia_e_filtros():
     garagem = m["groups"][0]["items"][0]
     assert garagem["href"] == "/garagem/#/espaco/1" and garagem["current"] and garagem["property"] == {"id": "7", "name": "Casa"}
     mez = garagem["children"][0]
-    assert mez["title"] == "Mezanine" and [c["title"] for c in mez["children"]] == ["Estante 2", "Estante 10"]    # ordem natural
+    assert mez["title"] == "Mezanine" and mez["children"] == []          # as estantes da mezanine só na área esquerda
     assert m["groups"][0]["items"][1]["children"][0]["title"] == "Armário" and m["groups"][0]["items"][-1]["action"] == "new-space"
     assert m["groups"][2]["items"][1]["badge"] == 3 and m["groups"][2]["items"][0]["badge"] is None
     so_imovel = g.construir_menu(esp, loc, 0, 0, imovel="7")

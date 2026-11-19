@@ -1066,13 +1066,10 @@ def construir_menu(espacos_: list[dict], locais: list[dict], n_temp: int, n_rasc
     esp = [s for s in espacos_ if imovel is None or str(s.get("property_id") or "") == str(imovel)]
     primeiro = espacos_[0]["id"] if espacos_ else None
 
-    def filhos(id_):
-        return por_nome([l for l in locais if l["parent_id"] == id_ and l["grid_row"] is None])
-
     def zona(l):
+        # só as zonas do espaço: os locais lá dentro (ex.: as estantes de uma mezanine) vêem-se na área esquerda da página
         return {"key": f"loc:{l['id']}", "title": l["name"], "icon": ICONE_TIPO.get(l["type"], ICONE_TIPO["outro"]),
-                "href": href(f"#/loc/{l['id']}"), "type": l["type"],
-                "children": [zona(c) for c in filhos(l["id"])] if l["type"] == "mezanine" else []}
+                "href": href(f"#/loc/{l['id']}"), "type": l["type"], "children": []}
 
     itens_esp = []
     for s in esp:

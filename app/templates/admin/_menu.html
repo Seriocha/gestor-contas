@@ -15,3 +15,5 @@
   <a href="{{ href }}" {% if ativo %}class="ativo" aria-current="page"{% endif %}>{{ rotulo }}</a>
   {% endfor %}
 </nav>
+{% set aviso = aviso_ligacao(request) %}
+{% if aviso %}<div class="aviso aviso-alerta" data-mensagem>🔓 {{ aviso }}</div>{% endif %}

@@ -465,7 +465,7 @@ def ia_propor(doc: dict, ctx: Contexto) -> Proposta:
     corr = sorted(x.get("name") for x in ctx.itens["correspondents"].values())[:400]
     tipos = sorted(x.get("name") for x in ctx.itens["document_types"].values())
     msg = (f"Correspondentes existentes: {', '.join(corr)}\nTipos existentes: {', '.join(tipos)}\n\n"
-           f"Título: {doc.get('title')}\nTexto:\n{(doc.get('content') or '')[:6000]}")
+           f"Título: {doc.get('title')}\nTexto:\n{ia.mascarar((doc.get('content') or '')[:6000])}")
     txt = ia._chamar(SISTEMA_IA, msg)
     m = re.search(r"\{.*\}", txt, re.S)
     if not m:

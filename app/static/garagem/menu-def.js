@@ -19,10 +19,10 @@
     const first = allSpaces.length ? allSpaces[0].id : null;
     const href = h => o.prefix + h;
 
-    const kidsOf = id => locs.filter(l => l.parent_id === id && l.grid_row == null).sort(byName);
+    // só as zonas do espaço: os locais lá dentro (ex.: as estantes de uma mezanine) vêem-se na área esquerda da página
     const zoneItem = l => ({
       key: 'loc:' + l.id, title: l.name, icon: ICON[l.type] || ICON.outro, href: href('#/loc/' + l.id), type: l.type,
-      children: l.type === 'mezanine' ? kidsOf(l.id).map(zoneItem) : [],
+      children: [],
     });
     const zoneIds = new Set();
     const walk = z => { zoneIds.add(Number(z.key.slice(4))); z.children.forEach(walk); };

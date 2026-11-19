@@ -24,10 +24,11 @@ from .routes import garagem as rotas_garagem
 from .routes import (abastecer, admin, auth, documentos, inicio, posicoes, categorias, contas, emprestimos, importar, movimentos, painel, pareaveis, previsoes,
                      patrimonio, regras, relatorios, saude, subscricoes, viagens)
 from .routes import admin_paperless, lar, saude_api, tv as rotas_tv
+from . import seguranca
 from .seed import semear
 
 APP_DIR = Path(__file__).resolve().parent
-VERSAO = "0.107.0"
+VERSAO = "0.108.0"
 
 
 def aplicar_migracoes(db_path: Path, backup_dir: Path | None = None) -> None:
@@ -86,6 +87,7 @@ def create_app(data_dir: Path | None = None, backups_automaticos: bool = True) -
     templates.env.filters["eur"] = formatos.fmt_montante
     templates.env.filters["data"] = formatos.fmt_data
     templates.env.globals["versao"] = VERSAO
+    templates.env.globals["aviso_ligacao"] = seguranca.aviso_ligacao
     templates.env.globals["tarefas_janela"] = lambda: tarefas.na_janela(app.state.prefs, date.today())
     templates.env.globals["mostrar_parte"] = lambda: preferencias.ligada(app.state.prefs, "mostrar_minha_parte")
     templates.env.filters["iban"] = lambda v: v if preferencias.ligada(app.state.prefs, "mostrar_iban_completo")         else formatos.mascarar_iban(v)
